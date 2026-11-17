@@ -43,7 +43,7 @@
 8. **AI values must be grounded.** A model's value is kept only if its quote is found on the cited page (ADR 0002).
 9. **Maker-checker.** Nobody reviews a document they uploaded or a value they entered.
 10. **Human input has a shape.** Typed values and corrections must match `LeaseTerms.FORMATS` (e.g. rates need "%", commas only as thousands separators); the core re-checks before calculating.
-11. **Amendments apply in order.** (Planned) addenda link to their parent by document hash and are applied by effective date; a superseded schedule can never feed a calculation.
+11. **Amendments apply in order.** An amendment names its lease by id and SHA-256 and applies at its verified effective date; any unread, unverified or ambiguous amendment blocks the schedule, so a superseded term can never feed a figure (ADR 0003).
 
 ## Why this stack
 

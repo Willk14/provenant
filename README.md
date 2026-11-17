@@ -95,10 +95,11 @@ human review until calibrated. Score either one with `python scripts/evaluate_ex
 | Upload a lease PDF (same file twice returns the same document); extraction is queued | `POST /documents` |
 | See extracted terms, each with page + bounding box | `GET /documents/{id}` |
 | Enter a value the extractor missed, with the box where it is printed | `POST /documents/{id}/fields` |
+| Upload an amendment, side letter or extension to a lease (form field `amends=<lease id>`) | `POST /documents` |
 | Fields a human must sign off (low confidence, or judgement calls like the discount rate) | `GET /review-queue` |
 | Approve / correct / reject, recorded in a hash-chained log | `POST /fields/{id}/review` |
-| Schedule from verified terms only (409 until then) | `GET /documents/{id}/lease-schedule` |
-| Excel with Schedule, Journal and Provenance sheets | `GET /documents/{id}/lease-schedule.xlsx` |
+| Schedule from verified terms only, remeasured at each amendment (409 until all are verified) | `GET /documents/{id}/lease-schedule` |
+| Excel with Schedule, Journal, Chain and Provenance sheets | `GET /documents/{id}/lease-schedule.xlsx` |
 | Prove the review log hasn't been edited | `GET /review-log/verify` |
 
 ### Postgres

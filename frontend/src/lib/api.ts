@@ -38,9 +38,11 @@ export const api = {
   documents: () => call<DocumentSummary[]>("/documents"),
   document: (id: string) => call<DocumentSummary>(`/documents/${id}`),
   pdf: (id: string) => call<ArrayBuffer>(`/documents/${id}/file`),
-  upload: (file: File) => {
+  /** With `amends`, the file is an amendment to that lease. */
+  upload: (file: File, amends?: string) => {
     const form = new FormData();
     form.append("file", file);
+    if (amends) form.append("amends", amends);
     return call<DocumentSummary>("/documents", { method: "POST", body: form });
   },
   reviewQueue: () => call<Field[]>("/review-queue"),

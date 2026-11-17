@@ -38,7 +38,9 @@ Built as thin vertical slices. Each milestone ships something a user can run end
 - [x] Mark a missing term by dragging a box on the PDF; the value must match the term's format
 - [x] Schedule where any figure traces to the contract terms behind it, highlighted on the PDF
 - [x] Server-side value formats (`LeaseTerms.FORMATS`): no "120,000120,000", no rate without "%"
-- [ ] Amendment chain: link addenda/side letters, remeasure on modification
+- [x] Amendment chains: amendments link to their lease by id + SHA-256, apply in effective-date order, remeasure the liability and ROU asset (ADR 0003)
+- [x] Schedule shows each remeasurement; any figure traces to the exact fields across the lease and its amendments
+- [ ] Mid-period modifications, partial terminations, rent deferrals (refused today)
 - [ ] OIDC sign-in in the web app (it uses the dev persona switcher today)
 - [ ] Component tests (React Testing Library) and a Playwright smoke test in CI
 

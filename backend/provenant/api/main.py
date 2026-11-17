@@ -9,7 +9,7 @@ from pathlib import Path
 from threading import Event, Thread
 from typing import Annotated, Literal
 
-from fastapi import Depends, FastAPI, File, Header, HTTPException, Response, UploadFile
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Response, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -59,21 +59,34 @@ class DocumentOut(BaseModel):
     filename: str
     size_bytes: int
     uploaded_by: str
+    kind: Literal["lease", "amendment"]
+    parent_id: str | None
+    parent_sha256: str | None
     status: str
     error: str | None
     created_at: datetime
     needs_review: int | None = None
     missing_terms: int | None = None
     fields: list[FieldOut] = []
+    amendments: list["DocumentOut"] = []  # for a lease, in upload order (the schedule orders by effective date)
+    parent: "DocumentOut | None" = None  # for an amendment, its lease (without fields)
 
     @classmethod
     def of(
-        cls, d: Document, fields: list[FieldRow] = (), needs_review: int | None = None, missing_terms: int | None = None
+        cls,
+        d: Document,
+        fields: list[FieldRow] = (),
+        needs_review: int | None = None,
+        missing_terms: int | None = None,
+        amendments: list[Document] = (),
+        parent: Document | None = None,
     ) -> "DocumentOut":
         return cls(
             id=d.id, sha256=d.sha256, filename=d.filename, size_bytes=d.size_bytes, uploaded_by=d.uploaded_by,
+            kind=d.kind, parent_id=d.parent_id, parent_sha256=d.parent_sha256,
             status=d.status, error=d.error, created_at=d.created_at, needs_review=needs_review,
             missing_terms=missing_terms, fields=[FieldOut.of(f) for f in fields],
+            amendments=[DocumentOut.of(a) for a in amendments], parent=DocumentOut.of(parent) if parent else None,
         )
 
 
@@ -103,12 +116,34 @@ class PeriodOut(BaseModel):
     payment: Decimal
     closing: Decimal
     depreciation: Decimal
+    segment: int
+
+
+class RemeasurementOut(BaseModel):
+    after_period: int
+    effective: date
+    document_id: str
+    filename: str
+    liability_before: Decimal
+    liability_after: Decimal
+    rou_before: Decimal
+    rou_adjustment: Decimal
+    gain: Decimal
+
+
+class SegmentOut(BaseModel):
+    document_id: str
+    from_period: int
+    inputs: dict[str, str]  # term -> field id
 
 
 class ScheduleOut(BaseModel):
     initial_liability: Decimal
     initial_rou_asset: Decimal
     periods: list[PeriodOut]
+    remeasurements: list[RemeasurementOut]
+    segments: list[SegmentOut]
+    chain_fingerprint: str
     inputs: list[FieldOut]
 
 
@@ -199,9 +234,15 @@ def create_app(
         return {"status": "ok"}
 
     @app.post("/documents", response_model=DocumentOut, status_code=201)
-    def upload(p: Auth, s: Db, response: Response, file: Annotated[UploadFile, File()]) -> DocumentOut:
+    def upload(
+        p: Auth,
+        s: Db,
+        response: Response,
+        file: Annotated[UploadFile, File()],
+        amends: Annotated[str | None, Form(max_length=36)] = None,
+    ) -> DocumentOut:
         data = file.file.read(services.MAX_UPLOAD_BYTES + 1)  # sync route: runs in the threadpool, like the DB calls
-        doc, created = services.upload_document(s, store, p, file.filename or "", data)
+        doc, created = services.upload_document(s, store, p, file.filename or "", data, amends=amends or None)
         if not created:
             response.status_code = 200
         return DocumentOut.of(doc)
@@ -219,7 +260,12 @@ def create_app(
     @app.get("/documents/{document_id}", response_model=DocumentOut)
     def get_document(document_id: str, p: Auth, s: Db) -> DocumentOut:
         doc = services.get_document(s, p.tenant_id, document_id)
-        return DocumentOut.of(doc, services.list_fields(s, p.tenant_id, document_id))
+        return DocumentOut.of(
+            doc,
+            services.list_fields(s, p.tenant_id, document_id),
+            amendments=services.list_amendments(s, p.tenant_id, doc.id) if doc.kind == "lease" else (),
+            parent=services.get_document(s, p.tenant_id, doc.parent_id) if doc.parent_id else None,
+        )
 
     @app.get("/documents/{document_id}/file")
     def get_file(document_id: str, p: Auth, s: Db) -> Response:
@@ -246,19 +292,26 @@ def create_app(
 
     @app.get("/documents/{document_id}/lease-schedule", response_model=ScheduleOut)
     def schedule(document_id: str, p: Auth, s: Db) -> ScheduleOut:
-        sched, rows = services.lease_schedule(s, p.tenant_id, document_id)
+        chained = services.lease_schedule(s, p.tenant_id, document_id)
+        sched = chained.schedule
         return ScheduleOut(
             initial_liability=sched.initial_liability,
             initial_rou_asset=sched.initial_rou_asset,
             periods=[PeriodOut(**vars(period)) for period in sched.periods],
-            inputs=[FieldOut.of(r) for r in rows],
+            remeasurements=[
+                RemeasurementOut(document_id=a.id, filename=a.filename, **{k: v for k, v in vars(r).items()})
+                for r, a in zip(sched.remeasurements, chained.amendments)
+            ],
+            segments=[SegmentOut(**vars(seg)) for seg in chained.segments],
+            chain_fingerprint=chained.fingerprint,
+            inputs=[FieldOut.of(r) for r in chained.fields],
         )
 
     @app.get("/documents/{document_id}/lease-schedule.xlsx")
     def schedule_xlsx(document_id: str, p: Auth, s: Db) -> Response:
-        sched, rows = services.lease_schedule(s, p.tenant_id, document_id)
+        chained = services.lease_schedule(s, p.tenant_id, document_id)
         return Response(
-            schedule_workbook(sched, rows),
+            schedule_workbook(chained),
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             headers={"Content-Disposition": f'attachment; filename="lease-schedule-{document_id}.xlsx"'},
         )

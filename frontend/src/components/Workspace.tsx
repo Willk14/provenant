@@ -4,23 +4,24 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { PdfViewer, type Highlight } from "@/components/PdfViewer";
-import { SchedulePanel, type Selection } from "@/components/SchedulePanel";
+import { SchedulePanel } from "@/components/SchedulePanel";
 import { DocumentStatusPill } from "@/components/StatusPill";
 import { TermsPanel, type PendingBox } from "@/components/TermsPanel";
 import { api, ApiError } from "@/lib/api";
 import { formatDate, shortHash } from "@/lib/format";
-import { TRACE } from "@/lib/trace";
-import { FIELD_LABELS, FIELD_ORDER, type DocumentSummary, type FieldName, type Schedule } from "@/lib/types";
+import { resolveInputs, type Selection } from "@/lib/trace";
+import { fieldLabel, KINDS, type DocumentSummary, type FieldName, type Schedule } from "@/lib/types";
 import { usePersona } from "@/lib/usePersona";
 
-type Tab = "terms" | "schedule";
+export type Tab = "terms" | "schedule";
+const VERIFIED = new Set(["auto_accepted", "approved", "corrected"]);
 
-export function Workspace({ id, initialField }: { id: string; initialField?: FieldName }) {
+export function Workspace({ id, initialField, initialTab }: { id: string; initialField?: FieldName; initialTab?: Tab }) {
   const persona = usePersona();
   const [doc, setDoc] = useState<DocumentSummary | null>(null);
   const [pdf, setPdf] = useState<ArrayBuffer | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [tab, setTab] = useState<Tab>("terms");
+  const [tab, setTab] = useState<Tab>(initialTab ?? "terms");
   const [schedule, setSchedule] = useState<Schedule | null>(null);
   const [blocked, setBlocked] = useState<string | null>(null);
   const [selectedField, setSelectedField] = useState<FieldName | null>(initialField ?? null);
@@ -36,22 +37,24 @@ export function Workspace({ id, initialField }: { id: string; initialField?: Fie
       const next = await api.document(id);
       setDoc(next);
       setError(null);
-      // Don't ask for a schedule the server will refuse; say what is outstanding instead (the server still decides).
-      const verified = new Set(["auto_accepted", "approved", "corrected"]);
-      const outstanding = FIELD_ORDER.filter((n) => !next.fields.some((f) => f.name === n && verified.has(f.status)));
-      if (next.status === "extracted" && outstanding.length) {
+      if (next.kind !== "lease" || next.status !== "extracted") return;
+      // Don't ask for a schedule the server will refuse over the lease's own terms; say what is outstanding.
+      // Amendments are checked by the server, which names the one that blocks.
+      const outstanding = KINDS.lease.order.filter(
+        (n) => !next.fields.some((f) => f.name === n && VERIFIED.has(f.status)),
+      );
+      if (outstanding.length) {
         setSchedule(null);
-        setBlocked(`Still to verify: ${outstanding.map((n) => FIELD_LABELS[n].toLowerCase()).join(", ")}`);
-      } else if (next.status === "extracted") {
-        try {
-          setSchedule(await api.schedule(id));
-          setBlocked(null);
-        } catch (e) {
-          if (e instanceof ApiError && e.status === 409) {
-            setSchedule(null);
-            setBlocked(e.message.replace(/_/g, " "));
-          } else throw e;
-        }
+        setBlocked(`Still to verify: ${outstanding.map((n) => fieldLabel(n).toLowerCase()).join(", ")}`);
+        return;
+      }
+      try {
+        setSchedule(await api.schedule(id));
+        setBlocked(null);
+      } catch (e) {
+        if (!(e instanceof ApiError && e.status === 409)) throw e;
+        setSchedule(null);
+        setBlocked(e.message.replace(/_/g, " "));
       }
     } catch (e) {
       setError((e as Error).message);
@@ -67,31 +70,47 @@ export function Workspace({ id, initialField }: { id: string; initialField?: Fie
       .catch((e: Error) => setError(e.message));
   }, [persona, id, load]);
 
-  const extracting = doc?.status === "queued" || doc?.status === "extracting";
+  const reading = (d: { status: string }) => d.status === "queued" || d.status === "extracting";
+  const extracting = !!doc && reading(doc);
+  const busy = extracting || !!doc?.amendments.some(reading); // a new amendment is being read
   useEffect(() => {
-    if (!extracting) return;
+    if (!busy) return;
     const timer = setInterval(load, 1200);
     return () => clearInterval(timer);
-  }, [extracting, load]);
+  }, [busy, load]);
 
+  const kind = doc?.kind ?? "lease";
   const highlights: Highlight[] = useMemo(
     () =>
       (doc?.fields ?? []).map((f) => ({
         id: f.id,
         name: f.name,
-        label: FIELD_LABELS[f.name],
+        label: fieldLabel(f.name, kind),
         page: f.page,
         bbox: f.bbox,
         status: f.status,
         manual: f.extractor === "manual",
       })),
-    [doc],
+    [doc, kind],
   );
 
+  // On the schedule tab, light up exactly the fields behind the selected figure that live in this PDF.
+  const tracedHere = useMemo(
+    () => (schedule && selection ? resolveInputs(schedule, selection).filter((f) => f.document_id === id) : []),
+    [schedule, selection, id],
+  );
   const active = useMemo<ReadonlySet<FieldName>>(() => {
-    if (tab === "schedule" && selection) return new Set(TRACE[selection.figure]);
+    if (tab === "schedule" && selection) return new Set(tracedHere.map((f) => f.name));
     return new Set(selectedField ? [selectedField] : []);
-  }, [tab, selection, selectedField]);
+  }, [tab, selection, tracedHere, selectedField]);
+
+  const filenames = useMemo(() => {
+    const names = new Map<string, string>();
+    if (doc) names.set(doc.id, doc.filename);
+    doc?.amendments.forEach((a) => names.set(a.id, a.filename));
+    schedule?.remeasurements.forEach((r) => names.set(r.document_id, r.filename));
+    return names;
+  }, [doc, schedule]);
 
   const focusField = (name: FieldName) => {
     setSelectedField(name);
@@ -100,8 +119,8 @@ export function Workspace({ id, initialField }: { id: string; initialField?: Fie
 
   const selectFigure = (s: Selection) => {
     setSelection(s);
-    const first = TRACE[s.figure].find((n) => doc?.fields.some((f) => f.name === n));
-    if (first) setFocus({ name: first, nonce: Date.now() });
+    const here = schedule ? resolveInputs(schedule, s).find((f) => f.document_id === id) : undefined;
+    if (here) setFocus({ name: here.name, nonce: Date.now() });
   };
 
   async function download() {
@@ -119,19 +138,37 @@ export function Workspace({ id, initialField }: { id: string; initialField?: Fie
   }
 
   const toReview = doc?.fields.filter((f) => f.status === "needs_review").length ?? 0;
-  const missing = doc ? FIELD_ORDER.filter((n) => !doc.fields.some((f) => f.name === n && f.status !== "rejected")).length : 0;
+  const missing = doc
+    ? [...KINDS[kind].required].filter((n) => !doc.fields.some((f) => f.name === n && f.status !== "rejected")).length
+    : 0;
 
   return (
     <div className="workspace">
       <section className="ws-left">
         <div className="ws-head">
-          <Link href="/" className="btn btn-sm btn-ghost" aria-label="Back to documents">
+          <Link
+            href={doc?.parent ? `/documents/${doc.parent.id}` : "/"}
+            className="btn btn-sm btn-ghost"
+            aria-label={doc?.parent ? "Back to the lease" : "Back to documents"}
+          >
             ←
           </Link>
           <div className="ws-title">
-            <h1>{doc?.filename ?? "Loading…"}</h1>
+            <h1>
+              {doc?.kind === "amendment" && <span className="kind-tag">Amendment</span>}
+              {doc?.filename ?? "Loading…"}
+            </h1>
             {doc && (
               <div className="meta">
+                {doc.parent && (
+                  <>
+                    Amends{" "}
+                    <Link className="link" href={`/documents/${doc.parent.id}`}>
+                      {doc.parent.filename}
+                    </Link>{" "}
+                    ·{" "}
+                  </>
+                )}
                 Uploaded by {doc.uploaded_by} on {formatDate(doc.created_at)} ·{" "}
                 <span className="mono" title={`SHA-256 ${doc.sha256}`}>
                   sha256 {shortHash(doc.sha256)}
@@ -139,17 +176,23 @@ export function Workspace({ id, initialField }: { id: string; initialField?: Fie
               </div>
             )}
           </div>
-          <div className="ws-tools">{doc && <DocumentStatusPill status={doc.status} needsReview={toReview} missing={missing} />}</div>
+          <div className="ws-tools">
+            {doc && <DocumentStatusPill status={doc.status} needsReview={toReview} missing={missing} />}
+          </div>
         </div>
         {drawingFor && (
           <div className="draw-hint">
-            Drag a box around where the document states the {FIELD_LABELS[drawingFor].toLowerCase()}.
+            Drag a box around where the document states the {fieldLabel(drawingFor, kind).toLowerCase()}.
             <button className="btn btn-sm" onClick={() => setDrawingFor(null)}>
               Cancel
             </button>
           </div>
         )}
-        {error && <div className="error-banner" style={{ margin: 12 }}>{error}</div>}
+        {error && (
+          <div className="error-banner" style={{ margin: 12 }}>
+            {error}
+          </div>
+        )}
         {pdf ? (
           <PdfViewer
             data={pdf}
@@ -176,7 +219,8 @@ export function Workspace({ id, initialField }: { id: string; initialField?: Fie
       <aside className="panel">
         <div className="tabs" role="tablist">
           <button role="tab" aria-selected={tab === "terms"} onClick={() => setTab("terms")}>
-            Contract terms {toReview > 0 && <span className="tab-count">{toReview}</span>}
+            {kind === "amendment" ? "Changed terms" : "Contract terms"}{" "}
+            {toReview > 0 && <span className="tab-count">{toReview}</span>}
           </button>
           <button role="tab" aria-selected={tab === "schedule"} onClick={() => setTab("schedule")}>
             IFRS 16 schedule
@@ -191,9 +235,7 @@ export function Workspace({ id, initialField }: { id: string; initialField?: Fie
               <span className="muted">Terms appear here as soon as extraction finishes.</span>
             </div>
           ) : doc.status === "failed" ? (
-            <div className="error-banner">
-              Extraction failed: {doc.error}. Upload the file again to retry.
-            </div>
+            <div className="error-banner">Extraction failed: {doc.error}. Upload the file again to retry.</div>
           ) : tab === "terms" ? (
             <TermsPanel
               doc={doc}
@@ -209,13 +251,25 @@ export function Workspace({ id, initialField }: { id: string; initialField?: Fie
               onCancelBox={() => setPendingBox(null)}
               onChanged={load}
             />
+          ) : doc.kind === "amendment" && doc.parent ? (
+            <div className="callout">
+              <strong>One schedule per lease</strong>
+              <span className="muted">
+                This amendment remeasures the schedule of {doc.parent.filename} from its effective date.{" "}
+              </span>
+              <Link className="btn btn-sm" style={{ marginTop: 8 }} href={`/documents/${doc.parent.id}?tab=schedule`}>
+                Open the lease&apos;s schedule
+              </Link>
+            </div>
           ) : (
             <SchedulePanel
+              documentId={id}
               schedule={schedule}
               blocked={blocked}
               selection={selection}
+              filenames={filenames}
               onSelectFigure={selectFigure}
-              onFocusField={(name) => setFocus({ name, nonce: Date.now() })}
+              onFocusField={focusField}
               onDownload={download}
             />
           )}

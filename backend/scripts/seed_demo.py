@@ -1,9 +1,10 @@
-"""Upload two demo leases to a running dev API (scripts/dev.py) as Pat, the preparer.
+"""Upload demo documents to a running dev API (scripts/dev.py) as Pat, the preparer.
 
     python scripts/seed_demo.py [http://127.0.0.1:8000]
 
-One lease has labelled terms (the baseline extractor reads all of it); the other is written in prose, so some
-terms must be entered by hand by drawing a box on the PDF, which is what the workspace is for.
+The office lease has labelled terms (the baseline extractor reads all of it) and a first amendment that
+extends it and raises the rent from its second year. The equipment lease is written in prose, so some terms
+must be entered by hand by drawing a box on the PDF, which is what the workspace is for.
 """
 import sys
 
@@ -38,6 +39,23 @@ OFFICE_LEASE = [
     ],
 ]
 
+OFFICE_AMENDMENT = [
+    [
+        ("h", "FIRST AMENDMENT TO OFFICE LEASE"),
+        ("p", "This Amendment is made between Westlands Towers Ltd (the \"Landlord\") and Kilima Analytics Ltd "
+              "(the \"Tenant\") and amends the Office Lease Agreement for Suite 1204 dated 1 February 2026."),
+        ("s", "1. Extension and new rent"),
+        ("p", "The parties agree to extend the lease and to revise the rent as follows, with effect from the "
+              "Effective Date below. All other terms of the Lease remain unchanged."),
+        ("p", "Effective Date: 1 February 2027"),
+        ("p", "Lease Term: 48 months"),
+        ("p", "Monthly Rent: KES 495,000.00"),
+        ("p", "Discount Rate: 14.25%"),
+        ("s", "2. Signatures"),
+        ("p", "Signed for the Landlord ____________________    Signed for the Tenant ____________________"),
+    ]
+]
+
 EQUIPMENT_LEASE = [
     [
         ("h", "EQUIPMENT RENTAL AGREEMENT"),
@@ -65,11 +83,22 @@ def make_pdf(pages) -> bytes:
     return bytes(pdf.output())
 
 
+def upload(base: str, name: str, pages, amends: str | None = None) -> str:
+    r = httpx.post(
+        f"{base}/documents",
+        headers=PAT,
+        data={"amends": amends} if amends else None,
+        files={"file": (name, make_pdf(pages), "application/pdf")},
+    )
+    r.raise_for_status()
+    print(f"{r.status_code} {name} -> {r.json()['id']}")
+    return r.json()["id"]
+
+
 def main(base: str) -> None:
-    for name, pages in (("westlands-office-lease.pdf", OFFICE_LEASE), ("storage-array-rental.pdf", EQUIPMENT_LEASE)):
-        r = httpx.post(f"{base}/documents", headers=PAT, files={"file": (name, make_pdf(pages), "application/pdf")})
-        r.raise_for_status()
-        print(f"{r.status_code} {name} -> {r.json()['id']}")
+    office = upload(base, "westlands-office-lease.pdf", OFFICE_LEASE)
+    upload(base, "westlands-first-amendment.pdf", OFFICE_AMENDMENT, amends=office)
+    upload(base, "storage-array-rental.pdf", EQUIPMENT_LEASE)
 
 
 if __name__ == "__main__":

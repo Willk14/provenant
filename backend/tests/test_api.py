@@ -108,7 +108,7 @@ def test_lease_from_upload_to_schedule(client, app):
 
     xlsx = client.get(f"/documents/{doc_id}/lease-schedule.xlsx", headers=PREPARER)
     wb = load_workbook(io.BytesIO(xlsx.content))
-    assert wb.sheetnames == ["Schedule", "Journal", "Provenance"]
+    assert wb.sheetnames == ["Schedule", "Journal", "Chain", "Provenance"]
     assert wb["Schedule"]["B1"].value == 11255.08
     assert wb["Provenance"].max_row == 6
 

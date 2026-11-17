@@ -9,6 +9,21 @@ import { formatBytes, formatDate } from "@/lib/format";
 import type { DocumentSummary } from "@/lib/types";
 import { usePersona } from "@/lib/usePersona";
 
+/** Leases newest first, each followed by its amendments in upload order. */
+export function withAmendmentsUnderLeases(docs: DocumentSummary[]): DocumentSummary[] {
+  const children = new Map<string, DocumentSummary[]>();
+  for (const d of docs) {
+    if (d.parent_id) children.set(d.parent_id, [...(children.get(d.parent_id) ?? []), d]);
+  }
+  const byCreated = (a: DocumentSummary, b: DocumentSummary) => a.created_at.localeCompare(b.created_at);
+  const out: DocumentSummary[] = [];
+  for (const d of docs) {
+    if (d.kind === "lease") out.push(d, ...(children.get(d.id) ?? []).sort(byCreated));
+  }
+  const listed = new Set(out.map((d) => d.id));
+  return [...out, ...docs.filter((d) => !listed.has(d.id))]; // amendments whose lease is beyond the page
+}
+
 export function DocumentsView() {
   const router = useRouter();
   const persona = usePersona();
@@ -124,9 +139,15 @@ export function DocumentsView() {
               </tr>
             </thead>
             <tbody>
-              {docs.map((d) => (
-                <tr key={d.id} className="link-row" onClick={() => router.push(`/documents/${d.id}`)}>
+              {withAmendmentsUnderLeases(docs).map((d) => (
+                <tr
+                  key={d.id}
+                  className="link-row"
+                  data-amendment={d.kind === "amendment" || undefined}
+                  onClick={() => router.push(`/documents/${d.id}`)}
+                >
                   <td>
+                    {d.kind === "amendment" && <span className="kind-tag">Amendment</span>}
                     <a href={`/documents/${d.id}`} onClick={(e) => e.preventDefault()} style={{ fontWeight: 550 }}>
                       {d.filename}
                     </a>

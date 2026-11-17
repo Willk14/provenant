@@ -1,8 +1,9 @@
 """Use cases. Routes stay thin; every query here is scoped by tenant_id explicitly (RLS is the backstop)."""
 import hashlib
 import logging
+from dataclasses import dataclass
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -11,7 +12,7 @@ from provenant.api.db import Document, FieldRow, Job, ReviewEventRow, tenant_ses
 from provenant.api.storage import BlobStore
 from provenant.extraction import Extractor
 from provenant.extraction.pdftext import open_pages
-from provenant.leases import LeaseSchedule, LeaseTerms, build_schedule
+from provenant.leases import LeaseSchedule, LeaseTerms, Modification, build_schedule, check_value
 from provenant.provenance import GENESIS, ConfidenceGate, ExtractedField, Status, review, verify_chain
 
 log = logging.getLogger(__name__)
@@ -19,6 +20,23 @@ log = logging.getLogger(__name__)
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 # Rates and payment timing are judgement calls (IBR, in advance vs arrears): a partner always signs off.
 LEASE_GATE = ConfidenceGate("lease-v1", threshold=0.95, always_review=frozenset({"annual_discount_rate", "payment_timing"}))
+# When an amendment takes effect decides which periods it changes, so a partner signs that off too.
+AMENDMENT_GATE = ConfidenceGate(
+    "amendment-v1", threshold=0.95, always_review=frozenset({"effective_date", "annual_discount_rate"})
+)
+
+
+@dataclass(frozen=True)
+class Kind:
+    fields: tuple[str, ...]  # terms kept from extraction for this kind of document
+    required: tuple[str, ...]
+    gate: ConfidenceGate
+
+
+KINDS = {
+    "lease": Kind(LeaseTerms.REQUIRED, LeaseTerms.REQUIRED, LEASE_GATE),
+    "amendment": Kind(Modification.FIELDS, Modification.REQUIRED, AMENDMENT_GATE),
+}
 ANY_ROLE = (PREPARER, REVIEWER, PARTNER)
 
 
@@ -57,14 +75,25 @@ def list_documents(s: Session, tenant_id: str, limit: int = 200) -> list[tuple[D
         return select(func.count(FieldRow.id)).where(FieldRow.document_id == Document.id, *conditions).scalar_subquery()
 
     pending = count(FieldRow.status == Status.NEEDS_REVIEW.value)
-    usable = count(FieldRow.status != Status.REJECTED.value, FieldRow.name.in_(LeaseTerms.REQUIRED))
+    is_required = or_(*(and_(Document.kind == k, FieldRow.name.in_(spec.required)) for k, spec in KINDS.items()))
+    usable = count(FieldRow.status != Status.REJECTED.value, is_required)
     rows = s.execute(
         select(Document, pending, usable)
         .where(Document.tenant_id == tenant_id)
         .order_by(Document.created_at.desc())
         .limit(limit)
     )
-    return [(doc, review, len(LeaseTerms.REQUIRED) - found) for doc, review, found in rows]
+    return [(doc, review, len(KINDS[doc.kind].required) - found) for doc, review, found in rows]
+
+
+def list_amendments(s: Session, tenant_id: str, lease_id: str) -> list[Document]:
+    return list(
+        s.scalars(
+            select(Document)
+            .where(Document.tenant_id == tenant_id, Document.parent_id == lease_id)
+            .order_by(Document.created_at)
+        )
+    )
 
 
 def list_fields(s: Session, tenant_id: str, document_id: str) -> list[FieldRow]:
@@ -82,24 +111,46 @@ def _enqueue_extraction(s: Session, doc: Document) -> None:
     s.add(Job(tenant_id=doc.tenant_id, kind="extract", document_id=doc.id))
 
 
-def upload_document(s: Session, store: BlobStore, p: Principal, filename: str, data: bytes) -> tuple[Document, bool]:
-    """Idempotent by content. The document and its extraction job commit together (transactional outbox)."""
+def upload_document(
+    s: Session, store: BlobStore, p: Principal, filename: str, data: bytes, amends: str | None = None
+) -> tuple[Document, bool]:
+    """Idempotent by content. The document and its extraction job commit together (transactional outbox).
+
+    With `amends`, the file is an amendment (addendum, side letter, extension) to that lease.
+    """
     require(p, *ANY_ROLE)
     if len(data) > MAX_UPLOAD_BYTES:
         raise Invalid(f"file exceeds {MAX_UPLOAD_BYTES // (1024 * 1024)} MB")
     if not data.startswith(b"%PDF-"):
         raise Invalid("only PDF files are accepted")
+    lease = None
+    if amends:
+        lease = get_document(s, p.tenant_id, amends)
+        if lease.kind != "lease":
+            raise Invalid("amend the lease itself, not another amendment; the chain is ordered by effective date")
     sha = hashlib.sha256(data).hexdigest()
     query = select(Document).where(Document.tenant_id == p.tenant_id, Document.sha256 == sha)
     if existing := s.scalar(query):
+        if existing.parent_id != (lease.id if lease else None):
+            where = f"as an amendment to another lease" if existing.parent_id else "as a lease of its own"
+            raise Conflict(f"this file is already uploaded {where} ({existing.filename})")
         if existing.status == "failed":  # re-uploading a failed document retries it
             _enqueue_extraction(s, existing)
             s.commit()
         return existing, False
+    if lease and sha == lease.sha256:
+        raise Conflict("a document cannot amend itself")
 
     store.put(sha, data)
     doc = Document(
-        tenant_id=p.tenant_id, sha256=sha, filename=filename[:255] or "upload.pdf", size_bytes=len(data), uploaded_by=p.user
+        tenant_id=p.tenant_id,
+        sha256=sha,
+        filename=filename[:255] or "upload.pdf",
+        size_bytes=len(data),
+        uploaded_by=p.user,
+        kind="amendment" if lease else "lease",
+        parent_id=lease.id if lease else None,
+        parent_sha256=lease.sha256 if lease else None,
     )
     s.add(doc)
     try:
@@ -122,9 +173,11 @@ def extract_document(
             return
         doc.status, doc.error = "extracting", None
         s.commit()
+        kind = KINDS[doc.kind]
         try:
             for proposal in extractor.extract(store.get(doc.sha256), doc.sha256):
-                s.add(FieldRow.from_domain(tenant_id, doc.id, LEASE_GATE.route(proposal)))
+                if proposal.name in kind.fields:  # e.g. a lease's "effective date" wording is not a term here
+                    s.add(FieldRow.from_domain(tenant_id, doc.id, kind.gate.route(proposal)))
             doc.status = "extracted"
             s.commit()
         except Exception as exc:
@@ -152,14 +205,14 @@ def review_field(
     row = s.scalar(select(FieldRow).where(FieldRow.tenant_id == p.tenant_id, FieldRow.id == field_id))
     if row is None:
         raise NotFound("field not found")
-    if row.name in LEASE_GATE.always_review:
-        require(p, PARTNER)
     doc = get_document(s, p.tenant_id, row.document_id)
+    if row.name in KINDS[doc.kind].gate.always_review:
+        require(p, PARTNER)
     if p.user in (doc.uploaded_by, row.entered_by):
         raise Forbidden("maker-checker: you cannot review a figure you uploaded or entered")
     if corrected_value is not None:
         try:
-            corrected_value = LeaseTerms.check_value(row.name, corrected_value)
+            corrected_value = check_value(row.name, corrected_value)
         except ValueError as exc:
             raise Invalid(str(exc)) from exc
 
@@ -210,11 +263,13 @@ def enter_field(
 ) -> FieldRow:
     """A human-entered value. It must point at printed text in the document, and someone else must review it."""
     require(p, *ANY_ROLE)
+    doc = get_document(s, p.tenant_id, document_id)
+    if name not in KINDS[doc.kind].fields:
+        raise Invalid(f"{name} is not a term of a {doc.kind}")
     try:
-        value = LeaseTerms.check_value(name, value)
+        value = check_value(name, value)
     except ValueError as exc:
         raise Invalid(str(exc)) from exc
-    doc = get_document(s, p.tenant_id, document_id)
     if doc.status != "extracted":
         raise Conflict("wait for extraction to finish before entering fields")
     row = s.scalar(select(FieldRow).where(FieldRow.document_id == doc.id, FieldRow.name == name))
@@ -253,14 +308,68 @@ def review_log_is_intact(s: Session, tenant_id: str) -> tuple[bool, int]:
     return verify_chain(r.to_domain() for r in rows), len(rows)
 
 
-def lease_schedule(s: Session, tenant_id: str, document_id: str) -> tuple[LeaseSchedule, list[FieldRow]]:
-    get_document(s, tenant_id, document_id)
-    rows = list_fields(s, tenant_id, document_id)
+@dataclass(frozen=True)
+class Segment:
+    """Which document's terms govern a run of periods, and which field supplied each term."""
+
+    document_id: str
+    from_period: int
+    inputs: dict[str, str]  # term name -> field id
+
+
+@dataclass(frozen=True)
+class ChainedSchedule:
+    schedule: LeaseSchedule
+    lease: Document
+    amendments: list[Document]  # in effective-date order, matching schedule.remeasurements
+    fields: list[FieldRow]  # every input across the chain
+    segments: list[Segment]
+    fingerprint: str  # SHA-256 over the lease and each amendment's file hash and effective date
+
+
+def lease_schedule(s: Session, tenant_id: str, document_id: str) -> ChainedSchedule:
+    """The lease's schedule with every amendment applied in effective-date order. Any amendment that is
+    unread, unverified or ambiguous blocks the whole schedule: a superseded term must never feed a figure."""
+    lease = get_document(s, tenant_id, document_id)
+    if lease.kind != "lease":
+        raise Conflict("this is an amendment; its effect is on the schedule of the lease it amends")
+    lease_rows = list_fields(s, tenant_id, lease.id)
     try:
-        terms = LeaseTerms.from_fields({r.name: r.to_domain() for r in rows})
+        terms = LeaseTerms.from_fields({r.name: r.to_domain() for r in lease_rows})
     except (PermissionError, ValueError) as exc:  # unverified, missing or unparseable: a reviewer must act
         raise Conflict(str(exc)) from exc
+
+    chain: list[tuple[Modification, Document, list[FieldRow]]] = []
+    for amendment in list_amendments(s, tenant_id, lease.id):
+        if amendment.parent_sha256 != lease.sha256:
+            raise Conflict(f"{amendment.filename} does not chain to this lease file (hash mismatch)")
+        if amendment.status != "extracted":
+            state = "could not be read; upload it again" if amendment.status == "failed" else "is still being read"
+            raise Conflict(f"amendment {amendment.filename} {state}")
+        rows = list_fields(s, tenant_id, amendment.id)
+        try:
+            chain.append((Modification.from_fields({r.name: r.to_domain() for r in rows}), amendment, rows))
+        except (PermissionError, ValueError) as exc:
+            raise Conflict(f"amendment {amendment.filename}: {exc}") from exc
+    chain.sort(key=lambda link: link[0].effective)
+
     try:
-        return build_schedule(terms), rows
+        schedule = build_schedule(terms, [m for m, _, _ in chain])
     except ValueError as exc:
-        raise Invalid(str(exc)) from exc
+        raise Conflict(str(exc)) from exc
+
+    segments = [Segment(lease.id, 1, {r.name: r.id for r in lease_rows if r.name in LeaseTerms.REQUIRED})]
+    for (_, amendment, rows), remeasurement in zip(chain, schedule.remeasurements):
+        inputs = dict(segments[-1].inputs)
+        inputs.update({r.name: r.id for r in rows if r.name in Modification.FIELDS and r.status != "rejected"})
+        segments.append(Segment(amendment.id, remeasurement.after_period + 1, inputs))
+
+    lineage = [lease.sha256] + [f"{a.sha256}@{m.effective.isoformat()}" for m, a, _ in chain]
+    return ChainedSchedule(
+        schedule=schedule,
+        lease=lease,
+        amendments=[a for _, a, _ in chain],
+        fields=lease_rows + [r for _, _, rows in chain for r in rows],
+        segments=segments,
+        fingerprint=hashlib.sha256("|".join(lineage).encode()).hexdigest(),
+    )

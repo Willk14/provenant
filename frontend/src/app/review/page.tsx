@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 
 import { displayValue } from "@/components/TermsPanel";
 import { api } from "@/lib/api";
-import { FIELD_LABELS, JUDGEMENT_FIELDS, type DocumentSummary, type Field } from "@/lib/types";
+import { fieldLabel, KINDS, type DocumentSummary, type Field } from "@/lib/types";
 import { usePersona } from "@/lib/usePersona";
 
 export default function ReviewQueuePage() {
@@ -70,8 +70,8 @@ export default function ReviewQueuePage() {
                 ...fields.map((f) => (
                   <tr key={f.id}>
                     <td>
-                      {FIELD_LABELS[f.name]}{" "}
-                      {JUDGEMENT_FIELDS.has(f.name) && <span className="judgement">Partner</span>}
+                      {fieldLabel(f.name, docs.get(docId)?.kind)}{" "}
+                      {KINDS[docs.get(docId)?.kind ?? "lease"].judgement.has(f.name) && <span className="judgement">Partner</span>}
                     </td>
                     <td className="num" style={{ fontWeight: 600 }}>
                       {displayValue(f)}

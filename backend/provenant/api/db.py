@@ -42,6 +42,11 @@ class Document(Base):
     filename: Mapped[str] = mapped_column(String(255))
     size_bytes: Mapped[int] = mapped_column(Integer)
     uploaded_by: Mapped[str] = mapped_column(String(200))
+    kind: Mapped[str] = mapped_column(String(16), default="lease", server_default="lease")  # lease|amendment
+    # Hash lineage: an amendment names its lease by id and by the lease file's SHA-256, so the chain a
+    # schedule was built from can be proven to be exactly these files.
+    parent_id: Mapped[str | None] = mapped_column(ForeignKey("documents.id"), index=True)
+    parent_sha256: Mapped[str | None] = mapped_column(String(64))
     status: Mapped[str] = mapped_column(String(16), default="queued")  # queued|extracting|extracted|failed
     error: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)

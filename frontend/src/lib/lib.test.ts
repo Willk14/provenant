@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import { formatAmount, formatDate } from "./format";
 import { isUsableBox, toCss, toPdfBox } from "./geometry";
-import { TRACE } from "./trace";
-import { FIELD_ORDER } from "./types";
+import { resolveInputs, TRACE } from "./trace";
+import { KINDS, type Field, type FieldName, type Schedule } from "./types";
 
 describe("formatAmount", () => {
   it("groups thousands without float rounding", () => {
@@ -36,9 +36,38 @@ describe("geometry", () => {
 });
 
 describe("TRACE", () => {
-  it("only references real lease terms, and every term feeds some figure", () => {
+  it("only references real terms, and every lease or amendment term feeds some figure", () => {
+    const terms = new Set([...KINDS.lease.order, ...KINDS.amendment.order]);
     const used = new Set(Object.values(TRACE).flat());
-    for (const name of used) expect(FIELD_ORDER).toContain(name);
-    for (const name of FIELD_ORDER) expect(used.has(name)).toBe(true);
+    for (const name of used) expect(terms.has(name)).toBe(true);
+    for (const name of terms) expect(used.has(name)).toBe(true);
+  });
+});
+
+describe("resolveInputs", () => {
+  const field = (id: string, name: FieldName, document_id: string): Field => ({
+    id, name, document_id, value: "", confidence: 1, status: "approved", gate_version: null, extractor: "x",
+    entered_by: null, page: 1, bbox: [0, 0, 1, 1], char_start: 0, char_end: 1,
+  });
+  const schedule = {
+    inputs: [
+      field("L-pay", "monthly_payment", "lease"),
+      field("L-timing", "payment_timing", "lease"),
+      field("A-pay", "monthly_payment", "amend"),
+    ],
+    segments: [
+      { document_id: "lease", from_period: 1, inputs: { monthly_payment: "L-pay", payment_timing: "L-timing" } },
+      { document_id: "amend", from_period: 7, inputs: { monthly_payment: "A-pay", payment_timing: "L-timing" } },
+    ],
+  } as unknown as Schedule;
+
+  it("takes a period's terms from the document that governed it", () => {
+    const ids = resolveInputs(schedule, { figure: "payment", period: 8, segment: 1 }).map((f) => f.id);
+    expect(ids).toEqual(["A-pay", "L-timing"]);
+  });
+
+  it("collects every segment for lease-wide totals, without duplicates", () => {
+    const ids = resolveInputs(schedule, { figure: "payment", period: null, segment: null }).map((f) => f.id);
+    expect(ids).toEqual(["L-pay", "A-pay", "L-timing"]);
   });
 });

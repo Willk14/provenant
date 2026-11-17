@@ -10,6 +10,7 @@ from provenant.provenance import ExtractedField
 
 PATTERNS = {
     "commencement_date": r"commencement date\s*[:\-]?\s*(\d{4}-\d{2}-\d{2}|\d{1,2}\s+[a-z]+\s+\d{4})",
+    "effective_date": r"effective date\s*[:\-]?\s*(\d{4}-\d{2}-\d{2}|\d{1,2}\s+[a-z]+\s+\d{4})",
     "term_months": r"(?:lease\s+)?term\s*[:\-]?\s*(\d{1,3})\s*months",
     "monthly_payment": r"monthly\s+(?:rent|payment)\s*[:\-]?\s*(?:[a-z]{3}|[$€£])?\s*(\d[\d,]*(?:\.\d{1,2})?)",
     "annual_discount_rate": r"(?:discount|incremental borrowing|interest)\s+rate\s*[:\-]?\s*(\d+(?:\.\d+)?\s*%)",
@@ -22,7 +23,7 @@ CONFIDENCE_UNPARSED = 0.5
 def normalise(name: str, raw: str) -> tuple[str, bool]:
     """Canonical form of a raw value, and whether it parsed cleanly."""
     raw = " ".join(raw.split())
-    if name == "commencement_date" and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", raw):
+    if name.endswith("_date") and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", raw):
         for fmt in ("%d %B %Y", "%B %d, %Y", "%d %b %Y"):
             try:
                 return datetime.strptime(raw, fmt).date().isoformat(), True

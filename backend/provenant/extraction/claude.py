@@ -35,8 +35,11 @@ Value formats:
 - annual_discount_rate: percentage with a % sign (e.g. 8.5%) - the discount, incremental borrowing or
   implicit rate, not a late-payment or escalation rate
 - payment_timing: "advance" or "arrears"
-If rent changes over the term (escalations, rent-free periods, amendments), return the first stated
-monthly amount; a reviewer handles variable schedules."""
+- effective_date: YYYY-MM-DD, only for an amendment, side letter or extension: the date its changes take
+  effect. For an amendment, the other terms are the NEW values it sets (term_months is the new total term
+  from the original commencement); leave a term null if the amendment does not change it.
+If rent changes over the term (escalations, rent-free periods), return the first stated monthly amount;
+a reviewer handles variable schedules."""
 
 
 class Cited(BaseModel):
@@ -51,6 +54,7 @@ class LeaseExtraction(BaseModel):
     monthly_payment: Cited
     annual_discount_rate: Cited
     payment_timing: Cited
+    effective_date: Cited
 
 
 class ExtractionRefused(RuntimeError):

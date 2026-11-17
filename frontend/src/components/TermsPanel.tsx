@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import Link from "next/link";
+import { useRef, useState } from "react";
 
-import { FieldStatusPill } from "@/components/StatusPill";
+import { DocumentStatusPill, FieldStatusPill } from "@/components/StatusPill";
 import { api } from "@/lib/api";
 import { formatAmount, formatDate } from "@/lib/format";
 import type { Persona } from "@/lib/identity";
-import { FIELD_LABELS, FIELD_ORDER, JUDGEMENT_FIELDS, type BBox, type DocumentSummary, type Field, type FieldName } from "@/lib/types";
+import { fieldLabel, KINDS, type BBox, type DocumentSummary, type Field, type FieldName } from "@/lib/types";
 
 export interface PendingBox {
   name: FieldName;
@@ -29,6 +30,7 @@ interface Props {
 /** Same shapes the server enforces (LeaseTerms.FORMATS). */
 const PLACEHOLDERS: Record<FieldName, string> = {
   commencement_date: "YYYY-MM-DD",
+  effective_date: "YYYY-MM-DD",
   term_months: "Months, e.g. 24",
   monthly_payment: "Amount, e.g. 120,000",
   annual_discount_rate: "Percentage, e.g. 14%",
@@ -40,6 +42,7 @@ export function displayValue(field: Pick<Field, "name" | "value">): string {
     case "monthly_payment":
       return /^[\d,]+(\.\d+)?$/.test(field.value) ? formatAmount(field.value.replace(/,/g, "")) : field.value;
     case "commencement_date":
+    case "effective_date":
       return /^\d{4}-\d{2}-\d{2}$/.test(field.value) ? formatDate(field.value) : field.value;
     case "payment_timing":
       return field.value.charAt(0).toUpperCase() + field.value.slice(1);
@@ -52,7 +55,7 @@ export function displayValue(field: Pick<Field, "name" | "value">): string {
 function reviewBlocker(field: Field, doc: DocumentSummary, persona: Persona): string | null {
   const roles = new Set(persona.roles);
   if (!roles.has("reviewer") && !roles.has("partner")) return "Only reviewers and partners can review.";
-  if (JUDGEMENT_FIELDS.has(field.name) && !roles.has("partner")) return "A judgement call: needs a partner.";
+  if (KINDS[doc.kind].judgement.has(field.name) && !roles.has("partner")) return "A judgement call: needs a partner.";
   if (persona.user === doc.uploaded_by) return "You uploaded this document. Someone else must review it.";
   if (persona.user === field.entered_by) return "You entered this value. Someone else must review it.";
   return null;
@@ -68,10 +71,79 @@ export function TermsPanel(props: Props) {
   const fields = new Map(props.doc.fields.map((f) => [f.name, f]));
   return (
     <>
-      {FIELD_ORDER.map((name) => (
+      {props.doc.kind === "amendment" && props.doc.parent && (
+        <div className="callout">
+          <strong>Amendment to {props.doc.parent.filename}</strong>
+          <span className="muted">
+            These are the terms it changes, from its effective date. Terms it does not mention carry over from the
+            lease. Its effect appears on the{" "}
+            <Link className="link" href={`/documents/${props.doc.parent.id}?tab=schedule`}>
+              lease&apos;s schedule
+            </Link>
+            .
+          </span>
+        </div>
+      )}
+      {KINDS[props.doc.kind].order.map((name) => (
         <TermCard key={name} name={name} field={fields.get(name)} {...props} />
       ))}
+      {props.doc.kind === "lease" && <AmendmentsCard lease={props.doc} onChanged={props.onChanged} />}
     </>
+  );
+}
+
+function AmendmentsCard({ lease, onChanged }: { lease: DocumentSummary; onChanged: () => void }) {
+  const input = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function upload(files: FileList | null) {
+    const file = files?.[0];
+    if (!file) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.upload(file, lease.id);
+      onChanged();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+      if (input.current) input.current.value = "";
+    }
+  }
+
+  return (
+    <div className="term" style={{ cursor: "default" }}>
+      <div className="term-head">
+        <span className="term-label">Amendments, side letters and extensions</span>
+        <span className="faint" style={{ fontSize: 12 }}>
+          {lease.amendments.length || "None"}
+        </span>
+      </div>
+      {lease.amendments.length > 0 && (
+        <ul className="chain">
+          {lease.amendments.map((a) => (
+            <li key={a.id}>
+              <Link href={`/documents/${a.id}`} className="link">
+                {a.filename}
+              </Link>
+              <DocumentStatusPill status={a.status} />
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="term-note">
+        Each one is applied in order of its effective date. The schedule waits until every one is verified.
+      </div>
+      <div className="term-actions">
+        <input ref={input} type="file" accept="application/pdf" hidden onChange={(e) => void upload(e.target.files)} />
+        <button className="btn btn-sm" disabled={busy} onClick={() => input.current?.click()}>
+          {busy ? "Uploading…" : "Upload amendment"}
+        </button>
+      </div>
+      {error && <div className="term-error">{error}</div>}
+    </div>
   );
 }
 
@@ -111,10 +183,12 @@ function TermCard({
     }
   }
 
+  const kind = KINDS[doc.kind];
+  const optional = !kind.required.has(name); // an amendment need not change every term
   const label = (
     <span className="term-label">
-      {FIELD_LABELS[name]}
-      {JUDGEMENT_FIELDS.has(name) && <span className="judgement">Judgement</span>}
+      {fieldLabel(name, doc.kind)}
+      {kind.judgement.has(name) && <span className="judgement">Judgement</span>}
     </span>
   );
 
@@ -137,7 +211,7 @@ function TermCard({
           value={draft}
           placeholder={PLACEHOLDERS[name]}
           onChange={(e) => setDraft(e.target.value)}
-          aria-label={`${FIELD_LABELS[name]} value`}
+          aria-label={`${fieldLabel(name, doc.kind)} value`}
         />
         <button className="btn btn-primary btn-sm" disabled={busy || !draft.trim()}>
           Save
@@ -162,13 +236,17 @@ function TermCard({
       <div className="term" data-missing="true" data-active={drawingFor === name}>
         <div className="term-head">
           {label}
-          <span className="pill">Not found</span>
+          <span className="pill">{optional ? "Unchanged" : "Not found"}</span>
         </div>
         {box ? (
           entryForm
         ) : (
           <>
-            <div className="term-note">The extractor could not find this term. Mark where the document states it.</div>
+            <div className="term-note">
+              {optional
+                ? "No change to this term was found, so the lease's value carries over. If the amendment does change it, mark where."
+                : "The extractor could not find this term. Mark where the document states it."}
+            </div>
             <div className="term-actions">
               <button
                 className="btn btn-sm"
