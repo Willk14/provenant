@@ -28,6 +28,11 @@ human-verified facts to a deterministic accounting engine.
 | `backend/provenant/provenance` | `SourceRef`, extracted fields, the confidence gate and the append-only review log |
 | `backend/provenant/ledger` | Balanced double-entry journal entries |
 | `backend/provenant/leases` | IFRS 16 lease liability, amortisation schedule, ROU asset and journal entries |
+| `backend/provenant/extraction` | `Extractor` port, label baseline, grounded Claude extractor, page text with char positions |
+| `backend/provenant/api` | FastAPI app, auth and roles, services, persistence, Excel export |
+| `backend/provenant/migrations` | Alembic migrations (0002 = Postgres RLS, append-only log, grants) |
+| `backend/provenant/worker.py` | Outbox worker that runs extraction jobs |
+| `backend/golden` + `scripts/evaluate_extractor.py` | Golden lease set and extractor scoring |
 | `docs/` | Architecture, decisions (ADRs) and roadmap |
 
 ## Getting started
@@ -35,20 +40,43 @@ human-verified facts to a deterministic accounting engine.
 ```bash
 cd backend
 python -m venv .venv
-.venv/Scripts/python -m pip install -e ".[dev]"    # macOS/Linux: .venv/bin/python
+.venv/Scripts/python -m pip install -e ".[dev,postgres]"     # macOS/Linux: .venv/bin/python
 .venv/Scripts/python -m pytest
-.venv/Scripts/python -m uvicorn provenant.api.main:app --reload   # API docs at http://127.0.0.1:8000/docs
+.venv/Scripts/python -m provenant.api.migrate                # create/upgrade the schema
+PROVENANT_DEV_AUTH=1 PROVENANT_INLINE_WORKER=1 .venv/Scripts/python -m uvicorn provenant.api.main:app --reload
 ```
 
-Local identity is taken from `X-Tenant-Id` and `X-User` headers (`PROVENANT_DEV_AUTH=1`, the default). This is
-for local development only; real auth lands in M1.5.
+API docs: http://127.0.0.1:8000/docs. With `PROVENANT_DEV_AUTH=1`, identity comes from the `X-Tenant-Id`, `X-User`
+and `X-Roles` headers, for local use only. In any shared environment configure OIDC instead:
+`PROVENANT_JWT_ISSUER`, `PROVENANT_JWT_AUDIENCE`, `PROVENANT_JWKS_URL` (plus optional `PROVENANT_JWT_TENANT_CLAIM`,
+`PROVENANT_JWT_ROLES_CLAIM`). The app refuses to start with neither configured.
+
+`PROVENANT_INLINE_WORKER=1` runs extraction inside the API process for convenience. In production run workers
+separately: `python -m provenant.worker`.
+
+### Roles
+
+| Role | Can |
+|---|---|
+| preparer | upload documents, enter missing values (pointing at the page) |
+| reviewer | review extracted values |
+| partner | review anything, including judgement fields (discount rate, payment timing) |
+
+Nobody can review a document they uploaded or a value they entered (maker-checker).
+
+### Extractors
+
+`PROVENANT_EXTRACTOR=labels` (default, deterministic) or `claude` (needs `ANTHROPIC_API_KEY` or an `ant auth login`
+profile). Claude values must quote text found on the cited page or they are dropped, and all of them go to
+human review until calibrated. Score either one with `python scripts/evaluate_extractor.py labels|claude`.
 
 ### The first workflow (IFRS 16 lease)
 
 | Step | Call |
 |---|---|
-| Upload a lease PDF (same file twice returns the same document) | `POST /documents` |
+| Upload a lease PDF (same file twice returns the same document); extraction is queued | `POST /documents` |
 | See extracted terms, each with page + bounding box | `GET /documents/{id}` |
+| Enter a value the extractor missed, with the box where it is printed | `POST /documents/{id}/fields` |
 | Fields a human must sign off (low confidence, or judgement calls like the discount rate) | `GET /review-queue` |
 | Approve / correct / reject, recorded in a hash-chained log | `POST /fields/{id}/review` |
 | Schedule from verified terms only (409 until then) | `GET /documents/{id}/lease-schedule` |
@@ -57,10 +85,17 @@ for local development only; real auth lands in M1.5.
 
 ### Postgres
 
+Migrate as the table owner; run the API and workers as a separate non-superuser role, otherwise row-level
+security is bypassed.
+
 ```bash
 docker compose up -d
-DATABASE_URL=postgresql+psycopg://provenant:provenant_dev@localhost:5433/provenant uvicorn provenant.api.main:app
-psql postgresql://provenant:provenant_dev@localhost:5433/provenant -f db/postgres/001_hardening.sql
+psql postgresql://provenant:provenant_dev@localhost:5433/provenant -c "create role provenant_app login password 'change-me'"
+PROVENANT_APP_ROLE=provenant_app DATABASE_URL=postgresql+psycopg://provenant:provenant_dev@localhost:5433/provenant python -m provenant.api.migrate
+DATABASE_URL=postgresql+psycopg://provenant_app:change-me@localhost:5433/provenant uvicorn provenant.api.main:app
 ```
+
+Tests against Postgres: `TEST_DATABASE_URL=postgresql://<superuser>@host:port/postgres pytest`. Each test gets
+a fresh database, migrated by the superuser, and the app connects as `provenant_app`.
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/ROADMAP.md](docs/ROADMAP.md).

@@ -1,0 +1,71 @@
+[
+  {
+    "id": "labelled-arrears",
+    "pages": [[
+      "LEASE AGREEMENT",
+      "Commencement Date: 31 January 2026",
+      "Lease Term: 12 months",
+      "Monthly Rent: KES 1,000.00 payable monthly in arrears",
+      "Discount Rate: 12%"
+    ]],
+    "expected": {"commencement_date": "2026-01-31", "term_months": "12", "monthly_payment": "1000.00",
+                 "annual_discount_rate": "12%", "payment_timing": "arrears"}
+  },
+  {
+    "id": "labelled-advance-iso",
+    "pages": [[
+      "OFFICE LEASE - SUITE 4B",
+      "Commencement Date: 2026-03-01",
+      "Term: 60 months",
+      "Monthly Payment: USD 4,250.50 payable in advance",
+      "Incremental Borrowing Rate: 7.25 %"
+    ]],
+    "expected": {"commencement_date": "2026-03-01", "term_months": "60", "monthly_payment": "4250.50",
+                 "annual_discount_rate": "7.25%", "payment_timing": "advance"}
+  },
+  {
+    "id": "labelled-two-pages",
+    "pages": [
+      ["WAREHOUSE LEASE", "Parties: Lessor Ltd and Lessee Ltd", "Commencement Date: 15 June 2026"],
+      ["Schedule 1", "Lease Term: 36 months", "Monthly Rent: EUR 12,000 payable monthly in arrears",
+       "Interest Rate: 6%"]
+    ],
+    "expected": {"commencement_date": "2026-06-15", "term_months": "36", "monthly_payment": "12000",
+                 "annual_discount_rate": "6%", "payment_timing": "arrears"}
+  },
+  {
+    "id": "prose-advance",
+    "pages": [[
+      "THIS LEASE is made between Riverside Holdings (the Landlord) and Acme Ltd (the Tenant).",
+      "1. The term of this lease is three (3) years beginning on 1 March 2026.",
+      "2. The Tenant shall pay rent of USD 2,500 per calendar month, each instalment",
+      "   to be paid in advance on the first day of the month.",
+      "3. For the purposes of IFRS 16 the Tenant's incremental borrowing rate is 8.5% per annum.",
+      "4. Late payments accrue interest at 18% per annum."
+    ]],
+    "expected": {"commencement_date": "2026-03-01", "term_months": "36", "monthly_payment": "2500",
+                 "annual_discount_rate": "8.5%", "payment_timing": "advance"}
+  },
+  {
+    "id": "prose-arrears-distractor",
+    "pages": [[
+      "EQUIPMENT RENTAL AGREEMENT",
+      "The Lessee will rent the equipment for twenty-four months from February 1, 2026.",
+      "Rent is KES 85,000 a month, due at the end of each month.",
+      "A security deposit of KES 170,000 is payable on signing.",
+      "The rate implicit in the lease is 14%."
+    ]],
+    "expected": {"commencement_date": "2026-02-01", "term_months": "24", "monthly_payment": "85000",
+                 "annual_discount_rate": "14%", "payment_timing": "arrears"}
+  },
+  {
+    "id": "prose-missing-rate",
+    "pages": [[
+      "SHOP LEASE",
+      "This lease runs for 18 months starting 1 April 2026.",
+      "Rent: GBP 3,100 monthly, paid in arrears."
+    ]],
+    "expected": {"commencement_date": "2026-04-01", "term_months": "18", "monthly_payment": "3100",
+                 "annual_discount_rate": null, "payment_timing": "arrears"}
+  }
+]

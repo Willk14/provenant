@@ -37,9 +37,12 @@
 2. **Every journal entry balances.** `JournalEntry` refuses to construct if debits ≠ credits.
 3. **The core only accepts verified facts.** `LeaseTerms.from_fields` raises unless each field was auto-accepted by the gate or approved by a human.
 4. **Every fact is traceable.** An `ExtractedField` cannot exist without a `SourceRef`.
-5. **The review log is append-only and tamper-evident.** Each entry hashes the previous one.
+5. **The review log is append-only and tamper-evident.** Each entry hashes the previous one; in Postgres the app role has no UPDATE/DELETE grant and a trigger rejects them anyway.
 6. **The gate is versioned.** A decision records which threshold version made it, so results are reproducible.
-7. **Amendments apply in order.** (Planned) addenda link to their parent by document hash and are applied by effective date; a superseded schedule can never feed a calculation.
+7. **Tenants are isolated twice.** Every query filters by tenant, and Postgres RLS enforces it for the app role.
+8. **AI values must be grounded.** A model's value is kept only if its quote is found on the cited page (ADR 0002).
+9. **Maker-checker.** Nobody reviews a document they uploaded or a value they entered.
+10. **Amendments apply in order.** (Planned) addenda link to their parent by document hash and are applied by effective date; a superseded schedule can never feed a calculation.
 
 ## Why this stack
 

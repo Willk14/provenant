@@ -17,10 +17,19 @@ Built as thin vertical slices. Each milestone ships something a user can run end
 - [x] Schedule + journal entries from verified fields only; Excel export with a Provenance sheet
 
 ## M1.5 — Before anyone else uses it
-- [ ] Real auth (OIDC/JWT) replacing dev headers; roles (preparer, reviewer, partner)
-- [ ] Alembic migrations replacing `create_all` + hand-applied SQL; CI runs tests on Postgres
-- [ ] Outbox + worker for extraction; LLM extractor behind the `Extractor` port, scored on a golden set
-- [ ] Manual field entry that still requires a source location (page + box)
+- [x] OIDC/JWT auth (JWKS, RS256/ES256); dev headers only behind an explicit flag; app refuses to start with neither
+- [x] Roles: preparer uploads, reviewer reviews, partner signs off judgement fields; maker-checker on every review
+- [x] Alembic migrations; Postgres RLS + append-only trigger + least-privilege grants as migration 0002
+- [x] Full suite runs on Postgres as a non-superuser role (RLS really enforced); CI matrix SQLite + Postgres
+- [x] Transactional outbox + worker (SKIP LOCKED, retry with backoff, dead-letter, stale-job reclaim)
+- [x] Claude extractor: every value must quote text found on the cited page, or it is dropped
+- [x] Golden set + evaluation script (baseline: 16/30, 0 wrong)
+- [x] Manual field entry that must point at printed text on the page
+
+## M1.6 — Open items
+- [ ] Run the Claude extractor on the golden set (needs an API key; costs money) and calibrate its confidence
+- [ ] Grow the golden set with real, anonymised leases; OCR for scanned PDFs
+- [ ] Object storage (S3/GCS) for PDFs; rate limits and audit logging on the API
 
 ## M2 — The workspace
 - [ ] Next.js app: PDF viewer with bbox highlight, click any schedule number → jump to source

@@ -41,8 +41,30 @@ class Document(Base):
     sha256: Mapped[str] = mapped_column(String(64))
     filename: Mapped[str] = mapped_column(String(255))
     size_bytes: Mapped[int] = mapped_column(Integer)
-    status: Mapped[str] = mapped_column(String(16), default="uploaded")  # uploaded|extracting|extracted|failed
+    uploaded_by: Mapped[str] = mapped_column(String(200))
+    status: Mapped[str] = mapped_column(String(16), default="queued")  # queued|extracting|extracted|failed
     error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class Job(Base):
+    """Transactional outbox: written in the same transaction as the document, drained by the worker.
+
+    No RLS on this table: the worker claims jobs across tenants, then does the work inside a tenant session.
+    It holds ids only, never document content.
+    """
+
+    __tablename__ = "jobs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[str] = mapped_column(String(64))
+    kind: Mapped[str] = mapped_column(String(32))
+    document_id: Mapped[str] = mapped_column(String(36))
+    status: Mapped[str] = mapped_column(String(16), default="pending", index=True)  # pending|running|done|dead
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    run_after: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    locked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_error: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
@@ -65,6 +87,7 @@ class FieldRow(Base):
     char_start: Mapped[int] = mapped_column(Integer)
     char_end: Mapped[int] = mapped_column(Integer)
     extractor: Mapped[str] = mapped_column(String(64))
+    entered_by: Mapped[str | None] = mapped_column(String(200))  # set for manual entries (maker-checker)
     status: Mapped[str] = mapped_column(String(16), index=True)
     gate_version: Mapped[str | None] = mapped_column(String(32))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)

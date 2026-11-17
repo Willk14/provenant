@@ -2,13 +2,11 @@
 
 It is the fallback when a model is unavailable and the yardstick a model must beat on the golden set.
 """
-import io
 import re
 from datetime import datetime
 
-import pdfplumber
-
-from provenant.provenance import ExtractedField, SourceRef
+from provenant.extraction.pdftext import open_pages
+from provenant.provenance import ExtractedField
 
 PATTERNS = {
     "commencement_date": r"commencement date\s*[:\-]?\s*(\d{4}-\d{2}-\d{2}|\d{1,2}\s+[a-z]+\s+\d{4})",
@@ -21,17 +19,21 @@ CONFIDENCE = 0.97  # a labelled match; human review still applies to the gate's 
 CONFIDENCE_UNPARSED = 0.5
 
 
-def _normalise(name: str, raw: str) -> tuple[str, float]:
+def normalise(name: str, raw: str) -> tuple[str, bool]:
+    """Canonical form of a raw value, and whether it parsed cleanly."""
+    raw = " ".join(raw.split())
     if name == "commencement_date" and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", raw):
-        try:
-            return datetime.strptime(" ".join(raw.split()), "%d %B %Y").date().isoformat(), CONFIDENCE
-        except ValueError:
-            return raw, CONFIDENCE_UNPARSED
+        for fmt in ("%d %B %Y", "%B %d, %Y", "%d %b %Y"):
+            try:
+                return datetime.strptime(raw, fmt).date().isoformat(), True
+            except ValueError:
+                pass
+        return raw, False
     if name == "annual_discount_rate":
-        return raw.replace(" ", ""), CONFIDENCE
+        return raw.replace(" ", ""), True
     if name == "payment_timing":
-        return raw.lower(), CONFIDENCE
-    return raw, CONFIDENCE
+        return raw.lower(), True
+    return raw, True
 
 
 class LeaseLabelExtractor:
@@ -39,34 +41,21 @@ class LeaseLabelExtractor:
 
     def extract(self, pdf: bytes, document_sha256: str) -> list[ExtractedField]:
         found: dict[str, ExtractedField] = {}
-        with pdfplumber.open(io.BytesIO(pdf)) as doc:
-            for page_number, page in enumerate(doc.pages, start=1):
-                textmap = page._get_textmap()  # string aligned 1:1 with (char, char_dict | None)
+        with open_pages(pdf) as pages:
+            for page in pages:
                 for name, pattern in PATTERNS.items():
                     if name in found:  # first occurrence wins; amendments are handled in M2
                         continue
-                    match = re.search(pattern, textmap.as_string, re.IGNORECASE)
-                    if not match:
+                    match = re.search(pattern, page.text, re.IGNORECASE)
+                    source = match and page.source(document_sha256, *match.span(1))
+                    if not source:
                         continue
-                    start, end = match.span(1)
-                    chars = [c for _, c in textmap.tuples[start:end] if c]
-                    value, confidence = _normalise(name, match.group(1))
+                    value, clean = normalise(name, match.group(1))
                     found[name] = ExtractedField(
                         name=name,
                         value=value,
-                        confidence=confidence,
-                        source=SourceRef(
-                            document_sha256,
-                            page_number,
-                            (
-                                round(min(c["x0"] for c in chars), 2),
-                                round(min(c["top"] for c in chars), 2),
-                                round(max(c["x1"] for c in chars), 2),
-                                round(max(c["bottom"] for c in chars), 2),
-                            ),
-                            start,
-                            end,
-                        ),
+                        confidence=CONFIDENCE if clean else CONFIDENCE_UNPARSED,
+                        source=source,
                         extractor=self.name,
                     )
         return list(found.values())

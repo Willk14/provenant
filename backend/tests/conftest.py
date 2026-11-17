@@ -1,8 +1,21 @@
-import pytest
+import os
+import uuid
 
+import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine, text
+
+from provenant.api.main import create_app
+from sqlalchemy.engine import make_url
+
+from provenant.api.migrate import upgrade
 from provenant.provenance import ExtractedField, SourceRef
 
 DOC = "a" * 64
+APP_ROLE, APP_PASSWORD = "provenant_app", "provenant_app_test"
+
+# Set TEST_DATABASE_URL to a Postgres superuser URL to run the suite against Postgres with RLS enforced.
+PG_ADMIN_URL = os.environ.get("TEST_DATABASE_URL")
 
 
 @pytest.fixture
@@ -17,3 +30,38 @@ def make_field():
         )
 
     return _make
+
+
+def _postgres_database(monkeypatch) -> str:
+    """Fresh database migrated by the owner; returns a URL for the non-superuser app role (so RLS applies)."""
+    admin = make_url(PG_ADMIN_URL).set(drivername="postgresql+psycopg")
+    name = f"pv_{uuid.uuid4().hex[:12]}"
+    engine = create_engine(admin, isolation_level="AUTOCOMMIT")
+    with engine.connect() as c:
+        if not c.scalar(text("select 1 from pg_roles where rolname = :r"), {"r": APP_ROLE}):
+            c.execute(text(f"create role {APP_ROLE} login password '{APP_PASSWORD}'"))
+        c.execute(text(f"create database {name}"))
+    engine.dispose()
+    monkeypatch.setenv("PROVENANT_APP_ROLE", APP_ROLE)
+    upgrade(admin.set(database=name).render_as_string(hide_password=False))
+    return admin.set(database=name, username=APP_ROLE, password=APP_PASSWORD).render_as_string(hide_password=False)
+
+
+@pytest.fixture
+def database_url(tmp_path, monkeypatch) -> str:
+    if PG_ADMIN_URL:
+        return _postgres_database(monkeypatch)
+    url = f"sqlite:///{(tmp_path / 'test.db').as_posix()}"
+    upgrade(url)
+    return url
+
+
+@pytest.fixture
+def app(database_url, tmp_path):
+    return create_app(database_url, tmp_path / "storage", dev_auth=True)
+
+
+@pytest.fixture
+def client(app):
+    with TestClient(app) as c:
+        yield c
