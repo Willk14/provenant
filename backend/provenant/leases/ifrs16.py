@@ -3,6 +3,7 @@
 Pure and deterministic: the same verified terms always give the same schedule, to the cent.
 """
 import calendar
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date
@@ -49,6 +50,29 @@ class LeaseTerms:
 
     REQUIRED = ("commencement_date", "term_months", "monthly_payment", "annual_discount_rate", "payment_timing")
 
+    # What a verified value must look like. Applied to human input (entry, corrections) and again here.
+    # The rate must carry "%": a bare "12" vs "0.12" is exactly the ambiguity that ends up 100x wrong.
+    FORMATS = {
+        "commencement_date": (r"\d{4}-\d{2}-\d{2}", "a date as YYYY-MM-DD"),
+        "term_months": (r"\d{1,3}", "a whole number of months"),
+        "monthly_payment": (r"\d{1,3}(,\d{3})*(\.\d{1,2})?|\d+(\.\d{1,2})?", "an amount like 120,000 or 120000.00"),
+        "annual_discount_rate": (r"\d{1,2}(\.\d+)?%", "a percentage like 12% or 8.5%"),
+        "payment_timing": (r"(?i)advance|arrears", "advance or arrears"),
+    }
+
+    @classmethod
+    def check_value(cls, name: str, value: str) -> str:
+        """The value, stripped, if it has the right shape for `name`; otherwise ValueError saying what is expected."""
+        if name not in cls.FORMATS:
+            raise ValueError(f"unknown lease field {name!r}")
+        pattern, expected = cls.FORMATS[name]
+        value = value.strip()
+        if not re.fullmatch(pattern, value):
+            raise ValueError(f"{name.replace('_', ' ')} must be {expected}, got {value!r}")
+        if name == "commencement_date":
+            date.fromisoformat(value)  # also rejects 2026-02-30
+        return value
+
     @classmethod
     def from_fields(cls, fields: Mapping[str, ExtractedField]) -> "LeaseTerms":
         """Build terms from extracted fields. Refuses anything not yet verified (ADR 0001).
@@ -63,19 +87,13 @@ class LeaseTerms:
             raise PermissionError(f"fields not verified: {', '.join(unverified)}")
 
         def value(name: str) -> str:
-            return fields[name].value.strip()
+            return cls.check_value(name, fields[name].value)
 
-        rate = to_decimal(value("annual_discount_rate").rstrip("%"))
-        if value("annual_discount_rate").endswith("%"):
-            rate /= 100
-        term = to_decimal(value("term_months"))
-        if term != term.to_integral_value():
-            raise ValueError("term_months must be a whole number")
         return cls(
             commencement=date.fromisoformat(value("commencement_date")),
-            periods=int(term),
+            periods=int(value("term_months")),
             payment=to_decimal(value("monthly_payment")),
-            rate_per_period=rate / 12,
+            rate_per_period=to_decimal(value("annual_discount_rate").rstrip("%")) / 100 / 12,
             timing=Timing(value("payment_timing").lower()),
         )
 

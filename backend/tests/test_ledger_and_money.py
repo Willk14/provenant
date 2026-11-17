@@ -11,8 +11,10 @@ def test_money_rejects_floats_and_parses_strings():
     with pytest.raises(TypeError):
         to_decimal(0.1)
     assert to_decimal("1,250.50") == Decimal("1250.50")
-    with pytest.raises(ValueError):
-        to_decimal("NaN")
+    assert to_decimal("1,000,000") == Decimal("1000000")
+    for bad in ("NaN", "120,000120,000", "1,25", ",100", "12,34,567"):
+        with pytest.raises(ValueError):
+            to_decimal(bad)
 
 
 def test_round_half_up():

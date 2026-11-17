@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "provenant-api",
+      "runtimeExecutable": "backend/.venv/Scripts/python",
+      "runtimeArgs": ["backend/scripts/dev.py"],
+      "port": 8000
+    },
+    {
+      "name": "provenant-web",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "frontend", "run", "dev"],
+      "port": 3100
+    }
+  ]
+}

@@ -96,6 +96,8 @@ def test_lease_from_upload_to_schedule(client, app):
     assert blocked.status_code == 409 and "not verified" in blocked.json()["detail"]
 
     assert review(client, fields["payment_timing"]["id"], PARTNER).status_code == 200
+    typo = review(client, fields["annual_discount_rate"]["id"], PARTNER, "corrected", "12")
+    assert typo.status_code == 422  # the correction is validated too, and nothing was logged
     r = review(client, fields["annual_discount_rate"]["id"], PARTNER, "corrected", "12%")
     assert r.status_code == 200
 
@@ -130,6 +132,18 @@ def test_duplicate_upload_is_idempotent(client, app):
     assert run_jobs(app) == 1  # one job, not two
 
 
+def test_document_list_and_me(client, app):
+    doc_id, _ = uploaded_lease(client, app)
+    listed = client.get("/documents", headers=PREPARER).json()
+    assert [(d["id"], d["needs_review"], d["missing_terms"]) for d in listed] == [(doc_id, 2, 0)]
+    short_id, _ = uploaded_lease(client, app, LEASE_LINES[:3])  # rent, timing and rate lines left out
+    listed = {d["id"]: d["missing_terms"] for d in client.get("/documents", headers=PREPARER).json()}
+    assert listed[short_id] == 3
+    assert client.get("/documents", headers=OTHER_FIRM).json() == []
+    me = client.get("/me", headers=REVIEWER).json()
+    assert me == {"tenant_id": "firm-a", "user": "rae@firm-a", "roles": ["reviewer"]}
+
+
 def test_tenants_are_isolated(client, app):
     doc_id, fields = uploaded_lease(client, app)
     assert client.get(f"/documents/{doc_id}", headers=OTHER_FIRM).status_code == 404
@@ -152,12 +166,18 @@ def test_manual_entry_must_cite_the_page_and_be_checked_by_someone_else(client, 
     assert "annual_discount_rate" not in fields  # the label extractor cannot read prose
     rent_box = fields["monthly_payment"]["bbox"]
 
-    def enter(bbox, headers=PREPARER, name="annual_discount_rate"):
-        body = {"name": name, "value": "12%", "page": 1, "bbox": bbox}
+    def enter(bbox, headers=PREPARER, name="annual_discount_rate", value="12%"):
+        body = {"name": name, "value": value, "page": 1, "bbox": bbox}
         return client.post(f"/documents/{doc_id}/fields", headers=headers, json=body)
 
     assert enter([0, 0, 5, 5]).status_code == 422  # empty box: nothing printed there
-    assert enter([0, 0, 600, 900], name="monthly_payment").status_code == 409  # already extracted
+    bad = client.post(
+        f"/documents/{doc_id}/fields",
+        headers=PREPARER,
+        json={"name": "annual_discount_rate", "value": "12", "page": 1, "bbox": [0, 0, 600, 900]},
+    )
+    assert bad.status_code == 422 and "percentage" in bad.json()["detail"]
+    assert enter([0, 0, 600, 900], name="monthly_payment", value="1,000.00").status_code == 409  # already extracted
     # A box around the next printed line (lines are 8 mm, about 23 pt, apart).
     line = [0, rent_box[3] + 2, 600, rent_box[3] + 30]
     r = enter(line)

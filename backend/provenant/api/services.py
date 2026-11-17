@@ -2,7 +2,7 @@
 import hashlib
 import logging
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -48,6 +48,23 @@ def get_document(s: Session, tenant_id: str, document_id: str) -> Document:
     if doc is None:
         raise NotFound("document not found")
     return doc
+
+
+def list_documents(s: Session, tenant_id: str, limit: int = 200) -> list[tuple[Document, int, int]]:
+    """Newest first, each with how many fields await review and how many required terms are still missing."""
+
+    def count(*conditions):
+        return select(func.count(FieldRow.id)).where(FieldRow.document_id == Document.id, *conditions).scalar_subquery()
+
+    pending = count(FieldRow.status == Status.NEEDS_REVIEW.value)
+    usable = count(FieldRow.status != Status.REJECTED.value, FieldRow.name.in_(LeaseTerms.REQUIRED))
+    rows = s.execute(
+        select(Document, pending, usable)
+        .where(Document.tenant_id == tenant_id)
+        .order_by(Document.created_at.desc())
+        .limit(limit)
+    )
+    return [(doc, review, len(LeaseTerms.REQUIRED) - found) for doc, review, found in rows]
 
 
 def list_fields(s: Session, tenant_id: str, document_id: str) -> list[FieldRow]:
@@ -140,6 +157,11 @@ def review_field(
     doc = get_document(s, p.tenant_id, row.document_id)
     if p.user in (doc.uploaded_by, row.entered_by):
         raise Forbidden("maker-checker: you cannot review a figure you uploaded or entered")
+    if corrected_value is not None:
+        try:
+            corrected_value = LeaseTerms.check_value(row.name, corrected_value)
+        except ValueError as exc:
+            raise Invalid(str(exc)) from exc
 
     last = s.scalar(
         select(ReviewEventRow.hash)
@@ -188,10 +210,10 @@ def enter_field(
 ) -> FieldRow:
     """A human-entered value. It must point at printed text in the document, and someone else must review it."""
     require(p, *ANY_ROLE)
-    if name not in LeaseTerms.REQUIRED:
-        raise Invalid(f"unknown lease field {name!r}")
-    if not value.strip():
-        raise Invalid("value is required")
+    try:
+        value = LeaseTerms.check_value(name, value)
+    except ValueError as exc:
+        raise Invalid(str(exc)) from exc
     doc = get_document(s, p.tenant_id, document_id)
     if doc.status != "extracted":
         raise Conflict("wait for extraction to finish before entering fields")
@@ -210,7 +232,7 @@ def enter_field(
     entered = FieldRow.from_domain(
         p.tenant_id,
         doc.id,
-        ExtractedField(name, value.strip(), 1.0, source, "manual", Status.NEEDS_REVIEW, gate_version="manual"),
+        ExtractedField(name, value, 1.0, source, "manual", Status.NEEDS_REVIEW, gate_version="manual"),
     )
     entered.entered_by = p.user
     if row is None:

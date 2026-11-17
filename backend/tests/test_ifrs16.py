@@ -66,6 +66,30 @@ def lease_fields(make_field, confidence=0.99):
     return {name: make_field(name, value, confidence) for name, value in raw.items()}
 
 
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [
+        ("monthly_payment", "120,000120,000"),
+        ("monthly_payment", "KES 1,000"),
+        ("annual_discount_rate", "12"),  # no %: 12 or 0.12? refuse rather than guess
+        ("annual_discount_rate", "0.12"),
+        ("commencement_date", "31/01/2026"),
+        ("commencement_date", "2026-02-30"),
+        ("term_months", "12.5"),
+        ("payment_timing", "monthly"),
+    ],
+)
+def test_check_value_rejects_ambiguous_or_malformed(name, value):
+    with pytest.raises(ValueError):
+        LeaseTerms.check_value(name, value)
+
+
+def test_check_value_accepts_canonical_forms():
+    assert LeaseTerms.check_value("monthly_payment", " 1,000.00 ") == "1,000.00"
+    assert LeaseTerms.check_value("annual_discount_rate", "8.5%") == "8.5%"
+    assert LeaseTerms.check_value("payment_timing", "Arrears") == "Arrears"
+
+
 def test_core_refuses_unverified_fields(make_field):
     gate = ConfidenceGate("lease-v1", threshold=0.95)
     routed = {k: gate.route(f) for k, f in lease_fields(make_field, confidence=0.5).items()}

@@ -31,6 +31,7 @@ log = logging.getLogger(__name__)
 
 class FieldOut(BaseModel):
     id: str
+    document_id: str
     name: str
     value: str
     confidence: float
@@ -46,7 +47,7 @@ class FieldOut(BaseModel):
     @classmethod
     def of(cls, r: FieldRow) -> "FieldOut":
         return cls(
-            id=r.id, name=r.name, value=r.value, confidence=r.confidence, status=r.status,
+            id=r.id, document_id=r.document_id, name=r.name, value=r.value, confidence=r.confidence, status=r.status,
             gate_version=r.gate_version, extractor=r.extractor, entered_by=r.entered_by, page=r.page,
             bbox=(r.x0, r.top, r.x1, r.bottom), char_start=r.char_start, char_end=r.char_end,
         )
@@ -61,14 +62,25 @@ class DocumentOut(BaseModel):
     status: str
     error: str | None
     created_at: datetime
+    needs_review: int | None = None
+    missing_terms: int | None = None
     fields: list[FieldOut] = []
 
     @classmethod
-    def of(cls, d: Document, fields: list[FieldRow] = ()) -> "DocumentOut":
+    def of(
+        cls, d: Document, fields: list[FieldRow] = (), needs_review: int | None = None, missing_terms: int | None = None
+    ) -> "DocumentOut":
         return cls(
             id=d.id, sha256=d.sha256, filename=d.filename, size_bytes=d.size_bytes, uploaded_by=d.uploaded_by,
-            status=d.status, error=d.error, created_at=d.created_at, fields=[FieldOut.of(f) for f in fields],
+            status=d.status, error=d.error, created_at=d.created_at, needs_review=needs_review,
+            missing_terms=missing_terms, fields=[FieldOut.of(f) for f in fields],
         )
+
+
+class MeOut(BaseModel):
+    tenant_id: str
+    user: str
+    roles: list[str]
 
 
 class ReviewIn(BaseModel):
@@ -193,6 +205,16 @@ def create_app(
         if not created:
             response.status_code = 200
         return DocumentOut.of(doc)
+
+    @app.get("/me", response_model=MeOut)
+    def me(p: Auth) -> MeOut:
+        return MeOut(tenant_id=p.tenant_id, user=p.user, roles=sorted(p.roles))
+
+    @app.get("/documents", response_model=list[DocumentOut])
+    def documents(p: Auth, s: Db) -> list[DocumentOut]:
+        return [
+            DocumentOut.of(d, needs_review=n, missing_terms=m) for d, n, m in services.list_documents(s, p.tenant_id)
+        ]
 
     @app.get("/documents/{document_id}", response_model=DocumentOut)
     def get_document(document_id: str, p: Auth, s: Db) -> DocumentOut:

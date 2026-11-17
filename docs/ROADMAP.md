@@ -32,8 +32,15 @@ Built as thin vertical slices. Each milestone ships something a user can run end
 - [ ] Object storage (S3/GCS) for PDFs; rate limits and audit logging on the API
 
 ## M2 — The workspace
-- [ ] Next.js app: PDF viewer with bbox highlight, click any schedule number → jump to source
+- [x] Next.js app: documents list + upload, review queue, document workspace
+- [x] pdf.js viewer with every extracted term boxed on the page, coloured by status
+- [x] Review in place (approve / correct / reject) with role and maker-checker hints; the server stays the authority
+- [x] Mark a missing term by dragging a box on the PDF; the value must match the term's format
+- [x] Schedule where any figure traces to the contract terms behind it, highlighted on the PDF
+- [x] Server-side value formats (`LeaseTerms.FORMATS`): no "120,000120,000", no rate without "%"
 - [ ] Amendment chain: link addenda/side letters, remeasure on modification
+- [ ] OIDC sign-in in the web app (it uses the dev persona switcher today)
+- [ ] Component tests (React Testing Library) and a Playwright smoke test in CI
 
 ## M3 — Covenants and full-population analytics
 - [ ] Credit agreement extraction: financial covenants, baskets, cure periods, reporting dates

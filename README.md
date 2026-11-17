@@ -35,6 +35,24 @@ human-verified facts to a deterministic accounting engine.
 | `backend/golden` + `scripts/evaluate_extractor.py` | Golden lease set and extractor scoring |
 | `docs/` | Architecture, decisions (ADRs) and roadmap |
 
+## Try the workspace (two terminals)
+
+```bash
+cd backend && .venv/Scripts/python scripts/dev.py --reset      # API on :8000, migrated, in-process worker, dev auth
+cd backend && .venv/Scripts/python scripts/seed_demo.py         # two sample leases, uploaded as Pat
+cd frontend && npm install && npm run dev                        # web app on http://localhost:3100
+```
+
+Switch between Pat (preparer), Rae (reviewer) and Pam (partner) in the top bar to see maker-checker at work.
+Click a term to find it on the PDF; on a term the extractor missed, choose "Mark on PDF" and drag a box; on the
+schedule tab, click any figure to see which contract terms produced it.
+
+| Path | What it is |
+|---|---|
+| `frontend/src/components/PdfViewer.tsx` | pdf.js pages with term boxes, zoom, and drag-to-mark |
+| `frontend/src/components/Workspace.tsx` | Document page: viewer + terms + schedule, polling while extraction runs |
+| `frontend/src/lib/trace.ts` | Which contract terms each schedule figure depends on |
+
 ## Getting started
 
 ```bash

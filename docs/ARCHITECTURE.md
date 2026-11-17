@@ -42,7 +42,8 @@
 7. **Tenants are isolated twice.** Every query filters by tenant, and Postgres RLS enforces it for the app role.
 8. **AI values must be grounded.** A model's value is kept only if its quote is found on the cited page (ADR 0002).
 9. **Maker-checker.** Nobody reviews a document they uploaded or a value they entered.
-10. **Amendments apply in order.** (Planned) addenda link to their parent by document hash and are applied by effective date; a superseded schedule can never feed a calculation.
+10. **Human input has a shape.** Typed values and corrections must match `LeaseTerms.FORMATS` (e.g. rates need "%", commas only as thousands separators); the core re-checks before calculating.
+11. **Amendments apply in order.** (Planned) addenda link to their parent by document hash and are applied by effective date; a superseded schedule can never feed a calculation.
 
 ## Why this stack
 
