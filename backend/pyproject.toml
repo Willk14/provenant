@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "provenant"
+version = "0.1.0"
+description = "Contract-to-ledger platform: traceable extraction, deterministic accounting."
+requires-python = ">=3.12"
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=8.3"]
+
+[tool.setuptools.packages.find]
+include = ["provenant*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
