@@ -1,8 +1,10 @@
 """Persistence. Every row carries tenant_id; Postgres adds RLS on top (db/postgres/001_hardening.sql)."""
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from uuid import uuid4
 
 from sqlalchemy import (
+    BigInteger,
+    Date,
     DateTime,
     Float,
     ForeignKey,
@@ -42,7 +44,8 @@ class Document(Base):
     filename: Mapped[str] = mapped_column(String(255))
     size_bytes: Mapped[int] = mapped_column(Integer)
     uploaded_by: Mapped[str] = mapped_column(String(200))
-    kind: Mapped[str] = mapped_column(String(16), default="lease", server_default="lease")  # lease|amendment
+    # lease | amendment | credit_agreement
+    kind: Mapped[str] = mapped_column(String(16), default="lease", server_default="lease")
     # Hash lineage: an amendment names its lease by id and by the lease file's SHA-256, so the chain a
     # schedule was built from can be proven to be exactly these files.
     parent_id: Mapped[str | None] = mapped_column(ForeignKey("documents.id"), index=True)
@@ -71,6 +74,34 @@ class Job(Base):
     locked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_error: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class TrialBalanceRow(Base):
+    """A borrower's quarterly trial balance, attached to the credit agreement it is tested against."""
+
+    __tablename__ = "trial_balances"
+    __table_args__ = (UniqueConstraint("document_id", "period_end"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(String(64), index=True)
+    document_id: Mapped[str] = mapped_column(ForeignKey("documents.id"), index=True)
+    period_end: Mapped[date] = mapped_column(Date)
+    filename: Mapped[str] = mapped_column(String(255))
+    sha256: Mapped[str] = mapped_column(String(64))  # of the uploaded file, as evidence
+    uploaded_by: Mapped[str] = mapped_column(String(200))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class TrialBalanceLineRow(Base):
+    __tablename__ = "trial_balance_lines"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[str] = mapped_column(String(64), index=True)
+    trial_balance_id: Mapped[str] = mapped_column(ForeignKey("trial_balances.id", ondelete="CASCADE"), index=True)
+    code: Mapped[str] = mapped_column(String(64))
+    name: Mapped[str] = mapped_column(String(255))
+    category: Mapped[str] = mapped_column(String(32))
+    balance_cents: Mapped[int] = mapped_column(BigInteger)  # integer cents: no float ever touches a balance
 
 
 class FieldRow(Base):

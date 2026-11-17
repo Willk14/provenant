@@ -35,14 +35,25 @@ const PLACEHOLDERS: Record<FieldName, string> = {
   monthly_payment: "Amount, e.g. 120,000",
   annual_discount_rate: "Percentage, e.g. 14%",
   payment_timing: "advance or arrears",
+  max_leverage_ratio: "Ratio, e.g. 3.50x",
+  min_interest_cover: "Ratio, e.g. 4.00x",
+  min_liquidity: "Amount, e.g. 50,000,000",
+  first_test_date: "YYYY-MM-DD (a quarter-end)",
+  reporting_days: "Days, e.g. 45",
+  cure_period_days: "Days, e.g. 20",
 };
 
 export function displayValue(field: Pick<Field, "name" | "value">): string {
   switch (field.name) {
     case "monthly_payment":
+    case "min_liquidity":
       return /^[\d,]+(\.\d+)?$/.test(field.value) ? formatAmount(field.value.replace(/,/g, "")) : field.value;
+    case "reporting_days":
+    case "cure_period_days":
+      return /^\d+$/.test(field.value) ? `${field.value} days` : field.value;
     case "commencement_date":
     case "effective_date":
+    case "first_test_date":
       return /^\d{4}-\d{2}-\d{2}$/.test(field.value) ? formatDate(field.value) : field.value;
     case "payment_timing":
       return field.value.charAt(0).toUpperCase() + field.value.slice(1);
@@ -88,6 +99,12 @@ export function TermsPanel(props: Props) {
         <TermCard key={name} name={name} field={fields.get(name)} {...props} />
       ))}
       {props.doc.kind === "lease" && <AmendmentsCard lease={props.doc} onChanged={props.onChanged} />}
+      {props.doc.kind === "credit_agreement" && (
+        <p className="term-note">
+          Covenants are tested on the Covenants tab against the borrower&apos;s quarterly trial balances. A rejected
+          covenant is treated as not in the agreement.
+        </p>
+      )}
     </>
   );
 }
@@ -236,16 +253,18 @@ function TermCard({
       <div className="term" data-missing="true" data-active={drawingFor === name}>
         <div className="term-head">
           {label}
-          <span className="pill">{optional ? "Unchanged" : "Not found"}</span>
+          <span className="pill">{optional && doc.kind === "amendment" ? "Unchanged" : "Not found"}</span>
         </div>
         {box ? (
           entryForm
         ) : (
           <>
             <div className="term-note">
-              {optional
-                ? "No change to this term was found, so the lease's value carries over. If the amendment does change it, mark where."
-                : "The extractor could not find this term. Mark where the document states it."}
+              {!optional
+                ? "The extractor could not find this term. Mark where the document states it."
+                : doc.kind === "amendment"
+                  ? "No change to this term was found, so the lease's value carries over. If the amendment does change it, mark where."
+                  : "Not found in the agreement, so it is not tested. If the agreement does have it, mark where."}
             </div>
             <div className="term-actions">
               <button

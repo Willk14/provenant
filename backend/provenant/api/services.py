@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from provenant.api.auth import PARTNER, PREPARER, REVIEWER, Principal
 from provenant.api.db import Document, FieldRow, Job, ReviewEventRow, tenant_session
 from provenant.api.storage import BlobStore
+from provenant.covenants import Terms as CovenantTerms
 from provenant.extraction import Extractor
 from provenant.extraction.pdftext import open_pages
 from provenant.leases import LeaseSchedule, LeaseTerms, Modification, build_schedule, check_value
@@ -33,10 +34,19 @@ class Kind:
     gate: ConfidenceGate
 
 
+# Covenant thresholds and the cure period are where the money and the legal risk sit: a partner signs them off.
+COVENANT_GATE = ConfidenceGate(
+    "covenant-v1",
+    threshold=0.95,
+    always_review=frozenset({"max_leverage_ratio", "min_interest_cover", "min_liquidity", "cure_period_days"}),
+)
+
 KINDS = {
     "lease": Kind(LeaseTerms.REQUIRED, LeaseTerms.REQUIRED, LEASE_GATE),
     "amendment": Kind(Modification.FIELDS, Modification.REQUIRED, AMENDMENT_GATE),
+    "credit_agreement": Kind(CovenantTerms.FIELDS, CovenantTerms.REQUIRED, COVENANT_GATE),
 }
+UPLOAD_KINDS = ("lease", "credit_agreement")  # amendments are uploaded with `amends`
 ANY_ROLE = (PREPARER, REVIEWER, PARTNER)
 
 
@@ -112,13 +122,23 @@ def _enqueue_extraction(s: Session, doc: Document) -> None:
 
 
 def upload_document(
-    s: Session, store: BlobStore, p: Principal, filename: str, data: bytes, amends: str | None = None
+    s: Session,
+    store: BlobStore,
+    p: Principal,
+    filename: str,
+    data: bytes,
+    amends: str | None = None,
+    kind: str = "lease",
 ) -> tuple[Document, bool]:
     """Idempotent by content. The document and its extraction job commit together (transactional outbox).
 
     With `amends`, the file is an amendment (addendum, side letter, extension) to that lease.
     """
     require(p, *ANY_ROLE)
+    if kind not in UPLOAD_KINDS:
+        raise Invalid(f"kind must be one of {', '.join(UPLOAD_KINDS)}")
+    if amends and kind != "lease":
+        raise Invalid("only leases have amendments here")
     if len(data) > MAX_UPLOAD_BYTES:
         raise Invalid(f"file exceeds {MAX_UPLOAD_BYTES // (1024 * 1024)} MB")
     if not data.startswith(b"%PDF-"):
@@ -130,10 +150,11 @@ def upload_document(
             raise Invalid("amend the lease itself, not another amendment; the chain is ordered by effective date")
     sha = hashlib.sha256(data).hexdigest()
     query = select(Document).where(Document.tenant_id == p.tenant_id, Document.sha256 == sha)
+    wanted_kind = "amendment" if lease else kind
     if existing := s.scalar(query):
-        if existing.parent_id != (lease.id if lease else None):
-            where = f"as an amendment to another lease" if existing.parent_id else "as a lease of its own"
-            raise Conflict(f"this file is already uploaded {where} ({existing.filename})")
+        if existing.parent_id != (lease.id if lease else None) or existing.kind != wanted_kind:
+            where = {"amendment": "as an amendment", "lease": "as a lease", "credit_agreement": "as a credit agreement"}
+            raise Conflict(f"this file is already uploaded {where[existing.kind]} ({existing.filename})")
         if existing.status == "failed":  # re-uploading a failed document retries it
             _enqueue_extraction(s, existing)
             s.commit()
@@ -148,7 +169,7 @@ def upload_document(
         filename=filename[:255] or "upload.pdf",
         size_bytes=len(data),
         uploaded_by=p.user,
-        kind="amendment" if lease else "lease",
+        kind=wanted_kind,
         parent_id=lease.id if lease else None,
         parent_sha256=lease.sha256 if lease else None,
     )
@@ -331,8 +352,10 @@ def lease_schedule(s: Session, tenant_id: str, document_id: str) -> ChainedSched
     """The lease's schedule with every amendment applied in effective-date order. Any amendment that is
     unread, unverified or ambiguous blocks the whole schedule: a superseded term must never feed a figure."""
     lease = get_document(s, tenant_id, document_id)
-    if lease.kind != "lease":
+    if lease.kind == "amendment":
         raise Conflict("this is an amendment; its effect is on the schedule of the lease it amends")
+    if lease.kind != "lease":
+        raise Conflict("only leases have a lease schedule")
     lease_rows = list_fields(s, tenant_id, lease.id)
     try:
         terms = LeaseTerms.from_fields({r.name: r.to_domain() for r in lease_rows})

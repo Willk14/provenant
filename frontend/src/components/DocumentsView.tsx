@@ -31,6 +31,7 @@ export function DocumentsView() {
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [over, setOver] = useState(false);
+  const [kind, setKind] = useState<"lease" | "credit_agreement">("lease");
   const input = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
@@ -62,7 +63,7 @@ export function DocumentsView() {
     }
     setUploading(true);
     try {
-      for (const file of pdfs) await api.upload(file);
+      for (const file of pdfs) await api.upload(file, undefined, kind);
       await load();
     } catch (e) {
       setError((e as Error).message);
@@ -77,7 +78,10 @@ export function DocumentsView() {
       <div className="page-head">
         <div>
           <h1>Documents</h1>
-          <p className="muted">Leases you upload are read automatically. Every figure keeps a link to where it came from.</p>
+          <p className="muted">
+            Leases and credit agreements you upload are read automatically. Every figure keeps a link to where it came
+            from.
+          </p>
         </div>
       </div>
 
@@ -99,10 +103,18 @@ export function DocumentsView() {
           ⤒
         </div>
         <div style={{ flex: 1 }}>
-          <strong>Drop lease PDFs here</strong>
+          <strong>Drop {kind === "lease" ? "lease" : "credit agreement"} PDFs here</strong>
           <div className="muted" style={{ fontSize: 13 }}>
-            Uploading the same file twice opens the existing document. Max 25 MB.
+            Uploading the same file twice opens the existing document. Max 25 MB. Amendments are uploaded from their
+            lease.
           </div>
+        </div>
+        <div className="segmented" role="group" aria-label="Upload as">
+          {(["lease", "credit_agreement"] as const).map((k) => (
+            <button key={k} type="button" aria-pressed={kind === k} onClick={() => setKind(k)}>
+              {k === "lease" ? "Lease" : "Credit agreement"}
+            </button>
+          ))}
         </div>
         <input
           ref={input}
@@ -148,6 +160,7 @@ export function DocumentsView() {
                 >
                   <td>
                     {d.kind === "amendment" && <span className="kind-tag">Amendment</span>}
+                    {d.kind === "credit_agreement" && <span className="kind-tag kind-credit">Credit agreement</span>}
                     <a href={`/documents/${d.id}`} onClick={(e) => e.preventDefault()} style={{ fontWeight: 550 }}>
                       {d.filename}
                     </a>

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { CovenantsPanel } from "@/components/CovenantsPanel";
 import { PdfViewer, type Highlight } from "@/components/PdfViewer";
 import { SchedulePanel } from "@/components/SchedulePanel";
 import { DocumentStatusPill } from "@/components/StatusPill";
@@ -99,10 +100,12 @@ export function Workspace({ id, initialField, initialTab }: { id: string; initia
     () => (schedule && selection ? resolveInputs(schedule, selection).filter((f) => f.document_id === id) : []),
     [schedule, selection, id],
   );
+  const [covenantClause, setCovenantClause] = useState<FieldName | null>(null);
   const active = useMemo<ReadonlySet<FieldName>>(() => {
+    if (tab === "schedule" && kind === "credit_agreement") return new Set(covenantClause ? [covenantClause] : []);
     if (tab === "schedule" && selection) return new Set(tracedHere.map((f) => f.name));
     return new Set(selectedField ? [selectedField] : []);
-  }, [tab, selection, tracedHere, selectedField]);
+  }, [tab, kind, covenantClause, selection, tracedHere, selectedField]);
 
   const filenames = useMemo(() => {
     const names = new Map<string, string>();
@@ -223,7 +226,7 @@ export function Workspace({ id, initialField, initialTab }: { id: string; initia
             {toReview > 0 && <span className="tab-count">{toReview}</span>}
           </button>
           <button role="tab" aria-selected={tab === "schedule"} onClick={() => setTab("schedule")}>
-            IFRS 16 schedule
+            {kind === "credit_agreement" ? "Covenants" : "IFRS 16 schedule"}
           </button>
         </div>
         <div className="panel-body">
@@ -250,6 +253,14 @@ export function Workspace({ id, initialField, initialTab }: { id: string; initia
               }}
               onCancelBox={() => setPendingBox(null)}
               onChanged={load}
+            />
+          ) : doc.kind === "credit_agreement" ? (
+            <CovenantsPanel
+              doc={doc}
+              onTrace={(name) => {
+                setCovenantClause(name);
+                if (name) setFocus({ name, nonce: Date.now() });
+              }}
             />
           ) : doc.kind === "amendment" && doc.parent ? (
             <div className="callout">

@@ -1,5 +1,5 @@
 import { identityHeaders } from "./identity";
-import type { BBox, DocumentSummary, Field, FieldName, Schedule } from "./types";
+import type { BBox, CovenantRun, DocumentSummary, Field, FieldName, Schedule, TrialBalanceSummary } from "./types";
 
 export class ApiError extends Error {
   constructor(
@@ -39,10 +39,11 @@ export const api = {
   document: (id: string) => call<DocumentSummary>(`/documents/${id}`),
   pdf: (id: string) => call<ArrayBuffer>(`/documents/${id}/file`),
   /** With `amends`, the file is an amendment to that lease. */
-  upload: (file: File, amends?: string) => {
+  upload: (file: File, amends?: string, kind: "lease" | "credit_agreement" = "lease") => {
     const form = new FormData();
     form.append("file", file);
     if (amends) form.append("amends", amends);
+    else form.append("kind", kind);
     return call<DocumentSummary>("/documents", { method: "POST", body: form });
   },
   reviewQueue: () => call<Field[]>("/review-queue"),
@@ -55,5 +56,15 @@ export const api = {
     call<Field>(`/documents/${documentId}/fields`, json({ name, value, page, bbox })),
   schedule: (id: string) => call<Schedule>(`/documents/${id}/lease-schedule`),
   workbook: (id: string) => call<ArrayBuffer>(`/documents/${id}/lease-schedule.xlsx`),
+  trialBalances: (id: string) => call<TrialBalanceSummary[]>(`/documents/${id}/trial-balances`),
+  uploadTrialBalance: (id: string, file: File, periodEnd: string) => {
+    const form = new FormData();
+    form.append("file", file);
+    form.append("period_end", periodEnd);
+    return call<TrialBalanceSummary>(`/documents/${id}/trial-balances`, { method: "POST", body: form });
+  },
+  deleteTrialBalance: (tbId: string) => call<ArrayBuffer>(`/trial-balances/${tbId}`, { method: "DELETE" }),
+  covenants: (id: string, asOf?: string) =>
+    call<CovenantRun>(`/documents/${id}/covenants${asOf ? `?as_of=${asOf}` : ""}`),
   verifyLog: () => call<{ intact: boolean; events: number }>("/review-log/verify"),
 };

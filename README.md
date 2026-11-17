@@ -72,6 +72,19 @@ and `X-Roles` headers, for local use only. In any shared environment configure O
 `PROVENANT_INLINE_WORKER=1` runs extraction inside the API process for convenience. In production run workers
 separately: `python -m provenant.worker`.
 
+### Covenants (credit agreements)
+
+| Step | Call |
+|---|---|
+| Upload a facility agreement (form field `kind=credit_agreement`) | `POST /documents` |
+| Upload a quarterly trial balance CSV (`period_end` = quarter-end) | `POST /documents/{id}/trial-balances` |
+| Results per quarter, workings, deadlines and alerts (`as_of` optional) | `GET /documents/{id}/covenants` |
+
+Trial balance CSV: `code,name,category,balance` (debit positive) or `debit,credit` instead of `balance`.
+Categories: `cash, borrowings, lease_liabilities, revenue, operating_expenses, depreciation_amortisation,
+interest_expense, other`. Each quarter holds that quarter's P&L; it must balance to the cent. See
+[ADR 0004](docs/adr/0004-covenant-testing.md) for definitions and what is not covered yet.
+
 ### Roles
 
 | Role | Can |

@@ -1,6 +1,7 @@
-"""Deterministic baseline extractor for leases with labelled terms ("Monthly Rent: ...").
+"""Deterministic baseline extractor for documents with labelled or conventionally worded terms.
 
 It is the fallback when a model is unavailable and the yardstick a model must beat on the golden set.
+It proposes every term it recognises; the service keeps only the terms of the document's kind.
 """
 import re
 from datetime import datetime
@@ -8,7 +9,21 @@ from datetime import datetime
 from provenant.extraction.pdftext import open_pages
 from provenant.provenance import ExtractedField
 
+_DATE = r"(\d{4}-\d{2}-\d{2}|\d{1,2}\s+[a-z]+\s+\d{4})"
+_RATIO = r"(\d{1,2}(?:\.\d{1,2})?)\s*(?::\s*1|x\b|times)"
+_CLAUSE = r"[^.]{0,120}?"  # the rest of the same sentence, lazily
+
 PATTERNS = {
+    # credit agreements: the usual "shall not exceed 3.50:1" / "not be less than 4.00:1" wording
+    "max_leverage_ratio": rf"leverage ratio{_CLAUSE}(?:shall|must|will)\s+not\s+exceed\s+{_RATIO}",
+    "min_interest_cover": rf"interest cover(?:\s+ratio)?{_CLAUSE}(?:shall|must|will)\s+not\s+be\s+less\s+than\s+{_RATIO}",
+    "min_liquidity": rf"liquidity{_CLAUSE}(?:shall|must|will)\s+not\s+(?:at\s+any\s+time\s+)?be\s+less\s+than\s+"
+    r"(?:[a-z]{3}|[$€£])?\s*(\d[\d,]*(?:\.\d{1,2})?)",
+    "first_test_date": rf"first test date\s*[:\-]?\s*{_DATE}",
+    "reporting_days": r"within\s+(\d{1,3})\s+days\s+(?:after|of|following)\s+(?:the\s+end\s+of\s+)?each\s+"
+    r"(?:financial\s+)?quarter",
+    "cure_period_days": rf"(?:cure period|cure right|equity cure){_CLAUSE}(\d{{1,3}})\s+days",
+    # leases and amendments
     "commencement_date": r"commencement date\s*[:\-]?\s*(\d{4}-\d{2}-\d{2}|\d{1,2}\s+[a-z]+\s+\d{4})",
     "effective_date": r"effective date\s*[:\-]?\s*(\d{4}-\d{2}-\d{2}|\d{1,2}\s+[a-z]+\s+\d{4})",
     "term_months": r"(?:lease\s+)?term\s*[:\-]?\s*(\d{1,3})\s*months",
@@ -34,11 +49,13 @@ def normalise(name: str, raw: str) -> tuple[str, bool]:
         return raw.replace(" ", ""), True
     if name == "payment_timing":
         return raw.lower(), True
+    if name in ("max_leverage_ratio", "min_interest_cover"):
+        return f"{raw}x", True  # "3.50:1" and "3.50 times" are both 3.50x
     return raw, True
 
 
 class LeaseLabelExtractor:
-    name = "lease-labels@1"
+    name = "labels@2"
 
     def extract(self, pdf: bytes, document_sha256: str) -> list[ExtractedField]:
         found: dict[str, ExtractedField] = {}

@@ -3,13 +3,13 @@
 Pure and deterministic: the same verified terms always give the same schedule, to the cent.
 """
 import calendar
-import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal, localcontext
 from enum import StrEnum
 
+from provenant.core.formats import FORMATS, check_value
 from provenant.core.money import ZERO, round_money, to_decimal
 from provenant.ledger import JournalEntry, pair
 from provenant.provenance import ExtractedField
@@ -50,7 +50,7 @@ class LeaseTerms:
             raise ValueError("costs, prepayments and incentives must be non-negative")
 
     REQUIRED = ("commencement_date", "term_months", "monthly_payment", "annual_discount_rate", "payment_timing")
-    FORMATS = None  # set below the class: shared with Modification
+    FORMATS = FORMATS  # shared shapes, see provenant.core.formats
 
     @staticmethod
     def check_value(name: str, value: str) -> str:
@@ -81,30 +81,6 @@ class LeaseTerms:
         )
 
 
-# What a verified value must look like. Applied to human input (entry, corrections) and again before calculating.
-# The rate must carry "%": a bare "12" vs "0.12" is exactly the ambiguity that ends up 100x wrong.
-FORMATS = {
-    "commencement_date": (r"\d{4}-\d{2}-\d{2}", "a date as YYYY-MM-DD"),
-    "effective_date": (r"\d{4}-\d{2}-\d{2}", "a date as YYYY-MM-DD"),
-    "term_months": (r"\d{1,3}", "a whole number of months"),
-    "monthly_payment": (r"\d{1,3}(,\d{3})*(\.\d{1,2})?|\d+(\.\d{1,2})?", "an amount like 120,000 or 120000.00"),
-    "annual_discount_rate": (r"\d{1,2}(\.\d+)?%", "a percentage like 12% or 8.5%"),
-    "payment_timing": (r"(?i)advance|arrears", "advance or arrears"),
-}
-LeaseTerms.FORMATS = FORMATS
-
-
-def check_value(name: str, value: str) -> str:
-    """The value, stripped, if it has the right shape for `name`; otherwise ValueError saying what is expected."""
-    if name not in FORMATS:
-        raise ValueError(f"unknown lease field {name!r}")
-    pattern, expected = FORMATS[name]
-    value = value.strip()
-    if not re.fullmatch(pattern, value):
-        raise ValueError(f"{name.replace('_', ' ')} must be {expected}, got {value!r}")
-    if name.endswith("_date"):
-        date.fromisoformat(value)  # also rejects 2026-02-30
-    return value
 
 
 def monthly_rate(annual_percent: str) -> Decimal:

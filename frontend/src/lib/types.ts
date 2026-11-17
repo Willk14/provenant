@@ -4,7 +4,13 @@ export type FieldName =
   | "term_months"
   | "monthly_payment"
   | "annual_discount_rate"
-  | "payment_timing";
+  | "payment_timing"
+  | "max_leverage_ratio"
+  | "min_interest_cover"
+  | "min_liquidity"
+  | "first_test_date"
+  | "reporting_days"
+  | "cure_period_days";
 
 export type FieldStatus = "proposed" | "auto_accepted" | "needs_review" | "approved" | "corrected" | "rejected";
 
@@ -28,7 +34,7 @@ export interface Field {
 }
 
 export type DocumentStatus = "queued" | "extracting" | "extracted" | "failed";
-export type DocumentKind = "lease" | "amendment";
+export type DocumentKind = "lease" | "amendment" | "credit_agreement";
 
 export interface DocumentSummary {
   id: string;
@@ -119,6 +125,19 @@ export const KINDS: Record<DocumentKind, KindSpec> = {
       annual_discount_rate: "Revised discount rate (annual)",
     },
   },
+  credit_agreement: {
+    order: [
+      "max_leverage_ratio",
+      "min_interest_cover",
+      "min_liquidity",
+      "first_test_date",
+      "reporting_days",
+      "cure_period_days",
+    ],
+    required: new Set(["first_test_date", "reporting_days"]),
+    judgement: new Set(["max_leverage_ratio", "min_interest_cover", "min_liquidity", "cure_period_days"]),
+    labels: {},
+  },
 };
 
 export const FIELD_LABELS: Record<FieldName, string> = {
@@ -128,7 +147,71 @@ export const FIELD_LABELS: Record<FieldName, string> = {
   monthly_payment: "Monthly payment",
   payment_timing: "Payment timing",
   annual_discount_rate: "Discount rate (annual)",
+  max_leverage_ratio: "Maximum leverage (net debt / EBITDA)",
+  min_interest_cover: "Minimum interest cover (EBITDA / interest)",
+  min_liquidity: "Minimum liquidity (cash)",
+  first_test_date: "First test date",
+  reporting_days: "Compliance certificate due (days after quarter-end)",
+  cure_period_days: "Equity cure window (days)",
 };
+
+export type CovenantKind = "leverage" | "interest_cover" | "min_liquidity";
+
+export const COVENANT_LABELS: Record<CovenantKind, string> = {
+  leverage: "Leverage",
+  interest_cover: "Interest cover",
+  min_liquidity: "Liquidity",
+};
+
+export const COVENANT_FIELD: Record<CovenantKind, FieldName> = {
+  leverage: "max_leverage_ratio",
+  interest_cover: "min_interest_cover",
+  min_liquidity: "min_liquidity",
+};
+
+export interface TrialBalanceSummary {
+  id: string;
+  period_end: string;
+  filename: string;
+  sha256: string;
+  uploaded_by: string;
+  lines: number;
+}
+
+export interface CovenantResult {
+  kind: CovenantKind;
+  field_id: string;
+  threshold: string;
+  status: "pass" | "warning" | "breach";
+  value: string | null;
+  headroom: string | null;
+  workings: { label: string; amount: string }[];
+  note: string;
+}
+
+export interface CovenantTestDate {
+  period_end: string;
+  certificate_due: string;
+  cure_deadline: string | null;
+  status: "tested" | "awaiting" | "overdue";
+  missing: string | null;
+  trial_balance_ids: string[];
+  results: CovenantResult[];
+}
+
+export interface CovenantAlert {
+  severity: "breach" | "overdue" | "warning" | "due";
+  on: string;
+  message: string;
+}
+
+export interface CovenantRun {
+  as_of: string;
+  terms: { first_test_date: string; reporting_days: number; cure_days: number | null; warning_headroom: string };
+  test_dates: CovenantTestDate[];
+  alerts: CovenantAlert[];
+  inputs: Field[];
+}
 
 export function fieldLabel(name: FieldName, kind: DocumentKind = "lease"): string {
   return KINDS[kind].labels[name] ?? FIELD_LABELS[name];

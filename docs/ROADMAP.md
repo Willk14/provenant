@@ -45,8 +45,14 @@ Built as thin vertical slices. Each milestone ships something a user can run end
 - [ ] Component tests (React Testing Library) and a Playwright smoke test in CI
 
 ## M3 — Covenants and full-population analytics
-- [ ] Credit agreement extraction: financial covenants, baskets, cure periods, reporting dates
-- [ ] Covenant tester against trial-balance data, with alerts before deadlines
+- [x] Credit agreements as a document kind: leverage, interest cover, liquidity, first test date, certificate
+      deadline and cure window extracted with page + box; thresholds need a partner (ADR 0004)
+- [x] Quarterly trial balance upload: mapped categories, must balance to the cent, stored as integer cents
+- [x] Deterministic covenant engine: LTM from four quarters, exact comparisons, headroom, workings
+- [x] Deadlines and alerts: certificate due dates, cure windows, overdue data, near-limit warnings
+- [x] Covenants tab: results by quarter, workings with the trial balances used, clause highlighted on the PDF
+- [ ] Frozen-GAAP / IFRS 16 adjustments using Provenant's own lease schedules; EBITDA add-backs
+- [ ] Baskets, DSCR and other covenant types; year-to-date trial balances; Claude extraction of covenant terms
 - [ ] GL import → Parquet → DuckDB: Benford, duplicates, weekend/round-sum JE tests
 
 ## M4 — Due diligence and ERP

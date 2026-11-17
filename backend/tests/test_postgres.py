@@ -30,6 +30,19 @@ def test_rls_blocks_writing_rows_for_another_tenant(database_url):
             s.commit()
 
 
+def test_trial_balances_are_tenant_isolated(client, app, database_url):
+    from tests.test_covenants_api import STEADY, tb_csv, upload_agreement, upload_tb
+
+    doc_id = upload_agreement(client, app)
+    assert upload_tb(client, doc_id, "2026-03-31", tb_csv(**STEADY)).status_code == 201
+    factory = make_sessionmaker(make_engine(database_url))
+    with tenant_session(factory, "firm-a") as s:
+        assert s.scalar(text("select count(*) from trial_balance_lines")) == 7
+    with tenant_session(factory, "firm-b") as s:
+        assert s.scalar(text("select count(*) from trial_balance_lines")) == 0
+        assert s.scalar(text("select count(*) from trial_balances")) == 0
+
+
 def test_review_log_cannot_be_edited_or_deleted(client, app, database_url):
     _, fields = uploaded_lease(client, app)
     assert review(client, fields["payment_timing"]["id"], PARTNER).status_code == 200

@@ -5,7 +5,11 @@
 The office lease has labelled terms (the baseline extractor reads all of it) and a first amendment that
 extends it and raises the rent from its second year. The equipment lease is written in prose, so some terms
 must be entered by hand by drawing a box on the PDF, which is what the workspace is for.
+The term facility agreement has three financial covenants; five quarterly trial balances show a borrower
+passing comfortably, then breaching after a weak quarter.
 """
+import csv
+import io
 import sys
 
 import httpx
@@ -56,6 +60,66 @@ OFFICE_AMENDMENT = [
     ]
 ]
 
+FACILITY_AGREEMENT = [
+    [
+        ("h", "TERM FACILITY AGREEMENT"),
+        ("p", "KES 1,000,000,000 term loan facility between Kilima Analytics Ltd (the \"Borrower\") and "
+              "Rift Valley Bank plc (the \"Lender\")."),
+        ("s", "21. Information undertakings"),
+        ("p", "The Borrower shall supply a Compliance Certificate to the Lender within 45 days after the end of "
+              "each Financial Quarter, setting out computations of the financial covenants in Clause 22."),
+        ("s", "22. Financial covenants"),
+        ("p", "(a) Leverage: The Leverage Ratio in respect of any Relevant Period shall not exceed 3.50:1."),
+        ("p", "(b) Interest cover: Interest Cover in respect of any Relevant Period shall not be less than 4.00:1."),
+        ("p", "(c) Minimum liquidity: Liquidity shall not at any time be less than KES 50,000,000."),
+        ("p", "First Test Date: 30 June 2026"),
+    ],
+    [
+        ("s", "23. Equity cure"),
+        ("p", "If a financial covenant is not met, the Borrower may remedy that breach by procuring new equity: "
+              "the equity cure must be received within 20 days of the due date of the relevant Compliance "
+              "Certificate."),
+        ("s", "24. Interest"),
+        ("p", "Interest rate: 13.5% per annum, payable quarterly in arrears."),
+    ],
+]
+
+# Kilima's quarterly trial balances (KES millions): steady for four quarters, then a weak quarter.
+STEADY_QUARTER = dict(revenue=300, opex=225, da=30, interest=18, cash=120, borrowings=900, leases=60)
+WEAK_QUARTER = dict(revenue=260, opex=235, da=30, interest=20, cash=60, borrowings=950, leases=58)
+TB_QUARTERS = [
+    ("2025-09-30", STEADY_QUARTER),
+    ("2025-12-31", STEADY_QUARTER),
+    ("2026-03-31", STEADY_QUARTER),
+    ("2026-06-30", STEADY_QUARTER),
+    ("2026-09-30", WEAK_QUARTER),
+]
+
+
+def trial_balance_csv(revenue, opex, da, interest, cash, borrowings, leases) -> bytes:
+    m = 1_000_000
+    lines = [
+        ("1000", "Bank - Rift Valley current account", "cash", cash * m),
+        ("1100", "Trade receivables", "other", 410 * m),
+        ("1500", "Property, plant and equipment", "other", 1_250 * m),
+        ("1600", "Right-of-use assets", "other", 55 * m),
+        ("2000", "Trade payables", "other", -180 * m),
+        ("2500", "Term loan - Rift Valley Bank", "borrowings", -borrowings * m),
+        ("2600", "Lease liabilities", "lease_liabilities", -leases * m),
+        ("4000", "Revenue - analytics subscriptions", "revenue", -revenue * m),
+        ("5000", "Staff costs", "operating_expenses", round(opex * 0.6) * m),
+        ("5100", "Cloud and hosting", "operating_expenses", (opex - round(opex * 0.6)) * m),
+        ("6000", "Depreciation and amortisation", "depreciation_amortisation", da * m),
+        ("6100", "Interest on term loan", "interest_expense", interest * m),
+    ]
+    lines.append(("3000", "Share capital and retained earnings", "other", -sum(b for *_, b in lines)))
+    out = io.StringIO()
+    writer = csv.writer(out)  # quotes names like "Property, plant and equipment"
+    writer.writerow(["code", "name", "category", "balance"])
+    writer.writerows([c, n, k, f"{b:.2f}"] for c, n, k, b in lines)
+    return out.getvalue().encode()
+
+
 EQUIPMENT_LEASE = [
     [
         ("h", "EQUIPMENT RENTAL AGREEMENT"),
@@ -83,11 +147,11 @@ def make_pdf(pages) -> bytes:
     return bytes(pdf.output())
 
 
-def upload(base: str, name: str, pages, amends: str | None = None) -> str:
+def upload(base: str, name: str, pages, amends: str | None = None, kind: str = "lease") -> str:
     r = httpx.post(
         f"{base}/documents",
         headers=PAT,
-        data={"amends": amends} if amends else None,
+        data={"amends": amends} if amends else {"kind": kind},
         files={"file": (name, make_pdf(pages), "application/pdf")},
     )
     r.raise_for_status()
@@ -99,6 +163,16 @@ def main(base: str) -> None:
     office = upload(base, "westlands-office-lease.pdf", OFFICE_LEASE)
     upload(base, "westlands-first-amendment.pdf", OFFICE_AMENDMENT, amends=office)
     upload(base, "storage-array-rental.pdf", EQUIPMENT_LEASE)
+    facility = upload(base, "rift-valley-term-facility.pdf", FACILITY_AGREEMENT, kind="credit_agreement")
+    for period_end, quarter in TB_QUARTERS:
+        r = httpx.post(
+            f"{base}/documents/{facility}/trial-balances",
+            headers=PAT,
+            data={"period_end": period_end},
+            files={"file": (f"kilima-tb-{period_end}.csv", trial_balance_csv(**quarter), "text/csv")},
+        )
+        r.raise_for_status()
+        print(f"{r.status_code} trial balance {period_end}")
 
 
 if __name__ == "__main__":

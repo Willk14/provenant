@@ -14,7 +14,8 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from provenant.api import services
+from provenant.api import covenants, services
+from provenant.covenants.engine import quarters_back
 from provenant.api.auth import AuthError, Authenticator, Principal, authenticator_from_env, principal_from
 from provenant.api.db import Document, FieldRow, make_engine, make_sessionmaker, tenant_session
 from provenant.api.export import schedule_workbook
@@ -59,7 +60,7 @@ class DocumentOut(BaseModel):
     filename: str
     size_bytes: int
     uploaded_by: str
-    kind: Literal["lease", "amendment"]
+    kind: Literal["lease", "amendment", "credit_agreement"]
     parent_id: str | None
     parent_sha256: str | None
     status: str
@@ -152,6 +153,62 @@ class ReviewLogStatus(BaseModel):
     events: int
 
 
+class TrialBalanceOut(BaseModel):
+    id: str
+    period_end: date
+    filename: str
+    sha256: str
+    uploaded_by: str
+    lines: int
+
+
+class WorkingOut(BaseModel):
+    label: str
+    amount: Decimal
+
+
+class CovenantResultOut(BaseModel):
+    kind: str
+    field_id: str
+    threshold: Decimal
+    status: str
+    value: Decimal | None  # ratio to 4 dp, or the amount; display only (tests compare the exact value)
+    headroom: Decimal | None  # fraction, 4 dp
+    workings: list[WorkingOut]
+    note: str
+
+
+class TestDateOut(BaseModel):
+    period_end: date
+    certificate_due: date
+    cure_deadline: date | None
+    status: Literal["tested", "awaiting", "overdue"]
+    missing: str | None
+    trial_balance_ids: list[str]
+    results: list[CovenantResultOut]
+
+
+class AlertOut(BaseModel):
+    severity: str
+    on: date
+    message: str
+
+
+class CovenantTermsOut(BaseModel):
+    first_test_date: date
+    reporting_days: int
+    cure_days: int | None
+    warning_headroom: Decimal
+
+
+class CovenantsOut(BaseModel):
+    as_of: date
+    terms: CovenantTermsOut
+    test_dates: list[TestDateOut]
+    alerts: list[AlertOut]
+    inputs: list[FieldOut]
+
+
 # ---- app -------------------------------------------------------------------------------------
 
 
@@ -240,9 +297,12 @@ def create_app(
         response: Response,
         file: Annotated[UploadFile, File()],
         amends: Annotated[str | None, Form(max_length=36)] = None,
+        kind: Annotated[str, Form(max_length=32)] = "lease",
     ) -> DocumentOut:
         data = file.file.read(services.MAX_UPLOAD_BYTES + 1)  # sync route: runs in the threadpool, like the DB calls
-        doc, created = services.upload_document(s, store, p, file.filename or "", data, amends=amends or None)
+        doc, created = services.upload_document(
+            s, store, p, file.filename or "", data, amends=amends or None, kind=kind
+        )
         if not created:
             response.status_code = 200
         return DocumentOut.of(doc)
@@ -314,6 +374,80 @@ def create_app(
             schedule_workbook(chained),
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             headers={"Content-Disposition": f'attachment; filename="lease-schedule-{document_id}.xlsx"'},
+        )
+
+    @app.post("/documents/{document_id}/trial-balances", response_model=TrialBalanceOut, status_code=201)
+    def upload_trial_balance(
+        document_id: str,
+        p: Auth,
+        s: Db,
+        file: Annotated[UploadFile, File()],
+        period_end: Annotated[date, Form()],
+    ) -> TrialBalanceOut:
+        data = file.file.read(covenants.MAX_TB_BYTES + 1)
+        row = covenants.upload_trial_balance(s, p, document_id, period_end, file.filename or "", data)
+        lines = dict((r.id, n) for r, n in covenants.list_trial_balances(s, p.tenant_id, document_id))[row.id]
+        return TrialBalanceOut(
+            id=row.id, period_end=row.period_end, filename=row.filename, sha256=row.sha256,
+            uploaded_by=row.uploaded_by, lines=lines,
+        )
+
+    @app.get("/documents/{document_id}/trial-balances", response_model=list[TrialBalanceOut])
+    def trial_balances(document_id: str, p: Auth, s: Db) -> list[TrialBalanceOut]:
+        return [
+            TrialBalanceOut(
+                id=r.id, period_end=r.period_end, filename=r.filename, sha256=r.sha256, uploaded_by=r.uploaded_by,
+                lines=n,
+            )
+            for r, n in covenants.list_trial_balances(s, p.tenant_id, document_id)
+        ]
+
+    @app.delete("/trial-balances/{trial_balance_id}", status_code=204)
+    def delete_trial_balance(trial_balance_id: str, p: Auth, s: Db) -> Response:
+        covenants.delete_trial_balance(s, p, trial_balance_id)
+        return Response(status_code=204)
+
+    @app.get("/documents/{document_id}/covenants", response_model=CovenantsOut)
+    def covenant_results(document_id: str, p: Auth, s: Db, as_of: date | None = None) -> CovenantsOut:
+        as_of = as_of or date.today()
+        r = covenants.covenant_run(s, p.tenant_id, document_id, as_of)
+        field_ids = {f.name: f.id for f in r.fields}
+
+        def periods_used(period_end: date) -> list[str]:
+            return [r.trial_balances[d].id for d in quarters_back(period_end, 4) if d in r.trial_balances]
+
+        return CovenantsOut(
+            as_of=as_of,
+            terms=CovenantTermsOut(
+                first_test_date=r.terms.first_test_date, reporting_days=r.terms.reporting_days,
+                cure_days=r.terms.cure_days, warning_headroom=r.terms.warning_headroom,
+            ),
+            test_dates=[
+                TestDateOut(
+                    period_end=t.period_end,
+                    certificate_due=t.certificate_due,
+                    cure_deadline=t.cure_deadline,
+                    status=covenants.status_of(t, as_of),
+                    missing=t.missing,
+                    trial_balance_ids=periods_used(t.period_end),
+                    results=[
+                        CovenantResultOut(
+                            kind=res.covenant.kind.value,
+                            field_id=field_ids[r.terms.field_for(res.covenant.kind)],
+                            threshold=res.covenant.threshold,
+                            status=res.status,
+                            value=None if res.value is None else round(res.value, 2 if res.covenant.kind == "min_liquidity" else 4),
+                            headroom=None if res.headroom is None else round(res.headroom, 4),
+                            workings=[WorkingOut(label=w.label, amount=w.amount) for w in res.workings],
+                            note=res.note,
+                        )
+                        for res in t.results
+                    ],
+                )
+                for t in r.test_dates
+            ],
+            alerts=[AlertOut(severity=a.severity, on=a.on, message=a.message) for a in covenants.alerts(r.test_dates, as_of)],
+            inputs=[FieldOut.of(f) for f in r.fields],
         )
 
     app.state.session_factory, app.state.store, app.state.extractor = factory, store, extractor
