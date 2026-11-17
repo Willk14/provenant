@@ -4,13 +4,22 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "provenant"
-version = "0.1.0"
+version = "0.2.0"
 description = "Contract-to-ledger platform: traceable extraction, deterministic accounting."
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "sqlalchemy>=2.0",
+    "python-multipart>=0.0.9",
+    # Pinned to a minor: the extractor relies on Page._get_textmap for char-level bboxes.
+    "pdfplumber>=0.11,<0.12",
+    "openpyxl>=3.1",
+]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.3"]
+postgres = ["psycopg[binary]>=3.2"]
+dev = ["pytest>=8.3", "httpx>=0.27", "fpdf2>=2.7"]
 
 [tool.setuptools.packages.find]
 include = ["provenant*"]

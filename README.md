@@ -37,6 +37,30 @@ cd backend
 python -m venv .venv
 .venv/Scripts/python -m pip install -e ".[dev]"    # macOS/Linux: .venv/bin/python
 .venv/Scripts/python -m pytest
+.venv/Scripts/python -m uvicorn provenant.api.main:app --reload   # API docs at http://127.0.0.1:8000/docs
+```
+
+Local identity is taken from `X-Tenant-Id` and `X-User` headers (`PROVENANT_DEV_AUTH=1`, the default). This is
+for local development only; real auth lands in M1.5.
+
+### The first workflow (IFRS 16 lease)
+
+| Step | Call |
+|---|---|
+| Upload a lease PDF (same file twice returns the same document) | `POST /documents` |
+| See extracted terms, each with page + bounding box | `GET /documents/{id}` |
+| Fields a human must sign off (low confidence, or judgement calls like the discount rate) | `GET /review-queue` |
+| Approve / correct / reject, recorded in a hash-chained log | `POST /fields/{id}/review` |
+| Schedule from verified terms only (409 until then) | `GET /documents/{id}/lease-schedule` |
+| Excel with Schedule, Journal and Provenance sheets | `GET /documents/{id}/lease-schedule.xlsx` |
+| Prove the review log hasn't been edited | `GET /review-log/verify` |
+
+### Postgres
+
+```bash
+docker compose up -d
+DATABASE_URL=postgresql+psycopg://provenant:provenant_dev@localhost:5433/provenant uvicorn provenant.api.main:app
+psql postgresql://provenant:provenant_dev@localhost:5433/provenant -f db/postgres/001_hardening.sql
 ```
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/ROADMAP.md](docs/ROADMAP.md).

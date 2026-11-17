@@ -1,5 +1,15 @@
 from provenant.provenance.gate import ConfidenceGate
 from provenant.provenance.model import ExtractedField, SourceRef, Status
-from provenant.provenance.review import ReviewEvent, ReviewLog
+from provenant.provenance.review import GENESIS, ReviewEvent, ReviewLog, review, verify_chain
 
-__all__ = ["ConfidenceGate", "ExtractedField", "ReviewEvent", "ReviewLog", "SourceRef", "Status"]
+__all__ = [
+    "GENESIS",
+    "ConfidenceGate",
+    "ExtractedField",
+    "ReviewEvent",
+    "ReviewLog",
+    "SourceRef",
+    "Status",
+    "review",
+    "verify_chain",
+]

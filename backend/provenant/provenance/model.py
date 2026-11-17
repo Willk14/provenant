@@ -8,7 +8,11 @@ _SHA256 = re.compile(r"[0-9a-f]{64}")
 
 @dataclass(frozen=True)
 class SourceRef:
-    """An exact location in an ingested document. bbox is (x0, y0, x1, y1) in PDF points."""
+    """An exact location in an ingested document.
+
+    bbox is (x0, top, x1, bottom) in PDF points with a top-left origin, which is what pdf.js
+    viewers draw in. char_start/char_end index into that page's extracted text.
+    """
 
     document_sha256: str
     page: int

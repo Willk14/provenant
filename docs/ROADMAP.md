@@ -9,10 +9,18 @@ Built as thin vertical slices. Each milestone ships something a user can run end
 - [x] Golden tests for the maths
 
 ## M1 — First lease, end to end
-- [ ] FastAPI service, Postgres schema (documents, fields, reviews, entries) with RLS
-- [ ] Upload PDF → store by sha256 → extraction job (pluggable `Extractor`) → fields with bbox
-- [ ] Review queue API: approve / correct / reject, written to the append-only log
-- [ ] Generate schedule + journal entries from verified fields; export to Excel
+- [x] FastAPI service; schema for documents, fields and review events, tenant-scoped (SQLite for dev)
+- [x] Postgres hardening script: RLS per tenant, append-only trigger on `review_events` (written, not yet run against Postgres)
+- [x] Upload PDF → store by sha256 (idempotent) → extraction job (pluggable `Extractor`) → fields with bbox
+- [x] Baseline `LeaseLabelExtractor` (deterministic, labelled leases) as fallback and benchmark
+- [x] Review queue API: approve / correct / reject, persisted as a hash chain; `/review-log/verify`
+- [x] Schedule + journal entries from verified fields only; Excel export with a Provenance sheet
+
+## M1.5 — Before anyone else uses it
+- [ ] Real auth (OIDC/JWT) replacing dev headers; roles (preparer, reviewer, partner)
+- [ ] Alembic migrations replacing `create_all` + hand-applied SQL; CI runs tests on Postgres
+- [ ] Outbox + worker for extraction; LLM extractor behind the `Extractor` port, scored on a golden set
+- [ ] Manual field entry that still requires a source location (page + box)
 
 ## M2 — The workspace
 - [ ] Next.js app: PDF viewer with bbox highlight, click any schedule number → jump to source
