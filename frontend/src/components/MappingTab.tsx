@@ -7,6 +7,7 @@ import { TREATMENT_LABELS, taxApi, type Account, type Mapping } from "@/lib/tax"
 
 const STATUS_PILL = { unmapped: "pill-bad", suggested: "pill-warn", confirmed: "pill-ok" } as const;
 const STATUS_LABEL = { unmapped: "Unmapped", suggested: "Suggested", confirmed: "Confirmed" } as const;
+const FIRM_RULE_PREFIX = "firm: "; // matches provenant.tax.mapping.FIRM_RULE_PREFIX
 
 interface Props {
   clientId: string;
@@ -104,8 +105,9 @@ export function MappingTab({ clientId, yearEnd, onChanged }: Props) {
           )}
         </div>
         <p className="term-note">
-          Suggestions come from fixed keyword rules on account names and are never used until a person confirms
-          them. Every confirmation is kept in the mapping history with who made it.
+          Suggestions come first from how the firm confirmed the same account name at other clients (when they
+          clearly agree), then from fixed keyword rules on account names. None is used until a person confirms
+          it, and every confirmation is kept in the mapping history with who made it.
         </p>
       </section>
 
@@ -155,6 +157,7 @@ function AccountRow({
     statement === "position" ? t === "balance_sheet" : t !== "balance_sheet",
   );
   const changed = fsLine !== (account.fs_line ?? "") || treatment !== (account.tax_treatment ?? "");
+  const fromFirm = account.rule?.startsWith(FIRM_RULE_PREFIX) ?? false;
 
   async function save() {
     setBusy(true);
@@ -174,10 +177,15 @@ function AccountRow({
         <div style={{ fontWeight: 550 }}>
           <span className="mono faint">{account.code}</span> {account.name}
         </div>
-        <span className={`pill ${STATUS_PILL[account.status]}`} title={account.rule ? `Suggested by rule: ${account.rule}` : undefined}>
+        <span className={`pill ${STATUS_PILL[account.status]}`} title={account.rule && !fromFirm ? `Suggested by keyword rule: ${account.rule}` : undefined}>
           {STATUS_LABEL[account.status]}
           {account.confirmed_by ? ` · ${account.confirmed_by}` : ""}
         </span>
+        {fromFirm && account.status === "suggested" && (
+          <div className="faint" style={{ fontSize: 12, marginTop: 3 }}>
+            Firm practice: {account.rule?.slice(FIRM_RULE_PREFIX.length)}
+          </div>
+        )}
         {error && <div className="term-error">{error}</div>}
       </td>
       <td className="num" style={{ textAlign: "right" }}>

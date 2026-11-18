@@ -181,3 +181,33 @@ def test_confirmed_mappings_carry_forward_and_clients_are_isolated(client, app):
     r = client.post(f"/clients/{cid}/trial-balances", headers=PREPARER, data={"year_end": "2028-12-31"},
                     files={"file": ("tb.csv", unbalanced, "text/csv")})
     assert r.status_code == 422 and "does not balance" in r.json()["detail"]
+
+
+def test_a_new_client_gets_the_firms_confirmed_mappings_as_suggestions(client, app):
+    first = client_with_tb(client)
+    client.put(f"/clients/{first}/mappings/5700", headers=PREPARER,  # "Sundry 7": no keyword rule matches
+               json={"fs_line": "operating_expenses", "tax_treatment": "disallowable"})
+    client.put(f"/clients/{first}/mappings/5000", headers=PREPARER,  # keyword says deductible; firm decided otherwise
+               json={"fs_line": "cost_of_sales", "tax_treatment": "disallowable"})
+
+    second = client.post("/clients", headers=PREPARER, json={"name": "Baobab Logistics Ltd"}).json()["id"]
+    rows = [("9", "SUNDRY-7", 5_000), ("10", "Cost of sales", 400_000), ("11", "Bank charges", 1_000),
+            ("12", "Share capital", -406_000)]
+    r = client.post(f"/clients/{second}/trial-balances", headers=PREPARER, data={"year_end": "2026-12-31"},
+                    files={"file": ("tb.csv", tb_csv(rows), "text/csv")})
+    assert r.status_code == 201, r.text
+    accounts = {a["code"]: a for a in client.get(
+        f"/clients/{second}/years/2026-12-31/mapping", headers=PREPARER).json()["accounts"]}
+    assert (accounts["9"]["status"], accounts["9"]["tax_treatment"], accounts["9"]["rule"]) == (
+        "suggested", "disallowable", "firm: confirmed this way for 1 of 1 other client")
+    assert accounts["10"]["tax_treatment"] == "disallowable" and accounts["10"]["rule"].startswith("firm: ")
+    assert accounts["11"]["rule"] and not accounts["11"]["rule"].startswith("firm: ")  # keyword rule, as before
+    # Suggestions only: nothing is confirmed for the new client until a person does it
+    assert all(a["status"] != "confirmed" for a in accounts.values())
+    # Another firm's confirmations never leak in
+    other = client.post("/clients", headers=OTHER_FIRM, json={"name": "Other firm client"}).json()["id"]
+    client.post(f"/clients/{other}/trial-balances", headers=OTHER_FIRM, data={"year_end": "2026-12-31"},
+                files={"file": ("tb.csv", tb_csv(rows), "text/csv")})
+    theirs = {a["code"]: a for a in client.get(
+        f"/clients/{other}/years/2026-12-31/mapping", headers=OTHER_FIRM).json()["accounts"]}
+    assert theirs["9"]["status"] == "unmapped" and theirs["10"]["tax_treatment"] == "deductible"

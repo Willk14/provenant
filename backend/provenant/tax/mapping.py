@@ -1,9 +1,12 @@
 """Financial mapping: each trial balance account maps to a financial statement line and a tax treatment.
 
-Suggestions are deterministic keyword rules over account names, so the same chart of accounts always gets
-the same suggestions. A person confirms every mapping before it is used.
+Suggestions are deterministic: first the firm's own confirmed mappings for the same account name at other
+clients (when they clearly agree), then keyword rules over account names. The same inputs always give the
+same suggestions, and a person confirms every mapping before it is used.
 """
 import re
+from collections import Counter
+from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import StrEnum
 
@@ -118,6 +121,54 @@ def suggest(account_name: str) -> Suggestion:
         if re.search(pattern, name):
             return Suggestion(line, treatment or FS_LINES[line].default_treatment, pattern)
     return Suggestion(None, None, None)  # unknown names stay unmapped rather than guessed
+
+
+FIRM_RULE_PREFIX = "firm: "
+
+
+@dataclass(frozen=True)
+class Precedent:
+    """A confirmed mapping at another client of the same firm, by account name."""
+
+    client_id: str
+    account_name: str
+    fs_line: str
+    tax_treatment: str
+
+
+def normalise_name(account_name: str) -> str:
+    """Case, punctuation and spacing do not make accounts different: 'Bank charges' == 'BANK-CHARGES'."""
+    return " ".join(re.sub(r"[^0-9a-z]+", " ", account_name.casefold()).split())
+
+
+def learn(precedents: Iterable[Precedent]) -> dict[str, Suggestion]:
+    """Suggestions from the firm's confirmed mappings, keyed by normalised account name.
+
+    Each client counts once per distinct mapping. A mapping is learned only when it holds at least two thirds
+    of the clients with that account name and nothing ties with it; otherwise the keyword rules apply.
+    """
+    votes: dict[str, set[tuple[str, str, str]]] = {}
+    for p in precedents:
+        key = normalise_name(p.account_name)
+        if key:
+            votes.setdefault(key, set()).add((p.client_id, p.fs_line, p.tax_treatment))
+    learned = {}
+    for key, choices in votes.items():
+        clients = len({client for client, _, _ in choices})
+        ranked = Counter((line, treatment) for _, line, treatment in choices).most_common()
+        (line, treatment), count = ranked[0]
+        tied = len(ranked) > 1 and ranked[1][1] == count
+        if tied or 3 * count < 2 * clients or line not in FS_LINES:
+            continue
+        noun = "client" if clients == 1 else "clients"
+        learned[key] = Suggestion(line, TaxTreatment(treatment),
+                                  f"{FIRM_RULE_PREFIX}confirmed this way for {count} of {clients} other {noun}")
+    return learned
+
+
+def suggest_for_firm(account_name: str, learned: dict[str, Suggestion]) -> Suggestion:
+    """The firm's own practice first, then the keyword rules."""
+    return learned.get(normalise_name(account_name)) or suggest(account_name)
 
 
 def check_mapping(fs_line: str, tax_treatment: str) -> TaxTreatment:

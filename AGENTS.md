@@ -83,8 +83,11 @@ push only when the owner asks.
 6. **Schema fixes from real documents (ADR 0005):** discount rate as a preparer input with its basis;
    amendment signing date separate from the date new terms start; expansions as their own change;
    springing covenants and business-day cure periods.
-7. **Mapping suggestions learned from the firm's confirmed mappings** across clients (still deterministic,
-   still confirmed by a person).
+7. ~~Mapping suggestions learned from the firm's confirmed mappings~~: done (`learn` / `suggest_for_firm` in
+   `tax/mapping.py`). Possible follow-up: a "refresh suggestions" action for accounts still unconfirmed.
+
+Work in this folder (the git repository). A copy elsewhere that is not a git checkout loses files that are
+never committed, as happened with the RecordsTab and TaxTab tests.
 
 The owner runs the Claude extraction evaluation (`scripts/evaluate_extractor.py claude --real`) with their own
 API key; do not ask for or store keys.

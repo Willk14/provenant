@@ -33,7 +33,7 @@ from provenant.tax import register as fa_register
 from provenant.tax.engine import (
     KENYA, AllowanceAsset, AllowanceClass, Computation, LeaseYear, MappedLine, TaxCredit, compute,
 )
-from provenant.tax.mapping import FS_LINES, TaxTreatment, check_mapping, suggest
+from provenant.tax.mapping import FS_LINES, Precedent, TaxTreatment, check_mapping, learn, suggest_for_firm
 
 ANY_ROLE = (PREPARER, REVIEWER, PARTNER)
 CENT = Decimal("0.01")
@@ -120,10 +120,11 @@ def upload_trial_balance(
         for r in rows
     )
     known = {m.code for m in _mappings(s, p.tenant_id, client.id)}
+    learned = learn(firm_precedents(s, p.tenant_id, exclude_client=client.id))
     for r in rows:
         if r.code in known:
             continue  # confirmed mappings carry forward from earlier years
-        guess = suggest(r.name)
+        guess = suggest_for_firm(r.name, learned)
         s.add(AccountMappingRow(
             tenant_id=p.tenant_id, client_id=client.id, code=r.code, fs_line=guess.fs_line,
             tax_treatment=guess.tax_treatment.value if guess.tax_treatment else None,
@@ -131,6 +132,32 @@ def upload_trial_balance(
         ))
     s.commit()
     return tb
+
+
+def firm_precedents(s: Session, tenant_id: str, exclude_client: str) -> list[Precedent]:
+    """Confirmed mappings at the firm's other clients, named as in each client's latest trial balance."""
+    confirmed = {
+        (m.client_id, m.code): m for m in s.scalars(select(AccountMappingRow).where(
+            AccountMappingRow.tenant_id == tenant_id, AccountMappingRow.client_id != exclude_client,
+            AccountMappingRow.status == "confirmed",
+        ))
+    }
+    if not confirmed:
+        return []
+    names: dict[tuple[str, str], str] = {}
+    lines = s.execute(
+        select(ClientTrialBalanceRow.client_id, ClientTBLineRow.code, ClientTBLineRow.name)
+        .join(ClientTrialBalanceRow, ClientTrialBalanceRow.id == ClientTBLineRow.trial_balance_id)
+        .where(ClientTBLineRow.tenant_id == tenant_id, ClientTrialBalanceRow.client_id != exclude_client)
+        .order_by(ClientTrialBalanceRow.year_end)
+    )
+    for client_id, code, name in lines:
+        names[(client_id, code)] = name  # later years overwrite: the latest name wins
+    return [
+        Precedent(client_id, names[(client_id, code)], m.fs_line, m.tax_treatment)
+        for (client_id, code), m in confirmed.items()
+        if (client_id, code) in names and m.fs_line and m.tax_treatment
+    ]
 
 
 def _mappings(s: Session, tenant_id: str, client_id: str) -> list[AccountMappingRow]:

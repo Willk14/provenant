@@ -63,6 +63,15 @@ mapping is invisible and the adjustments are re-keyed.
   type-checked by their leading bytes, served with `nosniff`. A document that evidences a credit cannot be
   deleted until the credit no longer points at it.
 
+## Addendum: suggestions learned from the firm
+When a trial balance is uploaded, an account the client has not mapped before is suggested the way the
+firm confirmed the same account name (case, punctuation and spacing ignored) at its other clients, using
+each client's latest name for the code. A mapping is learned only when it holds at least two thirds of
+those clients and nothing ties with it; otherwise the keyword rules apply. It stays deterministic and
+tenant-scoped, the reason ("confirmed this way for 2 of 3 other clients") is stored as the suggestion's
+rule, and a person still confirms every mapping. Firm practice outranks the generic keyword rules because
+it reflects decisions already made for this firm's clients.
+
 ## Not in this slice
 - Minimum tax, turnover tax, VAT and transfer pricing; item-level tax schedules for classes that do not have
   a matching fixed asset register.

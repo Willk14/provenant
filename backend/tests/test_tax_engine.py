@@ -168,3 +168,37 @@ def test_credits_take_the_tax_payable_to_tax_due_or_refundable():
         TaxCredit("rebate", "x", D(1))
     with pytest.raises(ValueError, match="positive"):
         TaxCredit("instalment", "x", D(0))
+
+
+def test_firm_precedents_are_learned_only_when_they_clearly_agree():
+    from provenant.tax.mapping import Precedent, learn, suggest_for_firm
+
+    p = lambda client, name, line, treatment: Precedent(client, name, line, treatment)  # noqa: E731
+    learned = learn([
+        # "Sundry 7": two of two clients confirmed it disallowable -> learned
+        p("a", "Sundry 7", "operating_expenses", "disallowable"),
+        p("b", "SUNDRY-7", "operating_expenses", "disallowable"),
+        # "Staff welfare": 2 of 3 clients say disallowable (2/3 is enough) -> learned
+        p("a", "Staff welfare", "employee_costs", "disallowable"),
+        p("b", "Staff welfare", "employee_costs", "disallowable"),
+        p("c", "Staff welfare", "employee_costs", "deductible"),
+        # "Consultancy": 1 vs 1 is a tie -> not learned, keyword rules apply
+        p("a", "Consultancy", "operating_expenses", "deductible"),
+        p("b", "Consultancy", "operating_expenses", "disallowable"),
+        # "Misc": 2 of 4 clients is below two thirds -> not learned
+        p("a", "Misc", "operating_expenses", "deductible"),
+        p("b", "Misc", "operating_expenses", "deductible"),
+        p("c", "Misc", "operating_expenses", "disallowable"),
+        p("d", "Misc", "other_income", "taxable"),
+    ])
+    assert set(learned) == {"sundry 7", "staff welfare"}
+    s = suggest_for_firm("sundry  7", learned)
+    assert (s.fs_line, s.tax_treatment, s.rule) == (
+        "operating_expenses", T.DISALLOWABLE, "firm: confirmed this way for 2 of 2 other clients")
+    assert suggest_for_firm("Staff welfare", learned).rule == "firm: confirmed this way for 2 of 3 other clients"
+    # Firm practice beats the keyword rule, which would call staff costs deductible
+    assert suggest("Staff welfare").tax_treatment is T.DEDUCTIBLE
+    assert suggest_for_firm("Staff welfare", learned).tax_treatment is T.DISALLOWABLE
+    # No precedent: the keyword rules, unchanged
+    assert suggest_for_firm("Bank charges", learned) == suggest("Bank charges")
+    assert suggest_for_firm("Consultancy", learned) == suggest("Consultancy")

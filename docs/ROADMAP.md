@@ -81,7 +81,7 @@ Built as thin vertical slices. Each milestone ships something a user can run end
       agricultural proportions, accounting-period due dates, dated payment allocation, and balance deadline
 - [ ] Minimum tax and interest limits
 - [ ] Export the computation and lead schedules to Excel; iTax return figures
-- [ ] Learn suggestions from a firm's confirmed mappings across clients
+- [x] Suggestions learned from the firm's confirmed mappings at other clients (two-thirds agreement, no ties)
 
 ## M4 — Due diligence and ERP
 - [ ] Data-room bulk ingestion; change-of-control / assignment / indemnity flags
