@@ -253,6 +253,12 @@ TAX_INPUTS = {
         "name": "Computers and office equipment", "wdv_brought_forward": "30000000", "additions": "0",
         "rate_percent": "25", "method": "reducing",
         "basis": "Second Schedule, as applied by the preparer for FY2026 (confirm against the Finance Act in force)",
+        # Opening tax residual value of each asset held at 1 January 2026 (per the FY2025 tax computation);
+        # they add up to the class's KES 30m written-down value brought forward.
+        "asset_opening_values": {
+            "IT-2019-01": "5500000", "IT-2021-04": "7000000", "IT-2022-07": "5000000",
+            "IT-2023-02": "4500000", "IT-2024-11": "7200000", "IT-2022-03": "800000",
+        },
     }],
 }
 
