@@ -7,7 +7,7 @@ import { DocumentStatusPill, FieldStatusPill } from "@/components/StatusPill";
 import { api } from "@/lib/api";
 import { formatAmount, formatDate } from "@/lib/format";
 import type { Persona } from "@/lib/identity";
-import { fieldLabel, KINDS, type BBox, type DocumentSummary, type Field, type FieldName } from "@/lib/types";
+import { fieldLabel, INPUT_FIELDS, KINDS, type BBox, type DocumentSummary, type Field, type FieldName } from "@/lib/types";
 
 export interface PendingBox {
   name: FieldName;
@@ -94,6 +94,7 @@ function reviewBlocker(field: Field, doc: DocumentSummary, persona: Persona): st
 }
 
 function source(field: Field): string {
+  if (field.extractor === "preparer_input") return `Preparer input by ${field.entered_by}`;
   if (field.extractor === "manual") return `Entered by ${field.entered_by}`;
   if (field.extractor.startsWith("claude")) return "Read by Claude";
   return "Read by label matcher";
@@ -300,6 +301,7 @@ function TermCard({
                 {drawingFor === name ? "Cancel marking" : "Mark on PDF"}
               </button>
             </div>
+            {INPUT_FIELDS.has(name) && <PreparerInput doc={doc} name={name} onChanged={onChanged} />}
           </>
         )}
         {error && <div className="term-error">{error}</div>}
@@ -324,10 +326,13 @@ function TermCard({
       </div>
       <div className="term-value">{displayValue(field)}</div>
       <div className="term-meta">
-        <span>Page {field.page}</span>
+        <span>{field.page >= 1 ? `Page ${field.page}` : "Not stated in the document"}</span>
         <span>{source(field)}</span>
-        {field.extractor !== "manual" && <span className="num">{Math.round(field.confidence * 100)}% confidence</span>}
+        {field.extractor !== "manual" && field.extractor !== "preparer_input" && (
+          <span className="num">{Math.round(field.confidence * 100)}% confidence</span>
+        )}
       </div>
+      {field.basis && <div className="term-note">Basis: {field.basis}</div>}
 
       {field.status === "needs_review" && (
         <div className="term-actions" onClick={(e) => e.stopPropagation()}>
@@ -397,9 +402,68 @@ function TermCard({
               </button>
             </div>
           )}
+          {!box && INPUT_FIELDS.has(name) && <PreparerInput doc={doc} name={name} onChanged={onChanged} />}
         </div>
       )}
       {error && <div className="term-error">{error}</div>}
     </div>
+  );
+}
+
+/** A term the contract does not state (e.g. the incremental borrowing rate): value plus how it was set. */
+function PreparerInput({ doc, name, onChanged }: { doc: DocumentSummary; name: FieldName; onChanged: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [value, setValue] = useState("");
+  const [basis, setBasis] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  if (!open) {
+    return (
+      <div className="term-actions">
+        <button className="btn btn-sm btn-ghost" type="button" onClick={() => setOpen(true)}>
+          Not stated: enter as preparer input
+        </button>
+      </div>
+    );
+  }
+  return (
+    <form
+      className="term-actions"
+      style={{ flexDirection: "column", alignItems: "stretch" }}
+      onSubmit={async (e) => {
+        e.preventDefault();
+        setBusy(true);
+        setError(null);
+        try {
+          await api.enterInput(doc.id, name, value, basis);
+          setOpen(false);
+          onChanged();
+        } catch (err) {
+          setError((err as Error).message);
+        } finally {
+          setBusy(false);
+        }
+      }}
+    >
+      <div className="term-note" style={{ marginTop: 0 }}>
+        Contracts rarely state the lessee&apos;s incremental borrowing rate. Enter the rate you determined and how;
+        a partner reviews it like any other judgement.
+      </div>
+      <input className="input" value={value} placeholder={PLACEHOLDERS[name]} onChange={(e) => setValue(e.target.value)}
+        aria-label={`${fieldLabel(name, doc.kind)} input value`} />
+      <textarea className="input" rows={3} value={basis} onChange={(e) => setBasis(e.target.value)}
+        placeholder="Basis, e.g. 5-year KES borrowing quote from the lessee's bank, adjusted for security and term"
+        aria-label={`${fieldLabel(name, doc.kind)} basis`} />
+      <div className="inline-form">
+        <button className="btn btn-primary btn-sm" disabled={busy || !value.trim() || basis.trim().length < 10}>
+          Save input
+        </button>
+        <button className="btn btn-sm" type="button" onClick={() => setOpen(false)}>
+          Cancel
+        </button>
+      </div>
+      {error && <div className="term-error">{error}</div>}
+    </form>
   );
 }

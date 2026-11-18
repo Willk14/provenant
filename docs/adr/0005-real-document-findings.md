@@ -23,6 +23,11 @@ lease (Recursion 2022) and four lease amendments (Kura, Tenaya, NeuroOne extensi
 ### The term schemas, not just the extractors, need to change
 1. **Leases never state the discount rate.** The incremental borrowing rate is the lessee's own estimate.
    It should be an input entered and signed off by the preparer (with its basis), not an extracted term.
+   *Done (2026-11-19):* a field either cites a location (`SourceRef`) or is a preparer input about the document
+   (`DocumentRef`, stored as page 0) that must state its basis (`POST /documents/{id}/inputs`). Only terms in
+   `INPUT_FIELDS` (the discount rate, for leases and amendments) may be entered this way. Review, maker-checker
+   and the hash-chained review log are unchanged, and the lease workbook's Provenance sheet shows the basis.
+   A rate the document does state can still be extracted and cited.
 2. **Rent is a schedule, not a number.** All four amendments escalate annually, and two have rent-free
    months. One lease quotes rent per square foot on an area not yet fixed. The engine needs a payment
    schedule (amount per period), with free periods.

@@ -80,8 +80,7 @@ push only when the owner asks.
    now require a matching register and reviewer-approved computation. The current fixed-asset-register path
    uses per-asset opening residual values and disposal outcomes; class-only
    inputs remain available when no matching register is supplied. Each new rule needs a hand-worked test.
-6. **Schema fixes from real documents (ADR 0005):** discount rate as a preparer input with its basis;
-   amendment signing date separate from the date new terms start; expansions as their own change;
+6. **Schema fixes from real documents (ADR 0005):** (discount rate as a preparer input: done) amendment signing date separate from the date new terms start; expansions as their own change;
    springing covenants and business-day cure periods.
 7. ~~Mapping suggestions learned from the firm's confirmed mappings~~: done (`learn` / `suggest_for_firm` in
    `tax/mapping.py`). Possible follow-up: a "refresh suggestions" action for accounts still unconfirmed.

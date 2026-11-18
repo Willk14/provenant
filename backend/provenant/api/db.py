@@ -19,7 +19,7 @@ from sqlalchemy import (
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 
-from provenant.provenance import ExtractedField, ReviewEvent, SourceRef, Status
+from provenant.provenance import DocumentRef, ExtractedField, ReviewEvent, SourceRef, Status
 
 
 def _now() -> datetime:
@@ -282,11 +282,14 @@ class FieldRow(Base):
     entered_by: Mapped[str | None] = mapped_column(String(200))  # set for manual entries (maker-checker)
     status: Mapped[str] = mapped_column(String(16), index=True)
     gate_version: Mapped[str | None] = mapped_column(String(32))
+    # Preparer inputs (page 0, no box): the stated basis, e.g. how the incremental borrowing rate was set.
+    basis: Mapped[str | None] = mapped_column(Text, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
 
     @classmethod
     def from_domain(cls, tenant_id: str, document_id: str, f: ExtractedField) -> "FieldRow":
-        x0, top, x1, bottom = f.source.bbox
+        located = f.source if isinstance(f.source, SourceRef) else None
+        x0, top, x1, bottom = located.bbox if located else (0.0, 0.0, 0.0, 0.0)
         return cls(
             tenant_id=tenant_id,
             document_id=document_id,
@@ -294,33 +297,36 @@ class FieldRow(Base):
             name=f.name,
             value=f.value,
             confidence=f.confidence,
-            page=f.source.page,
+            page=located.page if located else 0,
             x0=x0,
             top=top,
             x1=x1,
             bottom=bottom,
-            char_start=f.source.char_start,
-            char_end=f.source.char_end,
+            char_start=located.char_start if located else 0,
+            char_end=located.char_end if located else 0,
             extractor=f.extractor,
             status=f.status.value,
             gate_version=f.gate_version,
+            basis=f.basis,
         )
 
     def to_domain(self) -> ExtractedField:
+        source = DocumentRef(self.document_sha256) if self.page == 0 else SourceRef(
+            self.document_sha256,
+            self.page,
+            (self.x0, self.top, self.x1, self.bottom),
+            self.char_start,
+            self.char_end,
+        )
         return ExtractedField(
             name=self.name,
             value=self.value,
             confidence=self.confidence,
-            source=SourceRef(
-                self.document_sha256,
-                self.page,
-                (self.x0, self.top, self.x1, self.bottom),
-                self.char_start,
-                self.char_end,
-            ),
+            source=source,
             extractor=self.extractor,
             status=Status(self.status),
             gate_version=self.gate_version,
+            basis=self.basis,
         )
 
 

@@ -83,7 +83,7 @@ export function Workspace({ id, initialField, initialTab }: { id: string; initia
   const kind = doc?.kind ?? "lease";
   const highlights: Highlight[] = useMemo(
     () =>
-      (doc?.fields ?? []).map((f) => ({
+      (doc?.fields ?? []).filter((f) => f.page >= 1).map((f) => ({
         id: f.id,
         name: f.name,
         label: fieldLabel(f.name, kind),

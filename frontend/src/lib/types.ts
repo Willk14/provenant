@@ -33,7 +33,12 @@ export interface Field {
   bbox: BBox;
   char_start: number;
   char_end: number;
+  /** Set for a preparer input (page 0): a value the document does not state, with how it was determined. */
+  basis?: string | null;
 }
+
+/** Terms a preparer may enter with a basis instead of a location: contracts rarely state them (ADR 0005). */
+export const INPUT_FIELDS: ReadonlySet<FieldName> = new Set<FieldName>(["annual_discount_rate"]);
 
 export type DocumentStatus = "queued" | "extracting" | "extracted" | "failed";
 export type DocumentKind = "lease" | "amendment" | "credit_agreement";

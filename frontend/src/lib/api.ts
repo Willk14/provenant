@@ -57,6 +57,8 @@ export const api = {
     ),
   enterField: (documentId: string, name: FieldName, value: string, page: number, bbox: BBox) =>
     call<Field>(`/documents/${documentId}/fields`, json({ name, value, page, bbox })),
+  enterInput: (documentId: string, name: FieldName, value: string, basis: string) =>
+    call<Field>(`/documents/${documentId}/inputs`, json({ name, value, basis })),
   schedule: (id: string) => call<Schedule>(`/documents/${id}/lease-schedule`),
   workbook: (id: string) => call<ArrayBuffer>(`/documents/${id}/lease-schedule.xlsx`),
   trialBalances: (id: string) => call<TrialBalanceSummary[]>(`/documents/${id}/trial-balances`),

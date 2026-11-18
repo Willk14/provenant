@@ -46,11 +46,13 @@ def schedule_workbook(chained: ChainedSchedule) -> bytes:
 
     provenance = wb.create_sheet("Provenance")
     provenance.append(["Document", "Field", "Value", "Status", "Confidence", "Gate", "Extractor", "Document SHA-256",
-                       "Page", "BBox (x0, top, x1, bottom)"])
+                       "Page", "BBox (x0, top, x1, bottom)", "Preparer basis"])
     for f in chained.fields:
+        located = f.page >= 1  # page 0: a preparer input the document does not state
         provenance.append(
             [filename[f.document_id], f.name, f.value, f.status, f.confidence, f.gate_version, f.extractor,
-             f.document_sha256, f.page, f"{f.x0}, {f.top}, {f.x1}, {f.bottom}"]
+             f.document_sha256, f.page if located else "input", f"{f.x0}, {f.top}, {f.x1}, {f.bottom}" if located else "",
+             f.basis or ""]
         )
 
     ws["B1"].number_format = ws["B2"].number_format = MONEY

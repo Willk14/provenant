@@ -45,20 +45,43 @@ VERIFIED = frozenset({Status.AUTO_ACCEPTED, Status.APPROVED, Status.CORRECTED})
 
 
 @dataclass(frozen=True)
+class DocumentRef:
+    """A value about a document that the document does not state, such as the lessee's incremental borrowing
+    rate (ADR 0005 finding 1). It cites no location; the field carries the preparer's stated basis instead."""
+
+    document_sha256: str
+
+    def __post_init__(self) -> None:
+        if not _SHA256.fullmatch(self.document_sha256):
+            raise ValueError("document_sha256 must be 64 lowercase hex chars")
+
+
+@dataclass(frozen=True)
 class ExtractedField:
-    """A value proposed by an extractor. `value` is the raw text; the core parses it."""
+    """A value proposed by an extractor or entered by a person. `value` is the raw text; the core parses it.
+
+    Either it cites where the document states it (SourceRef), or it is a preparer input about the document
+    (DocumentRef) and must say on what basis.
+    """
 
     name: str
     value: str
     confidence: float
-    source: SourceRef
+    source: SourceRef | DocumentRef
     extractor: str
     status: Status = Status.PROPOSED
     gate_version: str | None = None
+    basis: str | None = None
 
     def __post_init__(self) -> None:
         if not 0.0 <= self.confidence <= 1.0:
             raise ValueError("confidence must be in [0, 1]")
+        if isinstance(self.source, DocumentRef) and not (self.basis or "").strip():
+            raise ValueError(f"{self.name}: a preparer input must state its basis")
+
+    @property
+    def is_input(self) -> bool:
+        return isinstance(self.source, DocumentRef)
 
     @property
     def verified(self) -> bool:

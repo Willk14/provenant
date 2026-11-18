@@ -14,7 +14,7 @@ from provenant.covenants import Terms as CovenantTerms
 from provenant.extraction import Extractor
 from provenant.extraction.pdftext import open_pages
 from provenant.leases import LeaseSchedule, LeaseTerms, Modification, build_schedule, check_value
-from provenant.provenance import GENESIS, ConfidenceGate, ExtractedField, Status, review, verify_chain
+from provenant.provenance import GENESIS, ConfidenceGate, DocumentRef, ExtractedField, Status, review, verify_chain
 
 log = logging.getLogger(__name__)
 
@@ -315,8 +315,47 @@ def enter_field(
         s.add(entered)
         row = entered
     else:  # replace the rejected proposal; the review log keeps its history
-        for column in ("value", "confidence", "page", "x0", "top", "x1", "bottom", "char_start", "char_end",
-                       "extractor", "entered_by", "status", "gate_version"):
+        for column in REPLACED_COLUMNS:
+            setattr(row, column, getattr(entered, column))
+    s.commit()
+    return row
+
+
+REPLACED_COLUMNS = ("value", "confidence", "page", "x0", "top", "x1", "bottom", "char_start", "char_end",
+                    "extractor", "entered_by", "status", "gate_version", "basis")
+# Terms that contracts rarely state because they are the preparer's own estimate (ADR 0005 finding 1).
+INPUT_FIELDS = frozenset({"annual_discount_rate"})
+
+
+def enter_input(s: Session, p: Principal, document_id: str, name: str, value: str, basis: str) -> FieldRow:
+    """A value the document does not state, entered with its basis. It cites no page; review is as for any
+    judgement term (a partner signs it off, and never the person who entered it)."""
+    require(p, *ANY_ROLE)
+    doc = get_document(s, p.tenant_id, document_id)
+    if name not in INPUT_FIELDS or name not in KINDS[doc.kind].fields:
+        raise Invalid(f"{name} cannot be entered as a preparer input for a {doc.kind}; mark where the document states it")
+    basis = " ".join(basis.split())
+    if len(basis) < 10:
+        raise Invalid("state the basis for the input (e.g. how the incremental borrowing rate was determined)")
+    try:
+        value = check_value(name, value)
+    except ValueError as exc:
+        raise Invalid(str(exc)) from exc
+    if doc.status != "extracted":
+        raise Conflict("wait for extraction to finish before entering fields")
+    row = s.scalar(select(FieldRow).where(FieldRow.document_id == doc.id, FieldRow.name == name))
+    if row is not None and row.status != Status.REJECTED.value:
+        raise Conflict(f"{name} already exists ({row.status}); reject it before entering a replacement")
+    entered = FieldRow.from_domain(p.tenant_id, doc.id, ExtractedField(
+        name, value, 1.0, DocumentRef(doc.sha256), "preparer_input", Status.NEEDS_REVIEW,
+        gate_version="manual", basis=basis[:1000],
+    ))
+    entered.entered_by = p.user
+    if row is None:
+        s.add(entered)
+        row = entered
+    else:  # replace the rejected proposal; the review log keeps its history
+        for column in REPLACED_COLUMNS:
             setattr(row, column, getattr(entered, column))
     s.commit()
     return row

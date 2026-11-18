@@ -44,13 +44,14 @@ class FieldOut(BaseModel):
     bbox: tuple[float, float, float, float]
     char_start: int
     char_end: int
+    basis: str | None = None  # set for preparer inputs (page 0): values the document does not state
 
     @classmethod
     def of(cls, r: FieldRow) -> "FieldOut":
         return cls(
             id=r.id, document_id=r.document_id, name=r.name, value=r.value, confidence=r.confidence, status=r.status,
             gate_version=r.gate_version, extractor=r.extractor, entered_by=r.entered_by, page=r.page,
-            bbox=(r.x0, r.top, r.x1, r.bottom), char_start=r.char_start, char_end=r.char_end,
+            bbox=(r.x0, r.top, r.x1, r.bottom), char_start=r.char_start, char_end=r.char_end, basis=r.basis,
         )
 
 
@@ -101,6 +102,12 @@ class MeOut(BaseModel):
 class ReviewIn(BaseModel):
     action: Literal["approved", "corrected", "rejected"]
     corrected_value: str | None = Field(default=None, max_length=200)
+
+
+class InputIn(BaseModel):
+    name: str = Field(max_length=64)
+    value: str = Field(max_length=64)
+    basis: str = Field(max_length=1000)
 
 
 class FieldIn(BaseModel):
@@ -337,6 +344,10 @@ def create_app(
     def enter_field(document_id: str, body: FieldIn, p: Auth, s: Db) -> FieldOut:
         row = services.enter_field(s, store, p, document_id, body.name, body.value, body.page, body.bbox)
         return FieldOut.of(row)
+
+    @app.post("/documents/{document_id}/inputs", response_model=FieldOut, status_code=201)
+    def enter_input(document_id: str, body: InputIn, p: Auth, s: Db) -> FieldOut:
+        return FieldOut.of(services.enter_input(s, p, document_id, body.name, body.value, body.basis))
 
     @app.get("/review-queue", response_model=list[FieldOut])
     def queue(p: Auth, s: Db) -> list[FieldOut]:

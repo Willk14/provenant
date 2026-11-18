@@ -46,7 +46,7 @@ Built as thin vertical slices. Each milestone ships something a user can run end
 
 ## Schema fixes from real documents (ADR 0005), before new features
 - [x] Rent schedules: escalation steps and rent-free months, by month number or date
-- [ ] Discount rate as a preparer input with its basis, not an extracted term
+- [x] Discount rate as a preparer input with its basis (no page cited), partner-reviewed like any judgement
 - [ ] Amendments: signing (IFRS 16 effective) date separate from the date new terms start; new expiry date
       instead of total term
 - [ ] Expansions as their own kind of change (possibly a separate lease under IFRS 16.44)
