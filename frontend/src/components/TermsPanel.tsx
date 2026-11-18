@@ -7,7 +7,7 @@ import { DocumentStatusPill, FieldStatusPill } from "@/components/StatusPill";
 import { api } from "@/lib/api";
 import { formatAmount, formatDate } from "@/lib/format";
 import type { Persona } from "@/lib/identity";
-import { fieldLabel, INPUT_FIELDS, KINDS, type BBox, type DocumentSummary, type Field, type FieldName } from "@/lib/types";
+import { fieldLabel, INPUT_FIELDS, INPUT_ONLY_FIELDS, KINDS, type BBox, type DocumentSummary, type Field, type FieldName } from "@/lib/types";
 
 export interface PendingBox {
   name: FieldName;
@@ -33,6 +33,7 @@ const PLACEHOLDERS: Record<FieldName, string> = {
   effective_date: "YYYY-MM-DD",
   terms_start_date: "YYYY-MM-DD",
   expiry_date: "YYYY-MM-DD",
+  expansion_treatment: "separate lease or modification",
   term_months: "Months, e.g. 24",
   monthly_payment: "Amount, e.g. 120,000",
   annual_discount_rate: "Percentage, e.g. 14%",
@@ -288,23 +289,25 @@ function TermCard({
         ) : (
           <>
             <div className="term-note">
-              {!optional
+              {MISSING_NOTES[name] ?? (!optional
                 ? "The extractor could not find this term. Mark where the document states it."
                 : doc.kind === "amendment"
                   ? "No change to this term was found, so the lease's value carries over. If the amendment does change it, mark where."
                   : doc.kind === "lease"
                     ? "None found, so the rent is treated as flat with no free months. If the lease has them, mark where."
-                    : "Not found in the agreement, so it is not tested. If the agreement does have it, mark where."}
+                    : "Not found in the agreement, so it is not tested. If the agreement does have it, mark where.")}
             </div>
-            <div className="term-actions">
-              <button
-                className="btn btn-sm"
-                aria-pressed={drawingFor === name}
-                onClick={() => onStartDrawing(drawingFor === name ? null : name)}
-              >
-                {drawingFor === name ? "Cancel marking" : "Mark on PDF"}
-              </button>
-            </div>
+            {!INPUT_ONLY_FIELDS.has(name) && (
+              <div className="term-actions">
+                <button
+                  className="btn btn-sm"
+                  aria-pressed={drawingFor === name}
+                  onClick={() => onStartDrawing(drawingFor === name ? null : name)}
+                >
+                  {drawingFor === name ? "Cancel marking" : "Mark on PDF"}
+                </button>
+              </div>
+            )}
             {INPUT_FIELDS.has(name) && <PreparerInput doc={doc} name={name} onChanged={onChanged} />}
           </>
         )}
@@ -399,7 +402,7 @@ function TermCard({
         <div onClick={(e) => e.stopPropagation()}>
           {box ? (
             entryForm
-          ) : (
+          ) : INPUT_ONLY_FIELDS.has(name) ? null : (
             <div className="term-actions">
               <button className="btn btn-sm" onClick={() => onStartDrawing(drawingFor === name ? null : name)}>
                 {drawingFor === name ? "Cancel marking" : "Mark the correct value on PDF"}
@@ -413,6 +416,20 @@ function TermCard({
     </div>
   );
 }
+
+const MISSING_NOTES: Partial<Record<FieldName, string>> = {
+  terms_start_date:
+    "Not stated, so the new terms start on the agreed date. If they start later (for example when the current term ends), mark where.",
+  expansion_treatment:
+    "Not treated as an expansion. If this amendment adds space, record the IFRS 16.44 judgement as a preparer input.",
+};
+
+const INPUT_NOTES: Partial<Record<FieldName, string>> = {
+  annual_discount_rate: "Contracts rarely state the lessee's incremental borrowing rate. Enter the rate you determined and how.",
+  expansion_treatment:
+    "If this amendment adds space, decide under IFRS 16.44: a separate lease when the added rent is commensurate with " +
+    "its stand-alone price, otherwise a modification. Its monthly payment is then the added space's own rent.",
+};
 
 /** A term the contract does not state (e.g. the incremental borrowing rate): value plus how it was set. */
 function PreparerInput({ doc, name, onChanged }: { doc: DocumentSummary; name: FieldName; onChanged: () => void }) {
@@ -451,8 +468,8 @@ function PreparerInput({ doc, name, onChanged }: { doc: DocumentSummary; name: F
       }}
     >
       <div className="term-note" style={{ marginTop: 0 }}>
-        Contracts rarely state the lessee&apos;s incremental borrowing rate. Enter the rate you determined and how;
-        a partner reviews it like any other judgement.
+        {INPUT_NOTES[name] ?? "Enter the value you determined and how."} A partner reviews it like any other
+        judgement.
       </div>
       <input className="input" value={value} placeholder={PLACEHOLDERS[name]} onChange={(e) => setValue(e.target.value)}
         aria-label={`${fieldLabel(name, doc.kind)} input value`} />

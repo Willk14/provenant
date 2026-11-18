@@ -348,13 +348,20 @@ def get_inputs(s: Session, tenant_id: str, client_id: str, year_end: date) -> Ta
     ))
 
 
-def lease_year(s: Session, tenant_id: str, lease: Document, year_end: date) -> LeaseYear | None:
-    """A lease's IFRS 16 figures for the twelve months to `year_end`, from its verified schedule."""
+def lease_years(s: Session, tenant_id: str, lease: Document, year_end: date) -> list[LeaseYear]:
+    """A lease's IFRS 16 figures for the twelve months to `year_end`, from its verified schedule, plus any
+    expansion accounted for as a separate lease (its own component, named after the amendment)."""
     try:
         chained = lease_schedule(s, tenant_id, lease.id)
     except Conflict as exc:
         raise Conflict(f"lease {lease.filename}: {exc}") from exc
-    sched = chained.schedule
+    components = [(chained.schedule, lease.id, lease.filename)] + [
+        (x.schedule, x.amendment.id, f"{x.amendment.filename} (separate lease)") for x in chained.separate
+    ]
+    return [y for sched, doc_id, name in components if (y := _year_figures(sched, doc_id, name, year_end))]
+
+
+def _year_figures(sched, document_id: str, name: str, year_end: date) -> LeaseYear | None:
     # A period runs from one boundary up to (not including) its end date, so it belongs to the year that
     # holds its last day. A lease starting on the 1st has a December period ending on 1 January.
     previous_year_end = month_end(year_end.year - 1, year_end.month)
@@ -363,14 +370,15 @@ def lease_year(s: Session, tenant_id: str, lease: Document, year_end: date) -> L
     to_date = [p for p in sched.periods if last_day(p) <= year_end]
     if not to_date:
         return None  # not yet commenced at the year end
-    remeasured = [r for r in sched.remeasurements if r.effective <= year_end]
+    last = to_date[-1]
+    # A remeasurement counts once it is posted: after a period that has ended by the year end.
+    remeasured = [r for r in sched.remeasurements if r.after_period <= last.number]
     rou = sched.initial_rou_asset + sum((r.rou_adjustment for r in remeasured), ZERO) - sum(
         (p.depreciation for p in to_date), ZERO
     )
-    last = to_date[-1]
     liability = next((r.liability_after for r in remeasured if r.after_period == last.number), last.closing)
     return LeaseYear(
-        document_id=lease.id, name=lease.filename,
+        document_id=document_id, name=name,
         payments=sum((p.payment for p in in_year), ZERO),
         rou_depreciation=sum((p.depreciation for p in in_year), ZERO),
         interest=sum((p.interest for p in in_year), ZERO),
@@ -409,7 +417,7 @@ def tax_computation(s: Session, tenant_id: str, client_id: str, year_end: date) 
     allowances = parse_allowances(json.loads(inputs.allowances_json)) if inputs else []
     credits = parse_credits(json.loads(inputs.credits_json)) if inputs else []
     losses = Decimal(inputs.losses_brought_forward_cents) * CENT if inputs else ZERO
-    leases = [y for lease in client_leases(s, tenant_id, client_id) if (y := lease_year(s, tenant_id, lease, year_end))]
+    leases = [y for lease in client_leases(s, tenant_id, client_id) for y in lease_years(s, tenant_id, lease, year_end)]
 
     # The register supplies movements; opening tax residual values remain explicit preparer inputs.
     from_register: set[str] = set()

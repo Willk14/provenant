@@ -190,3 +190,37 @@ def test_new_expiry_date_is_read_as_the_last_day_or_the_boundary():
 def test_new_terms_start_is_checked(modification, message):
     with pytest.raises(ValueError, match=message):
         modification()
+
+
+def test_expansion_judged_a_separate_lease_gets_its_own_schedule():
+    """Added space at its own rent (Bicara): IFRS 16.44 separate lease. BASE is untouched.
+
+    Space from 31 Jul 2026 to the lease's end, 31 Jan 2027: 6 periods at 500 in arrears, 1% a month:
+      PV = 500 x a(6, 1%) = 500 x 5.795476 = 2,897.74
+    """
+    from provenant.leases import expansion_lease
+
+    added = Modification(date(2026, 6, 15), Decimal("0.01"), payment=Decimal("500"),
+                         terms_start=date(2026, 7, 31), expansion="separate lease")
+    with pytest.raises(ValueError, match="not a modification of this lease"):
+        build_schedule(BASE, [added])
+    terms = expansion_lease(added, BASE.timing, lease_end=date(2027, 1, 31))
+    assert (terms.commencement, terms.periods) == (date(2026, 7, 31), 6)
+    s = build_schedule(terms)
+    assert s.initial_liability == Decimal("2897.74") == annuity("500", 6, "0.01")
+    assert s.periods[-1].closing == 0
+
+
+def test_expansion_judged_a_modification_adds_its_rent_to_the_existing_rent():
+    """Not commensurate with stand-alone price: remeasure the whole lease (IFRS 16.45).
+
+    From 31 Jul 2026 (after period 6) the rent is 1,000 + 500 = 1,500 for 6 periods at 1.5%:
+      PV = 1,500 x a(6, 1.5%) = 1,500 x 5.697187 = 8,545.78
+    """
+    added = Modification(AFTER_6, Decimal("0.015"), payment=Decimal("500"), expansion="modification")
+    s = build_schedule(BASE, [added])
+    (r,) = s.remeasurements
+    assert r.liability_after == Decimal("8545.78") == annuity("1500", 6, "0.015")
+    assert [p.payment for p in s.periods] == [Decimal("1000")] * 6 + [Decimal("1500")] * 6
+    with pytest.raises(ValueError, match="rent for the added space"):
+        Modification(AFTER_6, Decimal("0.015"), total_periods=18, expansion="modification")

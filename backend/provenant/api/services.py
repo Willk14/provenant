@@ -1,7 +1,7 @@
 """Use cases. Routes stay thin; every query here is scoped by tenant_id explicitly (RLS is the backstop)."""
 import hashlib
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
@@ -13,7 +13,8 @@ from provenant.api.storage import BlobStore
 from provenant.covenants import Terms as CovenantTerms
 from provenant.extraction import Extractor
 from provenant.extraction.pdftext import open_pages
-from provenant.leases import LeaseSchedule, LeaseTerms, Modification, build_schedule, check_value
+from provenant.leases import LeaseSchedule, LeaseTerms, Modification, build_schedule, check_value, expansion_lease
+from provenant.leases.ifrs16 import SEPARATE_LEASE
 from provenant.provenance import GENESIS, ConfidenceGate, DocumentRef, ExtractedField, Status, review, verify_chain
 
 log = logging.getLogger(__name__)
@@ -23,7 +24,8 @@ MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 LEASE_GATE = ConfidenceGate("lease-v1", threshold=0.95, always_review=frozenset({"annual_discount_rate", "payment_timing"}))
 # When an amendment takes effect decides which periods it changes, so a partner signs that off too.
 AMENDMENT_GATE = ConfidenceGate(
-    "amendment-v1", threshold=0.95, always_review=frozenset({"effective_date", "annual_discount_rate"})
+    "amendment-v1", threshold=0.95,
+    always_review=frozenset({"effective_date", "annual_discount_rate", "expansion_treatment"}),
 )
 
 
@@ -287,6 +289,8 @@ def enter_field(
     doc = get_document(s, p.tenant_id, document_id)
     if name not in KINDS[doc.kind].fields:
         raise Invalid(f"{name} is not a term of a {doc.kind}")
+    if name in INPUT_ONLY_FIELDS:
+        raise Invalid(f"{name} is a preparer's judgement, not printed in the contract: enter it as an input with its basis")
     try:
         value = check_value(name, value)
     except ValueError as exc:
@@ -324,7 +328,9 @@ def enter_field(
 REPLACED_COLUMNS = ("value", "confidence", "page", "x0", "top", "x1", "bottom", "char_start", "char_end",
                     "extractor", "entered_by", "status", "gate_version", "basis")
 # Terms that contracts rarely state because they are the preparer's own estimate (ADR 0005 finding 1).
-INPUT_FIELDS = frozenset({"annual_discount_rate"})
+INPUT_FIELDS = frozenset({"annual_discount_rate", "expansion_treatment"})
+# Judgements no contract states, so they are never marked on the PDF (the IFRS 16.44 separate-lease test).
+INPUT_ONLY_FIELDS = frozenset({"expansion_treatment"})
 
 
 def enter_input(s: Session, p: Principal, document_id: str, name: str, value: str, basis: str) -> FieldRow:
@@ -385,6 +391,16 @@ class ChainedSchedule:
     fields: list[FieldRow]  # every input across the chain
     segments: list[Segment]
     fingerprint: str  # SHA-256 over the lease and each amendment's file hash and effective date
+    separate: list["SeparateLease"] = field(default_factory=list)  # expansions judged separate leases
+
+
+@dataclass(frozen=True)
+class SeparateLease:
+    """Added space accounted for as its own lease (IFRS 16.44), from an expansion amendment."""
+
+    amendment: Document
+    schedule: LeaseSchedule
+    fields: list[FieldRow]
 
 
 def lease_schedule(s: Session, tenant_id: str, document_id: str) -> ChainedSchedule:
@@ -414,9 +430,16 @@ def lease_schedule(s: Session, tenant_id: str, document_id: str) -> ChainedSched
         except (PermissionError, ValueError) as exc:
             raise Conflict(f"amendment {amendment.filename}: {exc}") from exc
     chain.sort(key=lambda link: link[0].effective)
+    expansions = [link for link in chain if link[0].expansion == SEPARATE_LEASE]
+    chain = [link for link in chain if link[0].expansion != SEPARATE_LEASE]
 
     try:
         schedule = build_schedule(terms, [m for m, _, _ in chain])
+        lease_end = schedule.periods[-1].end_date
+        separate = [
+            SeparateLease(amendment, build_schedule(expansion_lease(m, terms.timing, lease_end)), rows)
+            for m, amendment, rows in expansions
+        ]
     except ValueError as exc:
         raise Conflict(str(exc)) from exc
 
@@ -432,7 +455,8 @@ def lease_schedule(s: Session, tenant_id: str, document_id: str) -> ChainedSched
         inputs.update(usable(rows, Modification.FIELDS))
         segments.append(Segment(amendment.id, remeasurement.after_period + 1, inputs))
 
-    lineage = [lease.sha256] + [f"{a.sha256}@{m.effective.isoformat()}" for m, a, _ in chain]
+    lineage = [lease.sha256] + [f"{a.sha256}@{m.effective.isoformat()}" for m, a, _ in chain] + [
+        f"{a.sha256}@{m.effective.isoformat()}+separate" for m, a, _ in expansions]
     return ChainedSchedule(
         schedule=schedule,
         lease=lease,
@@ -440,4 +464,5 @@ def lease_schedule(s: Session, tenant_id: str, document_id: str) -> ChainedSched
         fields=lease_rows + [r for _, _, rows in chain for r in rows],
         segments=segments,
         fingerprint=hashlib.sha256("|".join(lineage).encode()).hexdigest(),
+        separate=separate,
     )

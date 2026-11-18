@@ -39,6 +39,7 @@ export const TRACE: Record<Figure, FieldName[]> = {
   remeasurement: [
     "effective_date",
     "terms_start_date",
+    "expansion_treatment",
     "monthly_payment",
     "rent_steps",
     "free_periods",

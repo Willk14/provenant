@@ -206,9 +206,13 @@ class Modification:
     free_periods: frozenset[int] = frozenset()  # rent-free periods counted from `terms_start`
     terms_start: date | None = None  # when the new rent or term starts; defaults to the effective date
     expiry: date | None = None  # new expiry date: how amendments usually state the term (finding 5)
+    # Added space (finding 6). None: not an expansion, the payment replaces the rent. Otherwise the payment is
+    # the added space's own rent, and the preparer's IFRS 16.44 judgement decides how it is accounted for:
+    # "separate lease" (its own schedule, see expansion_lease) or "modification" (added to the existing rent).
+    expansion: str | None = None
 
     REQUIRED = ("effective_date", "annual_discount_rate")
-    CHANGES = ("monthly_payment", "term_months", "expiry_date", "rent_steps", "free_periods")
+    CHANGES = ("monthly_payment", "term_months", "expiry_date", "rent_steps", "free_periods", "expansion_treatment")
     FIELDS = REQUIRED + ("terms_start_date",) + CHANGES
 
     def __post_init__(self) -> None:
@@ -222,6 +226,12 @@ class Modification:
             raise ValueError("rate must be non-negative")
         if self.terms_start is not None and self.terms_start < self.effective:
             raise ValueError(f"new terms start {self.terms_start} before the amendment is agreed ({self.effective})")
+        if self.expansion not in (None, SEPARATE_LEASE, MODIFICATION):
+            raise ValueError(f"expansion treatment must be '{SEPARATE_LEASE}' or '{MODIFICATION}'")
+        if self.expansion and self.payment is None:
+            raise ValueError("an expansion needs the monthly rent for the added space")
+        if self.expansion == SEPARATE_LEASE and self.total_periods is not None:
+            raise ValueError("a separate-lease expansion states its own expiry date, not a total term of the lease")
 
     @property
     def starts(self) -> date:
@@ -251,6 +261,7 @@ class Modification:
         effective = date.fromisoformat(value("effective_date"))
         starts = date.fromisoformat(s) if (s := value("terms_start_date")) else None
         expiry = date.fromisoformat(e) if (e := value("expiry_date")) else None
+        expansion = x.strip().lower() if (x := value("expansion_treatment")) else None
         return cls(
             effective=effective,
             rate_per_period=monthly_rate(value("annual_discount_rate")),
@@ -260,7 +271,23 @@ class Modification:
             free_periods=resolve_free(value("free_periods"), starts or effective),
             terms_start=starts,
             expiry=expiry,
+            expansion=expansion,
         )
+
+
+SEPARATE_LEASE, MODIFICATION = "separate lease", "modification"
+
+
+def expansion_lease(modification: Modification, timing: Timing, lease_end: date) -> LeaseTerms:
+    """Added space accounted for as a separate lease (IFRS 16.44): it commences when the space is made
+    available, runs to its own expiry (or the main lease's end), at the rate determined at that date."""
+    if modification.expansion != SEPARATE_LEASE:
+        raise ValueError("only an expansion judged a separate lease has its own schedule")
+    start, end = modification.starts, modification.expiry or lease_end
+    if end <= start:
+        raise ValueError(f"the expansion starting {start} ends {end}, before it starts")
+    return LeaseTerms(start, _expiry_periods(start, end), modification.payment, modification.rate_per_period, timing,
+                      steps=modification.steps, free_periods=modification.free_periods)
 
 
 @dataclass(frozen=True)
@@ -363,6 +390,8 @@ def build_schedule(terms: LeaseTerms, modifications: Sequence[Modification] = ()
     if rou < 0:
         raise ValueError("incentives exceed the right-of-use asset")
 
+    if any(m.expansion == SEPARATE_LEASE for m in modifications):
+        raise ValueError("an expansion judged a separate lease is not a modification of this lease; use expansion_lease")
     ordered = sorted(modifications, key=lambda m: m.effective)
     for a, b in zip(ordered, ordered[1:]):
         if a.effective == b.effective:
@@ -409,8 +438,12 @@ def build_schedule(terms: LeaseTerms, modifications: Sequence[Modification] = ()
                               "new terms start")
         if (new_rent := modification.rent) is not None:
             new_rent.check_within(new_total - rent_from, f"amendment agreed {modification.effective}")
-            pay = lambda n, rent=new_rent, offset=rent_from, old=pay: (  # noqa: E731
-                old(n) if n <= offset else rent.amount(n - offset))
+            if modification.expansion == MODIFICATION:  # added space: its rent is on top of the existing rent
+                pay = lambda n, rent=new_rent, offset=rent_from, old=pay: (  # noqa: E731
+                    old(n) if n <= offset else old(n) + rent.amount(n - offset))
+            else:
+                pay = lambda n, rent=new_rent, offset=rent_from, old=pay: (  # noqa: E731
+                    old(n) if n <= offset else rent.amount(n - offset))
         rate, total = modification.rate_per_period, new_total
         remeasured = round_money(_pv([pay(n) for n in range(stop + 1, total + 1)], rate, terms.timing))
         rou_adjustment = remeasured - opening

@@ -152,3 +152,41 @@ def test_extension_signed_mid_term_reads_its_three_dates_and_remeasures(client, 
         "2026-07-15", "2026-07-31", "2027-01-31", 6)
     assert Decimal(r["liability_after"]) == Decimal("8626.85")
     assert [Decimal(p["payment"]) for p in s["periods"]] == [Decimal(1000)] * 12 + [Decimal(1100)] * 3
+
+
+def test_expansion_judged_a_separate_lease_has_its_own_schedule_and_tax_figures(client, app):
+    """Bicara pattern: added space at its own rent. The partner's IFRS 16.44 judgement is a preparer input."""
+    from tests.test_tax_api import client_with_tb
+
+    lines = [
+        "FIRST AMENDMENT TO LEASE - EXPANSION PREMISES",
+        "Effective Date: 15 June 2026",
+        "Expansion Commencement Date: 31 July 2026",
+        "Monthly Rent: KES 500.00 payable monthly in arrears",
+        "Discount Rate: 12%",
+    ]
+    lease_id, amendment_id = lease_with_amendment(client, app, lines)
+    r = client.post(f"/documents/{amendment_id}/inputs", headers=PREPARER, json={
+        "name": "expansion_treatment", "value": "separate lease",
+        "basis": "Adds 4,744 sq ft; rent per sq ft matches the current market quote for the building (IFRS 16.44)"})
+    assert r.status_code == 201, r.text
+    approve_pending(client, lease_id)
+    approve_pending(client, amendment_id)
+
+    s = client.get(f"/documents/{lease_id}/lease-schedule", headers=PREPARER).json()
+    assert s["remeasurements"] == [] and len(s["periods"]) == 12  # the original lease is untouched
+    (added,) = s["separate_leases"]
+    # Worked in test_modifications: 6 periods at 500, 1% a month -> 2,897.74
+    assert (added["document_id"], added["commencement"], Decimal(added["initial_liability"])) == (
+        amendment_id, "2026-07-31", Decimal("2897.74"))
+    assert {i["name"] for i in added["inputs"]} >= {"expansion_treatment", "monthly_payment"}
+
+    cid = client_with_tb(client)
+    client.put(f"/documents/{lease_id}/client", headers=PREPARER, json={"client_id": cid})
+    client.post(f"/clients/{cid}/years/2026-12-31/confirm-suggestions", headers=PREPARER)
+    client.put(f"/clients/{cid}/mappings/5700", headers=PREPARER,
+               json={"fs_line": "operating_expenses", "tax_treatment": "deductible"})
+    leases = client.get(f"/clients/{cid}/years/2026-12-31/tax", headers=PREPARER).json()["leases"]
+    # FY2026: the lease's 11 rentals of 1,000; the expansion's periods ending 31 Aug .. 31 Dec, 5 x 500
+    assert {(l["name"], Decimal(l["payments"])) for l in leases} == {
+        ("lease.pdf", Decimal(11_000)), ("amendment-1.pdf (separate lease)", Decimal(2_500))}

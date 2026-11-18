@@ -148,6 +148,18 @@ class SegmentOut(BaseModel):
     inputs: dict[str, str]  # term -> field id
 
 
+class SeparateLeaseOut(BaseModel):
+    """Added space accounted for as its own lease (IFRS 16.44), from an expansion amendment."""
+
+    document_id: str
+    filename: str
+    commencement: date
+    initial_liability: Decimal
+    initial_rou_asset: Decimal
+    periods: list[PeriodOut]
+    inputs: list[FieldOut]
+
+
 class ScheduleOut(BaseModel):
     initial_liability: Decimal
     initial_rou_asset: Decimal
@@ -156,6 +168,7 @@ class ScheduleOut(BaseModel):
     segments: list[SegmentOut]
     chain_fingerprint: str
     inputs: list[FieldOut]
+    separate_leases: list[SeparateLeaseOut] = []
 
 
 class ReviewLogStatus(BaseModel):
@@ -379,6 +392,16 @@ def create_app(
             segments=[SegmentOut(**vars(seg)) for seg in chained.segments],
             chain_fingerprint=chained.fingerprint,
             inputs=[FieldOut.of(r) for r in chained.fields],
+            separate_leases=[
+                SeparateLeaseOut(
+                    document_id=x.amendment.id, filename=x.amendment.filename,
+                    commencement=x.schedule.terms.commencement, initial_liability=x.schedule.initial_liability,
+                    initial_rou_asset=x.schedule.initial_rou_asset,
+                    periods=[PeriodOut(**vars(period)) for period in x.schedule.periods],
+                    inputs=[FieldOut.of(r) for r in x.fields],
+                )
+                for x in chained.separate
+            ],
         )
 
     @app.get("/documents/{document_id}/lease-schedule.xlsx")

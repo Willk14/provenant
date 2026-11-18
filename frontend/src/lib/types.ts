@@ -3,6 +3,7 @@ export type FieldName =
   | "effective_date"
   | "terms_start_date"
   | "expiry_date"
+  | "expansion_treatment"
   | "term_months"
   | "monthly_payment"
   | "annual_discount_rate"
@@ -40,7 +41,9 @@ export interface Field {
 }
 
 /** Terms a preparer may enter with a basis instead of a location: contracts rarely state them (ADR 0005). */
-export const INPUT_FIELDS: ReadonlySet<FieldName> = new Set<FieldName>(["annual_discount_rate"]);
+export const INPUT_FIELDS: ReadonlySet<FieldName> = new Set<FieldName>(["annual_discount_rate", "expansion_treatment"]);
+/** Judgements no contract states: entered as inputs only, never marked on the PDF. */
+export const INPUT_ONLY_FIELDS: ReadonlySet<FieldName> = new Set<FieldName>(["expansion_treatment"]);
 
 export type DocumentStatus = "queued" | "extracting" | "extracted" | "failed";
 export type DocumentKind = "lease" | "amendment" | "credit_agreement";
@@ -106,6 +109,18 @@ export interface Schedule {
   segments: Segment[];
   chain_fingerprint: string;
   inputs: Field[];
+  /** Added space accounted for as its own lease (IFRS 16.44), one per expansion amendment. */
+  separate_leases?: SeparateLease[];
+}
+
+export interface SeparateLease {
+  document_id: string;
+  filename: string;
+  commencement: string;
+  initial_liability: string;
+  initial_rou_asset: string;
+  periods: Period[];
+  inputs: Field[];
 }
 
 export interface Me {
@@ -138,10 +153,10 @@ export const KINDS: Record<DocumentKind, KindSpec> = {
     labels: {},
   },
   amendment: {
-    order: ["effective_date", "terms_start_date", "monthly_payment", "rent_steps", "free_periods", "expiry_date",
-      "term_months", "annual_discount_rate"],
+    order: ["effective_date", "terms_start_date", "expansion_treatment", "monthly_payment", "rent_steps",
+      "free_periods", "expiry_date", "term_months", "annual_discount_rate"],
     required: new Set(["effective_date", "annual_discount_rate"]),
-    judgement: new Set(["effective_date", "annual_discount_rate"]),
+    judgement: new Set(["effective_date", "annual_discount_rate", "expansion_treatment"]),
     labels: {
       effective_date: "Agreed (IFRS 16 effective) date",
       monthly_payment: "New monthly payment",
@@ -170,6 +185,7 @@ export const FIELD_LABELS: Record<FieldName, string> = {
   effective_date: "Effective date",
   terms_start_date: "New terms start",
   expiry_date: "New expiry date",
+  expansion_treatment: "Expansion (IFRS 16.44)",
   term_months: "Lease term (months)",
   monthly_payment: "Monthly payment",
   payment_timing: "Payment timing",

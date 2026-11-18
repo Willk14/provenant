@@ -55,6 +55,14 @@ lease (Recursion 2022) and four lease amendments (Kura, Tenaya, NeuroOne extensi
 6. **Expansions add space at their own rent.** Bicara's figure is for the expansion space only, and under
    IFRS 16.44 added space at market rent can be a separate lease. The model needs "expansion" as its own
    kind of change.
+   *Done (2026-11-19):* `expansion_treatment` is the preparer's IFRS 16.44 judgement ("separate lease" when the
+   added rent is commensurate with its stand-alone price, otherwise "modification"), entered only as a
+   preparer input with its basis and signed off by a partner; it is never marked on the PDF. For an
+   expansion, the monthly payment, steps and free months are the added space's own rent. A separate lease
+   gets its own schedule from when the space is made available to its expiry (or the lease's end), at the
+   amendment's rate, and appears as its own component in the tax computation; a modification adds the rent
+   to the existing rent and remeasures. Not yet: rent per square foot on an unfixed area, and partial
+   decreases in scope.
 7. **Covenants are frequently springing.** Both Ceridian and Dayforce have a single first-lien leverage
    test (7.25x) that applies only when revolver usage exceeds 35%. The engine tests total net leverage
    unconditionally.

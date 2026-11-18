@@ -6,7 +6,7 @@ import { Fragment } from "react";
 import { displayValue } from "@/components/TermsPanel";
 import { formatAmount, formatDate, shortHash } from "@/lib/format";
 import { FIGURE_LABELS, resolveInputs, type Figure, type Selection } from "@/lib/trace";
-import { fieldLabel, type FieldName, type Period, type Schedule } from "@/lib/types";
+import { fieldLabel, type FieldName, type Period, type Schedule, type SeparateLease } from "@/lib/types";
 
 interface Props {
   documentId: string;
@@ -208,6 +208,10 @@ export function SchedulePanel({
         </tbody>
       </table>
 
+      {(schedule.separate_leases ?? []).map((x) => (
+        <SeparateLeaseView key={x.document_id} lease={x} />
+      ))}
+
       {gains.some((g) => toCents(g) > 0n) && (
         <p className="term-note">
           A decrease larger than the right-of-use asset was taken to profit or loss as a gain (IFRS 16.39).
@@ -222,5 +226,41 @@ export function SchedulePanel({
         </span>
       </div>
     </>
+  );
+}
+
+/** Added space accounted for as its own lease (IFRS 16.44): its own liability, asset and periods. */
+function SeparateLeaseView({ lease }: { lease: SeparateLease }) {
+  const basis = lease.inputs.find((f) => f.name === "expansion_treatment")?.basis;
+  return (
+    <div className="card" style={{ marginTop: 16, padding: "12px 14px" }}>
+      <div className="term-label">Separate lease (IFRS 16.44) from {lease.filename}</div>
+      <p className="term-note" style={{ marginTop: 4 }}>
+        Added space from {formatDate(lease.commencement)}: initial liability {formatAmount(lease.initial_liability)},
+        right-of-use asset {formatAmount(lease.initial_rou_asset)}, {lease.periods.length} periods. The lease above is
+        not remeasured for it.{basis ? ` Basis: ${basis}` : ""}{" "}
+        <Link className="link" href={`/documents/${lease.document_id}`}>Open the amendment</Link>
+      </p>
+      <table className="sched">
+        <thead>
+          <tr>
+            <th className="num">#</th>
+            {COLUMNS.map((c) => (
+              <th key={c.figure} className={c.figure === "end_date" ? undefined : "num"}>{c.label}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {lease.periods.map((p) => (
+            <tr key={p.number}>
+              <td className="num">{p.number}</td>
+              {COLUMNS.map((c) => (
+                <td key={c.figure} className={c.figure === "end_date" ? undefined : "num"}>{c.value(p)}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }

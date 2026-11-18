@@ -19,6 +19,8 @@ FORMATS: dict[str, tuple[str, str]] = {
     "effective_date": _DATE,  # an amendment's IFRS 16 effective date: when it is agreed (usually signed)
     "terms_start_date": _DATE,  # when an amendment's new rent or extended term starts
     "expiry_date": _DATE,  # an amendment's new expiry date
+    # Added space under IFRS 16.44: a preparer's judgement, entered with its basis (never extracted).
+    "expansion_treatment": (r"(?i)separate lease|modification", "separate lease or modification"),
     "term_months": (r"\d{1,3}", "a whole number of months"),
     "monthly_payment": _AMOUNT,
     "annual_discount_rate": (r"\d{1,2}(\.\d+)?%", "a percentage like 12% or 8.5%"),

@@ -48,7 +48,7 @@ Built as thin vertical slices. Each milestone ships something a user can run end
 - [x] Rent schedules: escalation steps and rent-free months, by month number or date
 - [x] Discount rate as a preparer input with its basis (no page cited), partner-reviewed like any judgement
 - [x] Amendments: agreed (IFRS 16 effective) date separate from the date new terms start; new expiry date
-- [ ] Expansions as their own kind of change (possibly a separate lease under IFRS 16.44)
+- [x] Expansions: the IFRS 16.44 judgement as a partner-reviewed input; a separate lease gets its own schedule
 - [ ] Springing covenants, business-day cure periods, relative first test dates, threshold step-ups
 - [ ] Run the Claude evaluation on the real set (needs an API key) and calibrate confidence per extractor
 

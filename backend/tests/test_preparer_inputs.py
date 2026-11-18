@@ -63,3 +63,15 @@ def test_a_document_level_value_must_state_its_basis():
         ExtractedField("annual_discount_rate", "12%", 1.0, ref, "preparer_input", Status.NEEDS_REVIEW, basis=" ")
     field = ExtractedField("annual_discount_rate", "12%", 1.0, ref, "preparer_input", basis="bank quote, March 2026")
     assert field.is_input
+
+
+def test_the_expansion_judgement_is_never_marked_on_the_pdf(client, app):
+    from tests.test_amendments import lease_with_amendment
+
+    _, amendment_id = lease_with_amendment(client, app)
+    r = client.post(f"/documents/{amendment_id}/fields", headers=PREPARER, json={
+        "name": "expansion_treatment", "value": "separate lease", "page": 1, "bbox": [0, 0, 600, 900]})
+    assert r.status_code == 422 and "preparer's judgement" in r.json()["detail"]
+    r = client.post(f"/documents/{amendment_id}/inputs", headers=PREPARER, json={
+        "name": "expansion_treatment", "value": "a new lease", "basis": BASIS})
+    assert r.status_code == 422 and "separate lease or modification" in r.json()["detail"]
