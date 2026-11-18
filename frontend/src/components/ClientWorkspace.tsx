@@ -43,7 +43,7 @@ export function ClientWorkspace({ id }: { id: string }) {
             ← Clients &amp; tax
           </Link>
           <h1>{client?.name ?? "Loading…"}</h1>
-          <p className="muted">Kenya corporation tax · Income Tax Act · rules ke-2026.1</p>
+          <p className="muted">Kenya corporation tax · Income Tax Act · rules ke-2026.3</p>
         </div>
         {client && (
           <div className="year-picker">

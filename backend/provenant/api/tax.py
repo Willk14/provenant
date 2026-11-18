@@ -1,6 +1,7 @@
 """Tax consultancy use cases: clients, trial balances, financial mapping and corporate tax computations."""
 import hashlib
 import json
+from dataclasses import asdict
 from dataclasses import dataclass, replace
 from datetime import date, timedelta
 from decimal import Decimal
@@ -21,6 +22,7 @@ from provenant.api.db import (
     FixedAssetRegisterRow,
     FixedAssetRow,
     TaxInputsRow,
+    TaxApprovalRow,
 )
 from provenant.api.services import MAX_UPLOAD_BYTES, Conflict, Invalid, NotFound, get_document, lease_schedule, require
 from provenant.api.storage import BlobStore
@@ -28,7 +30,9 @@ from provenant.core import tb_csv
 from provenant.core.money import ZERO, to_decimal
 from provenant.covenants.engine import month_end
 from provenant.tax import register as fa_register
-from provenant.tax.engine import KENYA, AllowanceClass, Computation, LeaseYear, MappedLine, TaxCredit, compute
+from provenant.tax.engine import (
+    KENYA, AllowanceAsset, AllowanceClass, Computation, LeaseYear, MappedLine, TaxCredit, compute,
+)
 from provenant.tax.mapping import FS_LINES, TaxTreatment, check_mapping, suggest
 
 ANY_ROLE = (PREPARER, REVIEWER, PARTNER)
@@ -201,6 +205,12 @@ def confirm_suggestions(s: Session, p: Principal, client_id: str, year_end: date
 
 def parse_allowances(raw: list[dict]) -> list[AllowanceClass]:
     try:
+        def opening_values(a: dict) -> dict[str, Decimal]:
+            values = a.get("asset_opening_values") or {}
+            if not isinstance(values, dict):
+                raise ValueError("asset opening values must be an object keyed by asset code")
+            return {str(code): to_decimal(str(value)) for code, value in values.items()}
+
         return [
             AllowanceClass(
                 name=str(a["name"]).strip()[:100],
@@ -211,6 +221,8 @@ def parse_allowances(raw: list[dict]) -> list[AllowanceClass]:
                 basis=str(a.get("basis", "")),
                 cost_basis=to_decimal(str(a.get("cost_basis", "0") or "0")),
                 disposals=to_decimal(str(a.get("disposals", "0") or "0")),
+                asset_opening_values=opening_values(a),
+                business_ceased=bool(a.get("business_ceased", False)),
             )
             for a in raw
         ]
@@ -242,7 +254,18 @@ def _prior_return(raw: dict) -> dict:
             date.fromisoformat(filed_on)
         except ValueError as exc:
             raise Invalid("prior-year return: filing date must be a date like 2026-06-30") from exc
-    return {"reference": reference, "filed_on": filed_on}
+    assessed_tax = str(raw.get("assessed_tax", "") or "").strip()
+    agriculture_income_ratio = str(raw.get("agriculture_income_ratio", "0") or "0").strip()
+    try:
+        if assessed_tax and to_decimal(assessed_tax) < ZERO:
+            raise ValueError("assessed tax cannot be negative")
+        ratio = to_decimal(agriculture_income_ratio)
+        if ratio < ZERO or ratio > 1:
+            raise ValueError("agriculture income ratio must be between 0 and 1")
+    except ValueError as exc:
+        raise Invalid(f"instalment tax inputs: {exc}") from exc
+    return {"reference": reference, "filed_on": filed_on, "assessed_tax": assessed_tax,
+            "agriculture_income_ratio": str(ratio)}
 
 
 def set_inputs(
@@ -253,6 +276,15 @@ def set_inputs(
     get_trial_balance(s, p.tenant_id, client_id, year_end)
     parse_allowances(allowances)  # validate before storing
     credits = credits or []
+    for item in credits:
+        paid_on = item.get("paid_on")
+        if paid_on:
+            if item.get("kind") != "instalment":
+                raise Invalid("a payment date is supported only for instalment tax credits")
+            try:
+                date.fromisoformat(str(paid_on))
+            except ValueError as exc:
+                raise Invalid("instalment payment date must be YYYY-MM-DD") from exc
     evidence = {c.evidence for c in parse_credits(credits) if c.evidence}
     if evidence:
         known = set(s.scalars(select(ClientAttachmentRow.id).where(
@@ -352,19 +384,69 @@ def tax_computation(s: Session, tenant_id: str, client_id: str, year_end: date) 
     losses = Decimal(inputs.losses_brought_forward_cents) * CENT if inputs else ZERO
     leases = [y for lease in client_leases(s, tenant_id, client_id) if (y := lease_year(s, tenant_id, lease, year_end))]
 
-    # The register, when uploaded, supplies each matching class's additions and disposals.
+    # The register supplies movements; opening tax residual values remain explicit preparer inputs.
     from_register: set[str] = set()
     unmatched: list[str] = []
     if (reg := get_register(s, tenant_id, client_id, year_end)) is not None:
         by_name = {c.asset_class.casefold(): c for c in register_summary(s, tenant_id, reg)}
+        assets_by_name: dict[str, list[fa_register.Asset]] = {}
+        for asset in register_assets(s, tenant_id, reg):
+            assets_by_name.setdefault(asset.asset_class.casefold(), []).append(asset)
         merged = []
         for a in allowances:
             moved = by_name.pop(a.name.casefold(), None)
+            if a.business_ceased and not moved:
+                raise Conflict(f"upload a matching fixed asset register to calculate cessation results for {a.name}")
             if moved:
-                a = replace(a, additions=moved.additions, disposals=moved.disposals)
+                registered_assets = assets_by_name.get(a.name.casefold(), [])
+                relevant_assets = [
+                    x for x in registered_assets
+                    if x.acquired <= year_end and (x.disposed is None or x.disposed >= year_start(year_end))
+                ]
+                if a.business_ceased:
+                    still_owned = [x.code for x in relevant_assets if x.disposed is None or x.disposed > year_end]
+                    if still_owned:
+                        raise Conflict(
+                            f"business cessation for {a.name} requires every class asset to cease being owned by year end: "
+                            + ", ".join(still_owned[:8])
+                        )
+                    if not relevant_assets:
+                        raise Conflict(f"no {a.name} assets ceased being owned during this year")
+                item_values = a.asset_opening_values
+                eligible = [x for x in relevant_assets if x.acquired < year_start(year_end)]
+                missing_values = [x.code for x in eligible if x.code not in item_values]
+                if missing_values:
+                    raise Conflict(
+                        f"enter opening tax residual values for every existing {a.name} asset: "
+                        + ", ".join(missing_values[:8])
+                    )
+                unknown_values = sorted(set(item_values) - {x.code for x in relevant_assets})
+                if unknown_values:
+                    raise Conflict("opening tax residual values refer to assets outside this register: "
+                                   + ", ".join(unknown_values[:8]))
+                item_assets = tuple(
+                    AllowanceAsset(
+                        code=x.code, cost=x.cost,
+                        opening_wdv=item_values.get(x.code, ZERO),
+                        acquired_in_year=x.acquired >= year_start(year_end),
+                        proceeds=x.proceeds if x.disposed and year_start(year_end) <= x.disposed <= year_end else ZERO,
+                        disposed=bool(x.disposed and year_start(year_end) <= x.disposed <= year_end),
+                    ) for x in relevant_assets
+                )
+                a = replace(a, wdv_brought_forward=sum((x.opening_wdv for x in item_assets), ZERO),
+                            additions=moved.additions, disposals=moved.disposals, assets=item_assets)
                 from_register.add(a.name)
             merged.append(a)
         allowances, unmatched = merged, [c.asset_class for c in by_name.values()]
+    else:
+        cessation_classes = [a.name for a in allowances if a.business_ceased]
+        if cessation_classes:
+            raise Conflict("upload the fixed asset register to calculate business-cessation results for: "
+                           + ", ".join(cessation_classes[:8]))
+        classes_with_disposals = [a.name for a in allowances if a.disposals]
+        if classes_with_disposals:
+            raise Conflict("upload the fixed asset register to calculate disposal results per asset for: "
+                           + ", ".join(classes_with_disposals[:8]))
     try:
         computation = compute(lines, allowances, leases, losses, KENYA, credits)
     except ValueError as exc:
@@ -375,6 +457,65 @@ def tax_computation(s: Session, tenant_id: str, client_id: str, year_end: date) 
         computation = replace(computation, warnings=(*computation.warnings, note))
     attachments = {a.id: a.filename for a in list_attachments(s, tenant_id, client_id, year_end)}
     return TaxRun(computation, accounts, leases, allowances, credits, from_register, attachments)
+
+
+def tax_snapshot(s: Session, tenant_id: str, client_id: str, year_end: date) -> tuple[str, str]:
+    """Build canonical input/result JSON and its digest for an approval snapshot."""
+    run = tax_computation(s, tenant_id, client_id, year_end)
+    inputs = get_inputs(s, tenant_id, client_id, year_end)
+    mapping_snapshot = [{"line_id": str(a.line.id), "code": a.line.code, "name": a.line.name,
+                        "balance_cents": a.line.balance_cents, "fs_line": a.mapping.fs_line,
+                        "tax_treatment": a.mapping.tax_treatment, "status": a.mapping.status}
+                       for a in run.accounts]
+    mapping_version = hashlib.sha256(json.dumps(mapping_snapshot, sort_keys=True, separators=(",", ":"))
+                                     .encode()).hexdigest()
+    payload = {
+        "rules_version": run.computation.rules_version,
+        "mapping_version": mapping_version,
+        "inputs": ({"losses_brought_forward_cents": inputs.losses_brought_forward_cents,
+                    "allowances": json.loads(inputs.allowances_json), "credits": json.loads(inputs.credits_json),
+                    "prior_return": json.loads(inputs.prior_return_json or "{}"), "updated_by": inputs.updated_by,
+                    "updated_at": inputs.updated_at.isoformat()} if inputs else None),
+        "accounts": mapping_snapshot,
+        "computation": asdict(run.computation),
+        "leases": run.leases,
+        "allowances": run.allowances,
+        "credits": run.credits,
+        "from_register": sorted(run.from_register),
+        "register_sha256": ((reg.sha256 if (reg := get_register(s, tenant_id, client_id, year_end)) else None)),
+    }
+    snapshot = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(snapshot.encode()).hexdigest(), snapshot
+
+
+def approve_tax(s: Session, p: Principal, client_id: str, year_end: date) -> TaxApprovalRow:
+    require(p, REVIEWER, PARTNER)
+    get_client(s, p.tenant_id, client_id)
+    inputs = get_inputs(s, p.tenant_id, client_id, year_end)
+    if inputs and inputs.updated_by == p.user:
+        raise Invalid("you cannot approve tax inputs you prepared")
+    if any(account.mapping.confirmed_by == p.user for account in mapped_accounts(s, p.tenant_id, client_id, year_end)):
+        raise Invalid("you cannot approve mappings you confirmed")
+    fingerprint, snapshot = tax_snapshot(s, p.tenant_id, client_id, year_end)
+    row = TaxApprovalRow(tenant_id=p.tenant_id, client_id=client_id, year_end=year_end,
+                         fingerprint=fingerprint, snapshot_json=snapshot, reviewer=p.user)
+    s.add(row)
+    try:
+        s.commit()
+    except IntegrityError:
+        s.rollback()
+        row = s.scalar(select(TaxApprovalRow).where(
+            TaxApprovalRow.tenant_id == p.tenant_id, TaxApprovalRow.client_id == client_id,
+            TaxApprovalRow.year_end == year_end, TaxApprovalRow.fingerprint == fingerprint))
+    return row
+
+
+def current_tax_approval(s: Session, tenant_id: str, client_id: str, year_end: date):
+    fingerprint, _ = tax_snapshot(s, tenant_id, client_id, year_end)
+    latest = s.scalar(select(TaxApprovalRow).where(
+        TaxApprovalRow.tenant_id == tenant_id, TaxApprovalRow.client_id == client_id,
+        TaxApprovalRow.year_end == year_end).order_by(TaxApprovalRow.approved_at.desc()))
+    return latest, bool(latest and latest.fingerprint == fingerprint)
 
 
 def lead_schedule(accounts: list[MappedAccount]) -> list[tuple[str, Decimal, list[str]]]:
@@ -556,7 +697,9 @@ def roll_forward(s: Session, p: Principal, client_id: str, year_end: date) -> di
         "allowances": [
             {"name": a.name, "wdv_brought_forward": str(a.wdv_carried_forward()), "additions": "0",
              "disposals": "0", "rate_percent": format((a.rate * 100).normalize(), "f"), "method": a.method,
-             "basis": a.basis, "cost_basis": str(a.cost_basis + a.additions) if a.method == "straight_line" else "0"}
+             "basis": a.basis, "cost_basis": str(a.cost_basis + a.additions) if a.method == "straight_line" else "0",
+             "asset_opening_values": {item.code: str(item.closing_wdv) for item in a.asset_schedule()
+                                      if item.disposal_result is None}}
             for a in prior.allowances
         ],
         "credits": credits,

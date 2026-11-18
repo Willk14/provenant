@@ -79,3 +79,21 @@ def test_tax_records_are_tenant_isolated(client, app, database_url):
     with tenant_session(factory, "firm-b") as s:
         for table in ("fixed_asset_registers", "fixed_assets", "client_attachments"):
             assert s.scalar(text(f"select count(*) from {table}")) == 0
+
+
+def test_tax_approvals_are_isolated_and_append_only(client, app, database_url):
+    from tests.test_tax_api import client_with_tb
+    from tests.test_api import PREPARER, REVIEWER
+
+    cid = client_with_tb(client)
+    client.post(f"/clients/{cid}/years/2026-12-31/confirm-suggestions", headers=PREPARER)
+    # 5700 is intentionally unmapped and must be explicitly classified before approval.
+    client.put(f"/clients/{cid}/mappings/5700", headers=PREPARER,
+               json={"fs_line": "operating_expenses", "tax_treatment": "deductible"})
+    assert client.post(f"/clients/{cid}/years/2026-12-31/tax/approval", headers=REVIEWER).status_code == 200
+    factory = make_sessionmaker(make_engine(database_url))
+    with tenant_session(factory, "firm-b") as s:
+        assert s.scalar(text("select count(*) from tax_approvals")) == 0
+    for statement in ("update tax_approvals set reviewer = 'tampered'", "delete from tax_approvals"):
+        with tenant_session(factory, "firm-a") as s, pytest.raises(DBAPIError, match="permission denied|append-only"):
+            s.execute(text(statement))

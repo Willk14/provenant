@@ -75,7 +75,11 @@ Built as thin vertical slices. Each milestone ships something a user can run end
 - [x] Records & inputs: prior-year return and roll forward, fixed asset register (additions, disposals,
       balancing charges), instalment / withholding / overpayment credits to tax due, supporting documents
       as evidence
-- [ ] Thin capitalisation and interest restriction; balancing deductions; minimum tax
+- [x] Per-asset opening tax residual values and disposal outcomes when a matching fixed asset register is used
+- [x] Per-class business cessation input, item-level balancing results, and reviewer-approved computation
+- [x] Instalment tax planner: lower of current-year estimate and 110% prior-year assessment, withholding reduction,
+      agricultural proportions, accounting-period due dates, dated payment allocation, and balance deadline
+- [ ] Minimum tax and interest limits
 - [ ] Export the computation and lead schedules to Excel; iTax return figures
 - [ ] Learn suggestions from a firm's confirmed mappings across clients
 

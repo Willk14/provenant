@@ -60,6 +60,31 @@ export function TaxTab({ clientId, yearEnd, onOpenMapping, onOpenRecords }: Prop
     }
   }
 
+  async function approve() {
+    try {
+      await taxApi.approveComputation(clientId, yearEnd);
+      await recompute();
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+
+  async function exportWorkbook() {
+    try {
+      const data = await taxApi.exportComputation(clientId, yearEnd);
+      const url = URL.createObjectURL(new Blob([data], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      }));
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `tax-computation-${yearEnd}.xlsx`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+
   const linked = leases.filter((d) => d.client_id === clientId);
   const unlinked = leases.filter((d) => !d.client_id);
 
@@ -72,11 +97,17 @@ export function TaxTab({ clientId, yearEnd, onOpenMapping, onOpenRecords }: Prop
             <strong>
               {blocked.startsWith("lease ")
                 ? "The computation is waiting on a linked lease"
+                : blocked.includes("opening tax residual values")
+                  ? "The computation needs asset opening values"
+                  : blocked.includes("fixed asset register")
+                    ? "The computation needs per-asset disposal data"
                 : "The computation is waiting on the mapping"}
             </strong>
             {blocked}.{" "}
             {blocked.startsWith("lease ") ? (
               <span className="muted">Verify the lease&apos;s terms (and its amendments) so its schedule can run.</span>
+            ) : blocked.includes("opening tax residual values") || blocked.includes("fixed asset register") ? (
+              <button className="btn btn-sm" onClick={onOpenRecords} style={{ marginLeft: 6 }}>Open records &amp; inputs</button>
             ) : (
               <button className="btn btn-sm" onClick={onOpenMapping} style={{ marginLeft: 6 }}>
                 Open financial mapping
@@ -84,7 +115,7 @@ export function TaxTab({ clientId, yearEnd, onOpenMapping, onOpenRecords }: Prop
             )}
           </div>
         ) : computation ? (
-          <ComputationView c={computation} clientId={clientId} />
+          <ComputationView c={computation} clientId={clientId} onApprove={approve} onExport={exportWorkbook} />
         ) : (
           <div className="empty">Computing…</div>
         )}
@@ -142,7 +173,9 @@ function Row({ label, amount, strong, note }: { label: string; amount: string; s
   );
 }
 
-function ComputationView({ c, clientId }: { c: Computation; clientId: string }) {
+function ComputationView({ c, clientId, onApprove, onExport }: {
+  c: Computation; clientId: string; onApprove: () => void; onExport: () => void;
+}) {
   const due = Number(c.tax_due);
   return (
     <div className="card comp">
@@ -160,9 +193,69 @@ function ComputationView({ c, clientId }: { c: Computation; clientId: string }) 
           </div>
         </div>
       </div>
+      <div className={c.changed_since_approval ? "callout callout-warn" : "callout"} style={{ marginTop: 12 }}>
+        {c.approval ? (
+          <span>Approved by {c.approval.reviewer} on {new Date(c.approval.approved_at).toLocaleString()}.
+            {c.changed_since_approval ? " Changed since approval." : " Current computation matches this approval."}</span>
+        ) : <span>This computation has not been approved.</span>}{" "}
+        <button type="button" className="btn btn-sm" onClick={onApprove}>Approve computation</button>
+        <button type="button" className="btn btn-sm" onClick={onExport}>Export Excel</button>
+      </div>
       {c.warnings.map((w) => (
         <div key={w} className="callout callout-warn" style={{ padding: "6px 10px", fontSize: 13 }}>{w}</div>
       ))}
+      {c.instalment_plan && (
+        <>
+          <h3 style={{ margin: "18px 0 6px" }}>Instalment tax plan</h3>
+          <p className="term-note">
+            Provisional schedule under Income Tax Act s.12 and the Twelfth Schedule. Basis: {c.instalment_plan.basis_used};
+            current-year estimate {formatAmount(c.instalment_plan.current_year_basis)} after withholding of {formatAmount(c.instalment_plan.withholding_reduction)}.
+            {c.instalment_plan.prior_year_basis !== null && ` 110% of prior-year assessment before withholding: ${formatAmount(c.instalment_plan.prior_year_basis)}.`}
+            {` Agriculture income ratio: ${(Number(c.instalment_plan.agriculture_income_ratio) * 100).toFixed(1)}%.`}
+            This is a planning estimate; reconcile with the filed assessment and actual payment receipts.
+          </p>
+          <table className="table register-table">
+            <thead><tr><th>Instalment</th><th>Due date</th><th className="num">Proportion</th>
+              <th className="num">Planned</th><th className="num">Paid recorded</th><th className="num">Outstanding</th></tr></thead>
+            <tbody>{c.instalment_plan.installments.map((item) => (
+              <tr key={item.number}><td>{item.number}<div className="faint">{item.basis}</div>
+                <div className="faint">Sources: {item.sources.join(", ")}</div></td>
+                <td>{new Date(`${item.due_date}T00:00:00Z`).toLocaleDateString()}</td>
+                <td className="num">{(Number(item.proportion) * 100).toFixed(0)}%</td>
+                <td className="num">{formatAmount(item.amount)}</td>
+                <td className="num">{formatAmount(item.paid_to_date)}</td>
+                <td className="num">{formatAmount(item.outstanding)}</td></tr>
+            ))}</tbody>
+          </table>
+          {Number(c.instalment_plan.unallocated_instalment_payments) > 0 && (
+            <div className="callout callout-warn" style={{ marginTop: 8 }}>
+              {formatAmount(c.instalment_plan.unallocated_instalment_payments)} of recorded instalment credits have no payment date and are not allocated to due dates. Add dates under Records &amp; inputs.
+            </div>
+          )}
+          <p className="term-note">Balance of tax deadline: {new Date(`${c.instalment_plan.balance_due_date}T00:00:00Z`).toLocaleDateString()} · {c.instalment_plan.balance_due_basis}. Current computation balance: {formatAmount(c.instalment_plan.balance_due_amount.replace(/^-/, ""))}{Number(c.instalment_plan.balance_due_amount) < 0 ? " refundable" : " due"}.</p>
+        </>
+      )}
+      {c.allowances.some((a) => a.asset_schedule.length > 0) && (
+        <>
+          <h3 style={{ margin: "18px 0 6px" }}>Asset tax schedule</h3>
+          <p className="term-note">Per-asset opening values are preparer inputs; register cost and disposal proceeds are linked by asset code.</p>
+          <table className="table register-table">
+            <thead><tr><th>Asset</th><th className="num">Opening value</th><th className="num">Addition</th>
+              <th className="num">Allowance</th><th className="num">Proceeds</th><th className="num">Disposal / cessation result</th>
+              <th className="num">Closing value</th></tr></thead>
+            <tbody>{c.allowances.flatMap((a) => a.asset_schedule.map((item) => (
+              <tr key={item.code}><td><span className="mono">{item.code}</span><div className="faint">{a.name} · {item.source}</div>
+                <div className="faint">Rate basis: {item.rate_basis}</div>
+                {a.business_ceased && <div className="faint">Cessation balancing result; included in the reviewed tax computation.</div>}
+                {item.disposal_basis && <div className="faint">Disposal basis: {item.disposal_basis}</div>}</td>
+                <td className="num">{formatAmount(item.opening_wdv)}</td><td className="num">{formatAmount(item.additions)}</td>
+                <td className="num">{formatAmount(item.allowance)}</td><td className="num">{formatAmount(item.proceeds)}</td>
+                <td className="num">{item.disposal_result === null ? "—" : formatAmount(item.disposal_result)}</td>
+                <td className="num">{formatAmount(item.closing_wdv)}</td></tr>
+            )))}</tbody>
+          </table>
+        </>
+      )}
       <table className="workings-table comp-table">
         <tbody>
           <Row label="Profit before tax" amount={c.profit_before_tax} strong />
@@ -182,9 +275,9 @@ function ComputationView({ c, clientId }: { c: Computation; clientId: string }) 
                     ) : (
                       <span key={s} className="chip">
                         <span className="faint">
-                          {c.allowances.find((x) => `allowance:${x.name}` === s)?.from_register ? "register" : "input"}
+                          {s.startsWith("asset:") ? "fixed asset" : (c.allowances.find((x) => `allowance:${x.name}` === s)?.from_register ? "register" : "input")}
                         </span>{" "}
-                        <b>{s.replace(/^allowance:/, "")}</b>
+                        <b>{s.replace(/^(allowance|asset):/, "")}</b>
                       </span>
                     ),
                   )}

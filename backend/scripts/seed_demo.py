@@ -124,7 +124,8 @@ def trial_balance_csv(revenue, opex, da, interest, cash, borrowings, leases) -> 
 
 # Kilima's statutory trial balance for the year ended 31 December 2026 (KES), for the tax computation.
 CLIENT_TB = [
-    ("1000", "Equity Bank current account", 38_450_000),
+    # Includes a KES 302.88m year-end cash reserve so the opening equity position is explicit below.
+    ("1000", "Equity Bank current account", 341_330_000),
     ("1010", "M-Pesa till float", 1_250_000),
     ("1100", "Trade receivables", 96_300_000),
     ("1500", "Computers and office equipment - cost", 64_000_000),
@@ -152,7 +153,13 @@ CLIENT_TB = [
     ("5500", "Interest on term loan", 12_400_000),
     ("5510", "Interest on lease liabilities", 1_330_000),
 ]
-CLIENT_TB.append(("3100", "Retained earnings brought forward", -sum(b for *_, b in CLIENT_TB)))
+# Debit-positive convention: KES 120m opening retained earnings is a credit balance.
+# FY2026 profit is KES 221.63m, so closing retained earnings is a credit KES 341.63m.
+CLIENT_TB.append(("3100", "Retained earnings brought forward", -120_000_000))
+if sum(balance for _, _, balance in CLIENT_TB) != 0:
+    raise ValueError("Kilima's FY2026 statutory trial balance must balance to zero")
+if next(balance for code, _, balance in CLIENT_TB if code == "3100") >= 0:
+    raise ValueError("Kilima's retained earnings brought forward must be a credit balance")
 
 
 def client_tb_csv() -> bytes:

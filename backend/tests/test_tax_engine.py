@@ -2,7 +2,7 @@ from decimal import Decimal
 
 import pytest
 
-from provenant.tax.engine import AllowanceClass, LeaseYear, MappedLine, TaxCredit, compute
+from provenant.tax.engine import AllowanceAsset, AllowanceClass, LeaseYear, MappedLine, TaxCredit, compute
 from provenant.tax.mapping import TaxTreatment as T, check_mapping, suggest
 
 D = Decimal
@@ -125,6 +125,34 @@ def test_disposal_proceeds_above_the_pool_are_a_balancing_charge():
     charge = next(a for a in run.adjustments if a.label.startswith("Balancing charge"))
     assert charge.amount == D(50_000) and "Second Schedule" in charge.basis
     assert run.taxable_profit == D(190_000)  # 140,000 + 50,000
+
+
+@pytest.mark.parametrize(
+    ("proceeds", "label", "amount"),
+    [
+        (D(850), "Balancing charge on cessation: Plant · A-1", D(100)),
+        (D(500), "Balancing deduction on cessation: Plant · A-1", D(-250)),
+    ],
+)
+def test_cessation_balancing_outcome_uses_item_residual_value(proceeds, label, amount):
+    # Hand-worked (KES): opening residual value 1,000; 25% allowance = 250; residual at cessation = 750.
+    # Proceeds 850 produce a 100 charge; proceeds 500 produce a 250 balancing deduction.
+    asset = AllowanceAsset("A-1", D(2_000), D(1_000), False, proceeds, True)
+    plant = AllowanceClass("Plant", D(1_000), D(0), D("0.25"), "reducing", "Second Schedule para. 4",
+                           assets=(asset,), business_ceased=True)
+    result = compute([], [plant])
+    adjustment = next(item for item in result.adjustments if item.label == label)
+
+    assert adjustment.amount == amount
+    assert adjustment.sources == ("asset:A-1",)
+    assert "Second Schedule paragraph 4" in adjustment.basis
+    assert not any(item.label.startswith(("Disposal gain", "Disposal loss")) for item in result.adjustments)
+
+
+def test_cessation_balancing_requires_item_level_assets():
+    class_only = AllowanceClass("Plant", D(1_000), D(0), D("0.25"), "reducing", "basis", business_ceased=True)
+    with pytest.raises(ValueError, match="matched per-asset register"):
+        compute([], [class_only])
 
 
 def test_credits_take_the_tax_payable_to_tax_due_or_refundable():

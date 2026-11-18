@@ -165,6 +165,22 @@ class TaxInputsRow(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
 
 
+class TaxApprovalRow(Base):
+    """Append-only snapshot of a reviewed tax computation."""
+
+    __tablename__ = "tax_approvals"
+    __table_args__ = (UniqueConstraint("tenant_id", "client_id", "year_end", "fingerprint"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(String(64), index=True)
+    client_id: Mapped[str] = mapped_column(ForeignKey("clients.id"), index=True)
+    year_end: Mapped[date] = mapped_column(Date)
+    fingerprint: Mapped[str] = mapped_column(String(64))
+    snapshot_json: Mapped[str] = mapped_column(Text)
+    reviewer: Mapped[str] = mapped_column(String(200))
+    approved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
 class FixedAssetRegisterRow(Base):
     """A client's fixed asset register as at a year end. Uploading again replaces it."""
 

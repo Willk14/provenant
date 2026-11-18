@@ -37,19 +37,35 @@ mapping is invisible and the adjustments are re-keyed.
   each class's opening written-down value. "Roll forward" proposes these from last year's computation (and
   an overpayment credit if it ended refundable); it saves nothing until a person reviews and saves.
 - **Fixed asset register** (CSV per client-year, replaced on re-upload). For a capital deduction class with
-  the same name, the register supplies the year's additions (cost of assets acquired in the year) and
-  disposals (proceeds of assets disposed of in the year); typed figures are ignored for that class. Proceeds
-  above the pool are a balancing charge. Register classes with no matching deduction class are flagged:
-  the rate and basis are never guessed.
+  the same name, the register supplies current-year additions and disposal proceeds; typed class movements
+  are ignored for that class. Each pre-existing registered item needs a preparer-entered opening tax
+  residual value, which is carried forward by asset code from the prior computation. The computation
+  calculates the allowance and disposal result item by item and traces each result to the asset code.
+  Register classes with no matching deduction class are flagged; the rate and basis are never guessed.
+- **Business cessation uses a separate balancing outcome.** A preparer may mark a deduction class as ceased
+  only for a year in which the business using the items stopped and every item in the class ceased to be owned.
+  The class must match the fixed asset register, all relevant items must have an exit by year-end, and the
+  register must state sale consideration or the deemed market value. The item residual value is calculated
+  after the year's allowance; paragraph 4's charge or deduction is traced to each asset. Selling a class while
+  the business continues remains a paragraph 3 trading receipt or loss. The resulting computation snapshot
+  must be approved by a reviewer or partner before it is treated as approved working paper.
 - **Tax credits:** instalment tax, withholding tax, overpayment brought forward and other credits, each with
   a reference and optionally the supporting document that evidences it. The computation ends at tax due,
   or refundable when credits exceed the tax charged.
+- **Instalment tax planning:** the planner applies Income Tax Act s.12's lower-of method (current-year tax
+  estimate or 110% of prior-year assessed tax), reduces the amount by withholding credits, and applies the
+  Twelfth Schedule proportions. It uses the agricultural schedule only when the preparer records that more
+  than two-thirds of current-year income is agricultural. Dates are calculated from the accounting period,
+  dated instalment receipts allocate against due dates, and the balance deadline is shown. The report names
+  its basis and source inputs; it does not calculate late-payment penalties. Confirm the applicable law and
+  current-year estimate before relying on the schedule.
 - **Supporting documents:** PDF, PNG, JPEG, XLSX or CSV per client-year, content-addressed like leases,
   type-checked by their leading bytes, served with `nosniff`. A document that evidences a credit cannot be
   deleted until the credit no longer points at it.
 
 ## Not in this slice
-- Minimum tax, turnover tax, VAT and transfer pricing; balancing deductions on a class's final disposal.
+- Minimum tax, turnover tax, VAT and transfer pricing; item-level tax schedules for classes that do not have
+  a matching fixed asset register.
 - Claude-suggested mappings (deterministic keyword suggestions only).
 - iTax return line mapping and filing exports.
 - Partner sign-off of the computation (mappings are confirmed; computation review follows).

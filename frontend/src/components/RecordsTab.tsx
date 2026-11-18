@@ -30,6 +30,8 @@ const EMPTY_CLASS: Allowance = {
   rate_percent: "",
   method: "reducing",
   basis: "",
+  asset_opening_values: {},
+  business_ceased: false,
 };
 
 const EMPTY_CREDIT: Credit = { kind: "instalment", description: "", amount: "", reference: "", evidence: null };
@@ -119,6 +121,14 @@ export function RecordsTab({ clientId, yearEnd, onSaved, onOpenComputation }: Pr
     register?.classes.find((c) => c.asset_class.toLowerCase() === name.trim().toLowerCase());
   const setClass = (i: number, patch: Partial<Allowance>) =>
     edit({ allowances: inputs.allowances.map((a, j) => (j === i ? { ...a, ...patch } : a)) });
+  const setAssetOpening = (assetClass: string, code: string, value: string) => {
+    const i = inputs.allowances.findIndex((a) => a.name.trim().toLowerCase() === assetClass.toLowerCase());
+    if (i < 0) return;
+    const values = { ...(inputs.allowances[i].asset_opening_values ?? {}) };
+    if (value.trim()) values[code] = value;
+    else delete values[code];
+    setClass(i, { asset_opening_values: values });
+  };
   const setCredit = (i: number, patch: Partial<Credit>) =>
     edit({ credits: inputs.credits.map((c, j) => (j === i ? { ...c, ...patch } : c)) });
   const unmatched = register?.classes.filter(
@@ -173,10 +183,24 @@ export function RecordsTab({ clientId, yearEnd, onSaved, onOpenComputation }: Pr
               <input className="input num" value={inputs.losses_brought_forward}
                 onChange={(e) => edit({ losses_brought_forward: e.target.value })} />
             </label>
+            <label className="field">
+              <span>Prior-year assessed tax for instalment basis</span>
+              <input className="input num" value={inputs.prior_return.assessed_tax}
+                placeholder="Leave blank if unavailable"
+                onChange={(e) => edit({ prior_return: { ...inputs.prior_return, assessed_tax: e.target.value } })} />
+            </label>
+            <label className="field">
+              <span>Current-year income from agriculture (%)</span>
+              <input className="input num" value={String(Number(inputs.prior_return.agriculture_income_ratio || "0") * 100)}
+                onChange={(e) => edit({ prior_return: { ...inputs.prior_return,
+                  agriculture_income_ratio: String((Number(e.target.value) || 0) / 100) } })} />
+            </label>
           </div>
           <p className="term-note">
-            Opening written-down values sit with each capital deduction class below. An overpayment brought forward is
-            entered as a tax credit.
+            These inputs support the instalment tax planner. Enter the prior-year assessed tax where available and the
+            current-year proportion of income from agriculture. Rates, proportions and dates follow the cited statutory basis.
+            When a register is linked, opening tax residual values are entered per asset in the register card. Otherwise,
+            enter the class opening value here. An overpayment brought forward is entered as a tax credit.
           </p>
         </div>
 
@@ -218,8 +242,10 @@ export function RecordsTab({ clientId, yearEnd, onSaved, onOpenComputation }: Pr
                     </select>
                   </label>
                   <label className="field">
-                    <span>WDV brought forward</span>
-                    <input className="input num" value={a.wdv_brought_forward}
+                    <span>WDV brought forward{fromRegister && " · asset total"}</span>
+                    <input className="input num" disabled={!!fromRegister}
+                      value={fromRegister ? "" : a.wdv_brought_forward}
+                      placeholder={fromRegister ? "See per-asset values" : undefined}
                       onChange={(e) => setClass(i, { wdv_brought_forward: e.target.value })} />
                   </label>
                   <label className="field">
@@ -247,6 +273,17 @@ export function RecordsTab({ clientId, yearEnd, onSaved, onOpenComputation }: Pr
                     <span>Basis for the rate</span>
                     <input className="input" value={a.basis} placeholder="e.g. Second Schedule para. … (Finance Act year)"
                       onChange={(e) => setClass(i, { basis: e.target.value })} />
+                  </label>
+                  <label className="field" style={{ gridColumn: "1 / -1" }}>
+                    <span>
+                      <input type="checkbox" checked={a.business_ceased ?? false}
+                        onChange={(e) => setClass(i, { business_ceased: e.target.checked })} />{" "}
+                      Business ceased this year for this class
+                    </span>
+                    <span className="term-note">
+                      Use only when the business using these assets ceased and every item in this class ceased to be owned.
+                      Record sale consideration or market value in the fixed asset register. A reviewer must approve the computation.
+                    </span>
                   </label>
                 </div>
                 <button className="btn btn-sm btn-ghost btn-danger" type="button"
@@ -291,6 +328,7 @@ export function RecordsTab({ clientId, yearEnd, onSaved, onOpenComputation }: Pr
                   <th>Reference</th>
                   <th>Evidence</th>
                   <th className="num">Amount</th>
+                  <th>Paid on</th>
                   <th aria-label="Remove" />
                 </tr>
               </thead>
@@ -328,6 +366,10 @@ export function RecordsTab({ clientId, yearEnd, onSaved, onOpenComputation }: Pr
                         onChange={(e) => setCredit(i, { amount: e.target.value })} />
                     </td>
                     <td>
+                      <input className="input" type="date" aria-label="Payment date" value={c.paid_on ?? ""}
+                        onChange={(e) => setCredit(i, { paid_on: e.target.value || null })} />
+                    </td>
+                    <td>
                       <button className="btn btn-sm btn-ghost btn-danger" type="button" aria-label="Remove credit"
                         onClick={() => edit({ credits: inputs.credits.filter((_, j) => j !== i) })}>
                         ×
@@ -342,7 +384,8 @@ export function RecordsTab({ clientId, yearEnd, onSaved, onOpenComputation }: Pr
       </section>
 
       <aside className="records-side">
-        <RegisterCard clientId={clientId} yearEnd={yearEnd} register={register}
+        <RegisterCard clientId={clientId} yearEnd={yearEnd} register={register} inputs={inputs}
+          onInputsChange={(assetClass, code, value) => setAssetOpening(assetClass, code, value)}
           onUploaded={(r) => { setRegister(r); onSaved(); }} />
         <AttachmentsCard clientId={clientId} yearEnd={yearEnd} meta={meta} attachments={attachments}
           usedAsEvidence={new Set(inputs.credits.map((c) => c.evidence).filter(Boolean) as string[])}
@@ -352,10 +395,12 @@ export function RecordsTab({ clientId, yearEnd, onSaved, onOpenComputation }: Pr
   );
 }
 
-function RegisterCard({ clientId, yearEnd, register, onUploaded }: {
+function RegisterCard({ clientId, yearEnd, register, inputs, onInputsChange, onUploaded }: {
   clientId: string;
   yearEnd: string;
   register: Register | null;
+  inputs: Inputs;
+  onInputsChange: (assetClass: string, code: string, value: string) => void;
   onUploaded: (r: Register) => void;
 }) {
   const file = useRef<HTMLInputElement>(null);
@@ -385,6 +430,7 @@ function RegisterCard({ clientId, yearEnd, register, onUploaded }: {
         CSV with <span className="mono">asset_code, description, class, acquired, cost</span> and optionally{" "}
         <span className="mono">disposed, proceeds</span>. Dates as YYYY-MM-DD. Uploading again replaces it.
       </p>
+      <p className="term-note">For each asset held at the start of this year, enter its opening tax residual value from the prior-year approved schedule. New assets start at zero. Save these with the preparer inputs.</p>
       <div className="term-actions">
         <input ref={file} type="file" accept=".csv,text/csv" aria-label="Fixed asset register CSV" />
         <button className="btn btn-sm" type="button" disabled={busy} onClick={upload}>
@@ -428,6 +474,7 @@ function RegisterCard({ clientId, yearEnd, register, onUploaded }: {
           </button>
           {showAssets && (
             <table className="table register-table">
+              <thead><tr><th>Asset / movement</th><th className="num">Cost</th><th className="num">Opening tax residual value</th></tr></thead>
               <tbody>
                 {register.assets.map((a) => (
                   <tr key={a.code}>
@@ -439,6 +486,15 @@ function RegisterCard({ clientId, yearEnd, register, onUploaded }: {
                       </div>
                     </td>
                     <td className="num">{formatAmount(a.cost)}</td>
+                    <td>
+                      {a.acquired <= priorYearEnd(yearEnd) && inputs.allowances.some((x) => x.name.trim().toLowerCase() === a.asset_class.toLowerCase()) ? (
+                        <input className="input num" aria-label={`Opening tax residual value ${a.code}`}
+                          value={inputs.allowances.find((x) => x.name.trim().toLowerCase() === a.asset_class.toLowerCase())?.asset_opening_values?.[a.code] ?? ""}
+                          placeholder="Required" onChange={(e) => onInputsChange(a.asset_class, a.code, e.target.value)} />
+                      ) : a.acquired <= priorYearEnd(yearEnd) ? (
+                        <span className="faint">Add matching capital deduction class first</span>
+                      ) : <span className="faint">0 · acquired this year</span>}
+                    </td>
                   </tr>
                 ))}
               </tbody>

@@ -2,8 +2,9 @@ import csv
 import io
 from decimal import Decimal
 
+from openpyxl import load_workbook
 from tests.test_amendments import approve_pending, post
-from tests.test_api import LEASE_LINES, OTHER_FIRM, PREPARER, make_pdf, run_jobs
+from tests.test_api import LEASE_LINES, OTHER_FIRM, PREPARER, REVIEWER, make_pdf, run_jobs
 
 D = Decimal
 
@@ -71,14 +72,58 @@ def test_mapping_suggestions_confirmation_and_computation(client, app):
     # + 10,000 + 80,000 + 12,000 - 100,000 (25% of 400,000) = 495,000; - losses 50,000 = 445,000; tax 133,500
     assert D(c["profit_before_tax"]) == D(493_000)
     assert D(c["taxable_profit"]) == D(445_000) and D(c["tax_payable"]) == D(133_500)
+    assert D(c["instalment_plan"]["annual_amount"]) == D(133_500)
+    assert c["instalment_plan"]["basis_used"] == "current-year estimate"
+    assert [row["due_date"] for row in c["instalment_plan"]["installments"]] == [
+        "2026-04-20", "2026-06-20", "2026-09-20", "2026-12-20",
+    ]
+    assert c["instalment_plan"]["balance_due_date"] == "2027-04-30"
     assert any("no leases are linked" in w for w in c["warnings"])
     penalty = next(a for a in c["adjustments"] if a["label"].startswith("Disallowable"))
     assert [c["accounts"][s] for s in penalty["sources"]] == ["5300 KRA penalties"]
-    assert c["rules_version"] == "ke-2026.1"
+    assert c["rules_version"] == "ke-2026.3"
 
     lead = {l["fs_line"]: D(l["amount"]) for l in client.get(
         f"/clients/{cid}/years/2026-12-31/mapping", headers=PREPARER).json()["lead_schedule"]}
     assert lead["revenue"] == D(1_000_000) and lead["operating_expenses"] == D(15_000)
+
+
+def test_tax_computation_reviewer_approval_and_changed_status(client, app):
+    cid = client_with_tb(client)
+    assert client.post(f"/clients/{cid}/years/2026-12-31/confirm-suggestions", headers=PREPARER).status_code == 200
+    # 5700 is intentionally unmapped and must be explicitly classified before computation.
+    assert client.put(f"/clients/{cid}/mappings/5700", headers=PREPARER,
+                      json={"fs_line": "operating_expenses", "tax_treatment": "deductible"}).status_code == 200
+    path = f"/clients/{cid}/years/2026-12-31/tax"
+    assert client.get(path, headers=PREPARER).status_code == 200
+    assert client.post(f"{path}/approval", headers=PREPARER).status_code == 403
+    approved = client.post(f"{path}/approval", headers=REVIEWER)
+    assert approved.status_code == 200, approved.text
+    assert approved.json()["reviewer"] == "rae@firm-a"
+    assert client.get(path, headers=PREPARER).json()["changed_since_approval"] is False
+    assert client.put(f"/clients/{cid}/years/2026-12-31/inputs", headers=PREPARER,
+                      json={"losses_brought_forward": "100"}).status_code == 200
+    state = client.get(path, headers=PREPARER).json()
+    assert state["changed_since_approval"] is True
+
+
+def test_tax_workbook_export_contains_schedules_and_sources(client, app):
+    cid = client_with_tb(client)
+    assert client.post(f"/clients/{cid}/years/2026-12-31/confirm-suggestions", headers=PREPARER).status_code == 200
+    # Export is blocked until the intentionally unmapped account has a confirmed treatment.
+    assert client.put(f"/clients/{cid}/mappings/5700", headers=PREPARER,
+                      json={"fs_line": "operating_expenses", "tax_treatment": "deductible"}).status_code == 200
+    response = client.get(f"/clients/{cid}/years/2026-12-31/tax.xlsx", headers=PREPARER)
+    assert response.status_code == 200
+    workbook = load_workbook(io.BytesIO(response.content), data_only=True)
+    assert workbook.sheetnames == ["Analysis", "Computation", "Lead Schedule", "Capital Allowances",
+                                   "Asset Tax Detail", "Credits"]
+    report_rows = list(workbook["Analysis"].values)
+    assert any(row[0] == "Tax position" and row[3] for row in report_rows)
+    assert any(str(row[0]).startswith("Adjustment driver") and row[3] for row in report_rows)
+    rows = list(workbook["Computation"].values)
+    assert any(row[0] == "Taxable profit" for row in rows)
+    assert any(row[0] == "Disallowable expenses added back" and row[3] for row in rows)
 
 
 def test_linked_lease_feeds_the_ifrs16_adjustments(client, app):

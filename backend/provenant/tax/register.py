@@ -1,6 +1,7 @@
 """Fixed asset register: a CSV of assets, summarised per tax class for a year (additions and disposal proceeds).
 
-Columns: asset_code, description, class, acquired, cost; optional disposed, proceeds. Dates are ISO (YYYY-MM-DD).
+Columns: asset_code, description, class, acquired, cost; optional disposed, proceeds. If disposed is set,
+proceeds must be entered (use 0 when no consideration was received). Dates are ISO (YYYY-MM-DD).
 The register supplies the year's additions and disposals; the class's rate, method and basis stay preparer inputs.
 """
 import csv
@@ -79,6 +80,8 @@ def read(data: bytes) -> list[Asset]:
         if not asset_class:
             raise ValueError(f"row {number}: class is empty")
         try:
+            if row.get("disposed") and not row.get("proceeds"):
+                raise ValueError("proceeds are required when an asset is disposed (enter 0 if no consideration was received)")
             cost = to_decimal(row["cost"])
             proceeds = to_decimal(row["proceeds"]) if row.get("proceeds") else ZERO
         except (ValueError, TypeError) as exc:

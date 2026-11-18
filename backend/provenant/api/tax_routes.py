@@ -9,11 +9,14 @@ from fastapi import FastAPI, File, Form, Response, UploadFile
 from pydantic import BaseModel, Field
 
 from provenant.api import tax
+from provenant.api import export as workbook_export
 from provenant.api.services import MAX_UPLOAD_BYTES
 from provenant.api.storage import BlobStore
+from provenant.core.money import to_decimal
 from provenant.core import tb_csv
 from provenant.tax import register as fa_register
-from provenant.tax.engine import CREDIT_KINDS
+from provenant.tax.engine import CREDIT_KINDS, KENYA
+from provenant.tax.instalments import plan_instalments
 from provenant.tax.mapping import FS_LINES, TaxTreatment
 
 
@@ -78,6 +81,8 @@ class AllowanceIn(BaseModel):
     basis: str = Field(max_length=300)
     cost_basis: str = "0"
     disposals: str = "0"
+    asset_opening_values: dict[str, str] = Field(default_factory=dict, max_length=20_000)
+    business_ceased: bool = False
 
 
 class CreditIn(BaseModel):
@@ -86,11 +91,14 @@ class CreditIn(BaseModel):
     amount: str
     reference: str = Field(default="", max_length=100)
     evidence: str | None = Field(default=None, max_length=36)  # supporting document id
+    paid_on: str | None = None
 
 
 class PriorReturnIn(BaseModel):
     reference: str = Field(default="", max_length=100)  # e.g. the KRA acknowledgement number
     filed_on: str = ""
+    assessed_tax: str = ""
+    agriculture_income_ratio: str = "0"
 
 
 class InputsIn(BaseModel):
@@ -170,13 +178,21 @@ class LeaseYearOut(BaseModel):
 
 class AllowanceOut(BaseModel):
     name: str
+    wdv_brought_forward: Decimal
     additions: Decimal
     disposals: Decimal
+    rate: Decimal
+    method: str
+    cost_basis: Decimal
     allowance: Decimal
+    disposal_gain: Decimal
     balancing_charge: Decimal
+    balancing_deduction: Decimal
+    business_ceased: bool
     wdv_carried_forward: Decimal
     basis: str
     from_register: bool
+    asset_schedule: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class CreditItemOut(BaseModel):
@@ -189,6 +205,8 @@ class CreditItemOut(BaseModel):
 
 
 class ComputationOut(BaseModel):
+    approval: dict[str, Any] | None = None
+    changed_since_approval: bool = False
     rules_version: str
     profit_before_tax: Decimal
     adjustments: list[CompLineOut]
@@ -203,6 +221,7 @@ class ComputationOut(BaseModel):
     deferred_tax: Decimal
     credits: list[CompLineOut]  # sources are "credit:<index>" into credit_items
     tax_due: Decimal  # negative: refundable
+    instalment_plan: dict[str, Any] | None = None
     credit_items: list[CreditItemOut]
     warnings: list[str]
     leases: list[LeaseYearOut]
@@ -351,14 +370,44 @@ def add_routes(app: FastAPI, Auth, Db, store: BlobStore) -> None:  # noqa: N803 
     @app.get("/clients/{client_id}/years/{year_end}/tax", response_model=ComputationOut)
     def computation(client_id: str, year_end: date, p: Auth, s: Db) -> ComputationOut:
         r = tax.tax_computation(s, p.tenant_id, client_id, year_end)
+        latest, is_current = tax.current_tax_approval(s, p.tenant_id, client_id, year_end)
         c = r.computation
+        inputs_row = tax.get_inputs(s, p.tenant_id, client_id, year_end)
+        planning = json.loads(inputs_row.prior_return_json or "{}") if inputs_row else {}
+        assessed = planning.get("assessed_tax") or ""
+        ratio = Decimal(planning.get("agriculture_income_ratio") or "0")
+        raw_credits = json.loads(inputs_row.credits_json) if inputs_row else []
+        withholding = sum((x.amount for x in r.credits if x.kind == "withholding"), Decimal(0))
+        paid = tuple((date.fromisoformat(x["paid_on"]), to_decimal(str(x["amount"]))) for x in raw_credits
+                     if x.get("kind") == "instalment" and x.get("paid_on"))
+        plan = plan_instalments(year_end, c.tax_payable,
+                                Decimal(assessed) if assessed else None,
+                                withholding, ratio, paid, c.tax_due)
         return ComputationOut(
+            approval=({"reviewer": latest.reviewer, "approved_at": latest.approved_at.isoformat()}
+                      if latest else None),
+            changed_since_approval=bool(latest and not is_current),
             rules_version=c.rules_version, profit_before_tax=c.profit_before_tax,
             adjustments=[_line(a) for a in c.adjustments], taxable_before_losses=c.taxable_before_losses,
             losses_brought_forward=c.losses_brought_forward, losses_used=c.losses_used,
             losses_carried_forward=c.losses_carried_forward, taxable_profit=c.taxable_profit, rate=c.rate,
             tax_payable=c.tax_payable, deferred=[_line(d) for d in c.deferred], deferred_tax=c.deferred_tax,
             credits=[_line(x) for x in c.credits], tax_due=c.tax_due,
+            instalment_plan={
+                "annual_amount": plan.annual_amount, "basis_used": plan.basis_used,
+                "prior_year_basis": plan.prior_year_basis, "current_year_basis": plan.current_year_basis,
+                "withholding_reduction": plan.withholding_reduction,
+                "agriculture_income_ratio": plan.agriculture_income_ratio,
+                "balance_due_date": plan.balance_due_date,
+                "balance_due_basis": plan.balance_due_basis,
+                "balance_due_amount": plan.balance_due_amount,
+                "unallocated_instalment_payments": sum((to_decimal(str(x["amount"])) for x in raw_credits
+                    if x.get("kind") == "instalment" and not x.get("paid_on")), Decimal(0)),
+                "installments":[{"number": x.number, "due_date": x.due_date, "proportion": x.proportion,
+                                  "amount": x.amount, "paid_to_date": x.paid_to_date,
+                                  "outstanding": x.outstanding, "basis": x.basis, "sources": list(x.sources)}
+                                 for x in plan.installments],
+            },
             credit_items=[
                 CreditItemOut(kind=x.kind, description=x.description, amount=x.amount, reference=x.reference,
                               evidence=x.evidence, evidence_filename=r.attachments.get(x.evidence or ""))
@@ -366,12 +415,47 @@ def add_routes(app: FastAPI, Auth, Db, store: BlobStore) -> None:  # noqa: N803 
             ],
             warnings=list(c.warnings),
             leases=[LeaseYearOut(**vars(l)) for l in r.leases],
-            allowances=[AllowanceOut(name=a.name, additions=a.additions, disposals=a.disposals,
-                                     allowance=a.allowance(), balancing_charge=a.balancing_charge(),
+            allowances=[AllowanceOut(name=a.name, wdv_brought_forward=a.wdv_brought_forward,
+                                     additions=a.additions, disposals=a.disposals, rate=a.rate, method=a.method,
+                                     cost_basis=a.cost_basis,
+                                     allowance=a.allowance(), disposal_gain=a.disposal_gain(),
+                                     balancing_charge=a.balancing_charge(),
+                                     balancing_deduction=a.cessation_deduction(), business_ceased=a.business_ceased,
                                      wdv_carried_forward=a.wdv_carried_forward(), basis=a.basis,
-                                     from_register=a.name in r.from_register) for a in r.allowances],
+                                     from_register=a.name in r.from_register,
+                                     asset_schedule=[{
+                                         "code": item.code, "opening_wdv": item.opening_wdv,
+                                         "additions": item.additions, "allowance": item.allowance,
+                                         "proceeds": item.proceeds, "disposal_result": item.disposal_result,
+                                         "closing_wdv": item.closing_wdv, "rate_basis": a.basis,
+                                         "disposal_basis": (KENYA.basis["cessation"] if a.business_ceased and item.disposal_result
+                                                            else KENYA.basis["disposal_gain"] if item.disposal_result and item.disposal_result > 0
+                                                            else KENYA.basis["disposal_loss"] if item.disposal_result and item.disposal_result < 0
+                                                            else ""),
+                                         "source": f"asset:{item.code}",
+                                     } for item in a.asset_schedule()]) for a in r.allowances],
             accounts={str(a.line.id): f"{a.line.code} {a.line.name}" for a in r.accounts},
         )
+
+    @app.post("/clients/{client_id}/years/{year_end}/tax/approval")
+    def approve_computation(client_id: str, year_end: date, p: Auth, s: Db) -> dict[str, Any]:
+        row = tax.approve_tax(s, p, client_id, year_end)
+        return {"reviewer": row.reviewer, "approved_at": row.approved_at.isoformat(),
+                "fingerprint": row.fingerprint}
+
+    @app.get("/clients/{client_id}/years/{year_end}/tax.xlsx")
+    def tax_export(client_id: str, year_end: date, p: Auth, s: Db) -> Response:
+        result = computation(client_id, year_end, p, s)
+        accounts = tax.mapped_accounts(s, p.tenant_id, client_id, year_end)
+        profit_sources = [str(a.line.id) for a in accounts
+                          if FS_LINES[a.mapping.fs_line].statement.value == "profit_or_loss"
+                          and a.mapping.tax_treatment != "tax_charge"]
+        content = workbook_export.tax_workbook(result.model_dump(mode="python"), tax.lead_schedule(accounts),
+                                                profit_sources)
+        filename = f"tax-computation-{year_end.isoformat()}.xlsx"
+        return Response(content=content,
+                        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        headers={"Content-Disposition": f'attachment; filename="{filename}"'})
 
 
 def _register_out(s, tenant_id: str, reg) -> RegisterOut:

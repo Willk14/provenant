@@ -44,6 +44,8 @@ export interface Allowance {
   basis: string;
   cost_basis?: string;
   disposals?: string;
+  asset_opening_values?: Record<string, string>;
+  business_ceased?: boolean;
 }
 
 export type CreditKind = "instalment" | "withholding" | "overpayment" | "other";
@@ -54,13 +56,14 @@ export interface Credit {
   amount: string;
   reference: string;
   evidence: string | null;
+  paid_on?: string | null;
 }
 
 export interface Inputs {
   losses_brought_forward: string;
   allowances: Allowance[];
   credits: Credit[];
-  prior_return: { reference: string; filed_on: string };
+  prior_return: { reference: string; filed_on: string; assessed_tax: string; agriculture_income_ratio: string };
   updated_by?: string | null;
 }
 
@@ -117,6 +120,8 @@ export interface CompLine {
 }
 
 export interface Computation {
+  approval: { reviewer: string; approved_at: string } | null;
+  changed_since_approval: boolean;
   rules_version: string;
   profit_before_tax: string;
   adjustments: CompLine[];
@@ -131,6 +136,20 @@ export interface Computation {
   deferred_tax: string;
   credits: CompLine[];
   tax_due: string;
+  instalment_plan: {
+    annual_amount: string;
+    basis_used: string;
+    prior_year_basis: string | null;
+    current_year_basis: string;
+    withholding_reduction: string;
+    agriculture_income_ratio: string;
+    balance_due_date: string;
+    balance_due_basis: string;
+    balance_due_amount: string;
+    unallocated_instalment_payments: string;
+    installments: { number: number; due_date: string; proportion: string; amount: string; paid_to_date: string;
+      outstanding: string; basis: string; sources: string[] }[];
+  } | null;
   credit_items: (Credit & { evidence_filename: string | null })[];
   warnings: string[];
   leases: {
@@ -144,13 +163,32 @@ export interface Computation {
   }[];
   allowances: {
     name: string;
+    wdv_brought_forward: string;
     additions: string;
     disposals: string;
+    rate: string;
+    method: string;
+    cost_basis: string;
     allowance: string;
+    disposal_gain: string;
     balancing_charge: string;
+    balancing_deduction: string;
+    business_ceased: boolean;
     wdv_carried_forward: string;
     basis: string;
     from_register: boolean;
+    asset_schedule: {
+      code: string;
+      opening_wdv: string;
+      additions: string;
+      allowance: string;
+      proceeds: string;
+      disposal_result: string | null;
+      closing_wdv: string;
+      rate_basis: string;
+      disposal_basis: string;
+      source: string;
+    }[];
   }[];
   accounts: Record<string, string>;
 }
@@ -199,6 +237,10 @@ export const taxApi = {
   saveInputs: (id: string, yearEnd: string, inputs: Inputs) =>
     api.raw<Inputs>(`${base(id, yearEnd)}/inputs`, json("PUT", inputs)),
   computation: (id: string, yearEnd: string) => api.raw<Computation>(`${base(id, yearEnd)}/tax`),
+  approveComputation: (id: string, yearEnd: string) =>
+    api.raw<{ reviewer: string; approved_at: string }>(`${base(id, yearEnd)}/tax/approval`, { method: "POST" }),
+  exportComputation: (id: string, yearEnd: string) =>
+    api.raw<ArrayBuffer>(`${base(id, yearEnd)}/tax.xlsx`),
   rollForward: (id: string, yearEnd: string) =>
     api.raw<Inputs>(`${base(id, yearEnd)}/inputs/roll-forward`, { method: "POST" }),
   meta: () => api.raw<RecordsMeta>("/tax-records/meta"),

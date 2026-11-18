@@ -17,7 +17,8 @@ PM-00,Scrapped drill,Plant and machinery,2018-01-01,9000,2024-02-01,0
 INPUTS = {
     "losses_brought_forward": "50,000",
     "allowances": [{"name": "Plant and machinery", "wdv_brought_forward": "300,000", "additions": "999",
-                    "rate_percent": "25", "method": "reducing", "basis": "Second Schedule (as entered by preparer)"}],
+                    "rate_percent": "25", "method": "reducing", "basis": "Second Schedule (as entered by preparer)",
+                    "asset_opening_values": {"PM-02": "300,000"}}],
 }
 
 
@@ -47,9 +48,12 @@ def test_the_register_supplies_additions_and_disposals(client, app):
 
     c = client.get(f"{YEAR.format(cid=cid)}/tax", headers=PREPARER).json()
     (allowance,) = c["allowances"]
-    # 25% x (300,000 + 100,000 - 20,000) = 95,000: the register's figures, not the 999 typed by hand
-    assert allowance["from_register"] and D(allowance["allowance"]) == D(95_000)
-    assert D(c["taxable_profit"]) == D(450_000) and D(c["tax_payable"]) == D(135_000)
+    # New asset: 25% x 100,000 = 25,000. Existing item: 25% x 300,000 = 75,000;
+    # disposal loss = 20,000 proceeds - (300,000 - 75,000 residual) = -205,000.
+    assert allowance["from_register"] and D(allowance["allowance"]) == D(100_000)
+    assert D(c["taxable_profit"]) == D(240_000) and D(c["tax_payable"]) == D(72_000)
+    loss = next(x for x in c["adjustments"] if x["label"].startswith("Disposal loss"))
+    assert D(loss["amount"]) == D(-205_000) and loss["sources"] == ["asset:PM-02"]
     assert any("Motor vehicles" in w and "no capital deduction class" in w for w in c["warnings"])
 
     # Uploading again replaces the register
@@ -65,9 +69,51 @@ def test_register_errors_are_specific(client, app):
     assert r.status_code == 422 and "after the year end" in r.json()["detail"]
     r = upload(client, cid, "fixed-assets", REGISTER.replace(b"2026-03-01", b"01/03/2026"), "far.csv")
     assert r.status_code == 422 and "row 2" in r.json()["detail"]
+    missing_proceeds = b"""asset_code,description,class,acquired,cost,disposed,proceeds
+PM-02,Old press,Plant and machinery,2020-01-15,50000,2026-06-30,
+"""
+    r = upload(client, cid, "fixed-assets", missing_proceeds, "far.csv")
+    assert r.status_code == 422 and "proceeds are required when an asset is disposed" in r.json()["detail"]
     r = upload(client, cid, "fixed-assets", b"code,cost\nA,1\n", "far.csv")
     assert r.status_code == 422 and "columns needed" in r.json()["detail"]
     assert client.get(f"{YEAR.format(cid=cid)}/fixed-assets", headers=PREPARER).json() is None
+
+
+def test_business_cessation_requires_a_complete_disposed_register(client, app):
+    cid = ready_client(client)
+    ceased = {**INPUTS, "allowances": [{**INPUTS["allowances"][0], "business_ceased": True}]}
+    assert client.put(f"{YEAR.format(cid=cid)}/inputs", headers=PREPARER, json=ceased).status_code == 200
+    blocked = client.get(f"{YEAR.format(cid=cid)}/tax", headers=PREPARER)
+    assert blocked.status_code == 409 and "business-cessation" in blocked.json()["detail"]
+
+    held_assets = upload(client, cid, "fixed-assets", REGISTER, "far.csv")
+    assert held_assets.status_code == 201
+    blocked = client.get(f"{YEAR.format(cid=cid)}/tax", headers=PREPARER)
+    assert blocked.status_code == 409 and "cease being owned by year end" in blocked.json()["detail"]
+
+
+def test_cessation_balancing_deduction_is_traced_and_awaits_review(client, app):
+    cid = ready_client(client)
+    disposed_register = b"""asset_code,description,class,acquired,cost,disposed,proceeds
+PM-02,Old press,Plant and machinery,2020-01-15,50000,2026-06-30,20000
+"""
+    assert upload(client, cid, "fixed-assets", disposed_register, "cessation-register.csv").status_code == 201
+    ceased = {**INPUTS, "allowances": [{**INPUTS["allowances"][0], "business_ceased": True}]}
+    assert client.put(f"{YEAR.format(cid=cid)}/inputs", headers=PREPARER, json=ceased).status_code == 200
+
+    result = client.get(f"{YEAR.format(cid=cid)}/tax", headers=PREPARER)
+    assert result.status_code == 200, result.text
+    computation = result.json()
+    (allowance,) = computation["allowances"]
+    # Opening residual value 300,000 less 75,000 current deduction = 225,000;
+    # 225,000 residual less 20,000 proceeds = 205,000 balancing deduction.
+    assert allowance["business_ceased"] is True
+    assert D(allowance["balancing_deduction"]) == D(205_000)
+    deduction = next(x for x in computation["adjustments"] if x["label"].startswith("Balancing deduction on cessation"))
+    assert D(deduction["amount"]) == D(-205_000) and deduction["sources"] == ["asset:PM-02"]
+    assert "paragraph 4" in deduction["basis"]
+    assert not any(x["label"].startswith("Disposal loss") for x in computation["adjustments"])
+    assert computation["approval"] is None
 
 
 def test_credits_with_evidence_give_tax_due(client, app):
@@ -77,12 +123,14 @@ def test_credits_with_evidence_give_tax_due(client, app):
     assert cert.status_code == 201, cert.text
     cert_id = cert.json()["id"]
     inputs = {**INPUTS, "credits": [
-        {"kind": "instalment", "description": "Instalments paid", "amount": "40,000", "reference": "PRN 2026-04"},
+        {"kind": "instalment", "description": "Instalments paid", "amount": "40,000", "reference": "PRN 2026-04",
+         "paid_on": "2026-04-20"},
         {"kind": "withholding", "description": "Safari Bank", "amount": "15000", "evidence": cert_id},
     ], "prior_return": {"reference": "KRA-ACK-2025-001", "filed_on": "2026-06-28"}}
     assert client.put(f"{YEAR.format(cid=cid)}/inputs", headers=PREPARER, json=inputs).status_code == 200
     saved = client.get(f"{YEAR.format(cid=cid)}/inputs", headers=PREPARER).json()
-    assert saved["prior_return"] == {"reference": "KRA-ACK-2025-001", "filed_on": "2026-06-28"}
+    assert saved["prior_return"] == {"reference": "KRA-ACK-2025-001", "filed_on": "2026-06-28",
+                                    "assessed_tax": "", "agriculture_income_ratio": "0"}
 
     c = client.get(f"{YEAR.format(cid=cid)}/tax", headers=PREPARER).json()
     # No register here, so the typed additions count: 25% x 300,999 = 75,249.75 allowance,
@@ -90,6 +138,8 @@ def test_credits_with_evidence_give_tax_due(client, app):
     assert D(c["tax_payable"]) == D("140925.08") and D(c["tax_due"]) == D("85925.08")
     assert c["credit_items"][1]["evidence_filename"] == "wht-safari-bank.pdf"
     assert [x["sources"] for x in c["credits"]] == [["credit:0"], ["credit:1"]]
+    assert D(c["instalment_plan"]["installments"][0]["paid_to_date"]) == D("31481.27")
+    assert D(c["instalment_plan"]["installments"][1]["paid_to_date"]) == D("8518.73")
 
     # Evidence cannot be deleted while a credit relies on it
     assert client.delete(f"/clients/{cid}/attachments/{cert_id}", headers=PREPARER).status_code == 409
@@ -123,8 +173,8 @@ def test_attachment_checks(client, app):
 def test_roll_forward_proposes_the_opening_position(client, app):
     cid = ready_client(client)
     upload(client, cid, "fixed-assets", REGISTER, "far.csv")
-    overpaid = {**INPUTS, "credits": [{"kind": "instalment", "description": "Instalments", "amount": "150,000"}]}
-    client.put(f"{YEAR.format(cid=cid)}/inputs", headers=PREPARER, json=overpaid)  # tax 135,000: 15,000 refundable
+    overpaid = {**INPUTS, "credits": [{"kind": "instalment", "description": "Instalments", "amount": "87,000"}]}
+    client.put(f"{YEAR.format(cid=cid)}/inputs", headers=PREPARER, json=overpaid)  # tax 72,000: 15,000 refundable
 
     assert client.post(f"{YEAR.format(cid=cid)}/inputs/roll-forward", headers=PREPARER).status_code == 409  # no FY2025
     client_with_tb(client, year_end="2027-12-31")
@@ -133,7 +183,8 @@ def test_roll_forward_proposes_the_opening_position(client, app):
     proposal = r.json()
     assert D(proposal["losses_brought_forward"]) == 0  # all 50,000 used in 2026
     (plant,) = proposal["allowances"]
-    assert (D(plant["wdv_brought_forward"]), plant["rate_percent"], plant["additions"]) == (D(285_000), "25", "0")
+    assert (D(plant["wdv_brought_forward"]), plant["rate_percent"], plant["additions"]) == (D(75_000), "25", "0")
+    assert plant["asset_opening_values"] == {"PM-01": "75000.00"}
     assert proposal["credits"][0]["kind"] == "overpayment" and D(proposal["credits"][0]["amount"]) == D(15_000)
     # A proposal only: nothing saved until a person saves it
     assert client.get(f"/clients/{cid}/years/2027-12-31/inputs", headers=PREPARER).json()["allowances"] == []

@@ -25,7 +25,7 @@ class Rules:
 
 KENYA = Rules(
     jurisdiction="KE",
-    version="ke-2026.1",
+    version="ke-2026.3",
     corporation_tax_rate=Decimal("0.30"),  # resident companies, Income Tax Act Third Schedule
     basis={
         "addback": "Income Tax Act s.16: deductions not allowed",
@@ -36,6 +36,9 @@ KENYA = Rules(
         "losses": "Income Tax Act s.15(4): losses carried forward",
         "rate": "Income Tax Act Third Schedule: resident corporation rate",
         "balancing_charge": "Income Tax Act Second Schedule: disposal proceeds above the written-down value are taxed",
+        "disposal_gain": "Income Tax Act Second Schedule paragraph 3: disposal surplus is a trading receipt",
+        "disposal_loss": "Income Tax Act Second Schedule paragraph 3: disposal proceeds below item residual value are a trading loss",
+        "cessation": "Income Tax Act Second Schedule paragraph 4: balancing charge or deduction when the business ceases and the item ceases to be owned",
         "instalment": "Instalment tax paid for the year (Income Tax Act s.12)",
         "withholding": "Tax withheld at source, credited against the tax charged (hold the certificate)",
         "overpayment": "Overpayment brought forward from the prior year's return",
@@ -55,6 +58,35 @@ class MappedLine:
 
 
 @dataclass(frozen=True)
+class AllowanceAsset:
+    """One register item with preparer-confirmed opening tax residual value."""
+
+    code: str
+    cost: Decimal
+    opening_wdv: Decimal
+    acquired_in_year: bool
+    proceeds: Decimal = ZERO
+    disposed: bool = False
+
+    def __post_init__(self) -> None:
+        if not self.code.strip():
+            raise ValueError("asset code is required")
+        if min(self.cost, self.opening_wdv, self.proceeds) < 0:
+            raise ValueError(f"{self.code}: asset values cannot be negative")
+
+
+@dataclass(frozen=True)
+class AllowanceAssetResult:
+    code: str
+    opening_wdv: Decimal
+    additions: Decimal
+    allowance: Decimal
+    proceeds: Decimal
+    disposal_result: Decimal | None
+    closing_wdv: Decimal
+
+
+@dataclass(frozen=True)
 class AllowanceClass:
     """A capital deduction class. Rate and method are preparer inputs with a stated basis (Finance Acts change)."""
 
@@ -66,6 +98,9 @@ class AllowanceClass:
     basis: str
     cost_basis: Decimal = ZERO  # straight line: the qualifying cost the rate applies to (excluding additions)
     disposals: Decimal = ZERO  # proceeds from assets of this class disposed of in the year
+    asset_opening_values: dict[str, Decimal] = field(default_factory=dict)
+    assets: tuple[AllowanceAsset, ...] = ()
+    business_ceased: bool = False
 
     def __post_init__(self) -> None:
         if not ZERO <= self.rate <= 1:
@@ -76,21 +111,81 @@ class AllowanceClass:
             raise ValueError(f"{self.name}: values cannot be negative")
         if not self.basis.strip():
             raise ValueError(f"{self.name}: state the basis for the rate (e.g. the Second Schedule paragraph)")
+        if any(not code.strip() or value < ZERO for code, value in self.asset_opening_values.items()):
+            raise ValueError(f"{self.name}: asset opening values need a code and cannot be negative")
 
     def _pool(self) -> Decimal:
         return self.wdv_brought_forward + self.additions - self.disposals
 
     def allowance(self) -> Decimal:
+        if self.assets:
+            return sum((self._asset_allowance(a) for a in self.assets), ZERO)
         pool = max(self._pool(), ZERO)
         if self.method == "reducing":
             return round_money(pool * self.rate)
         return min(pool, round_money((self.cost_basis + self.additions) * self.rate))  # never below zero WDV
 
+    def _asset_opening_base(self, asset: AllowanceAsset) -> Decimal:
+        return asset.opening_wdv + (asset.cost if asset.acquired_in_year else ZERO)
+
+    def _asset_allowance(self, asset: AllowanceAsset) -> Decimal:
+        base = self._asset_opening_base(asset)
+        if self.method == "reducing":
+            return round_money(base * self.rate)
+        return min(base, round_money(asset.cost * self.rate))
+
+    def asset_disposal_results(self) -> tuple[tuple[str, Decimal], ...]:
+        """Sale proceeds less the item's residual value after its current-year allowance."""
+        return tuple(
+            (asset.code, asset.proceeds - max(self._asset_opening_base(asset) - self._asset_allowance(asset), ZERO))
+            for asset in self.assets if asset.disposed
+        )
+
+    def asset_schedule(self) -> tuple[AllowanceAssetResult, ...]:
+        rows = []
+        for asset in self.assets:
+            base = self._asset_opening_base(asset)
+            allowance = self._asset_allowance(asset)
+            residual = max(base - allowance, ZERO)
+            rows.append(AllowanceAssetResult(
+                code=asset.code, opening_wdv=asset.opening_wdv,
+                additions=asset.cost if asset.acquired_in_year else ZERO,
+                allowance=allowance, proceeds=asset.proceeds if asset.disposed else ZERO,
+                disposal_result=(asset.proceeds - residual) if asset.disposed else None,
+                closing_wdv=ZERO if asset.disposed else residual,
+            ))
+        return tuple(rows)
+
     def balancing_charge(self) -> Decimal:
         """Disposal proceeds above the pool: the excess allowances are clawed back as income."""
+        if self.assets:
+            return self.cessation_charge() if self.business_ceased else ZERO
         return max(-self._pool(), ZERO)
 
+    def disposal_gain(self) -> Decimal:
+        if self.assets and not self.business_ceased:
+            return sum((max(result, ZERO) for _, result in self.asset_disposal_results()), ZERO)
+        return ZERO
+
+    def disposal_loss(self) -> Decimal:
+        if self.assets and not self.business_ceased:
+            return sum((min(result, ZERO) for _, result in self.asset_disposal_results()), ZERO)
+        return ZERO
+
+    def cessation_charge(self) -> Decimal:
+        if not self.business_ceased or not self.assets:
+            return ZERO
+        return sum((max(result, ZERO) for _, result in self.asset_disposal_results()), ZERO)
+
+    def cessation_deduction(self) -> Decimal:
+        if not self.business_ceased or not self.assets:
+            return ZERO
+        return sum((max(-result, ZERO) for _, result in self.asset_disposal_results()), ZERO)
+
     def wdv_carried_forward(self) -> Decimal:
+        if self.assets:
+            return sum((max(self._asset_opening_base(a) - self._asset_allowance(a), ZERO)
+                        for a in self.assets if not a.disposed), ZERO)
         return max(self._pool(), ZERO) - self.allowance()
 
 
@@ -180,6 +275,9 @@ def compute(
     ids = lambda ls: tuple(l.id for l in ls)  # noqa: E731
     warnings: list[str] = []
 
+    if any(c.business_ceased and not c.assets for c in allowances):
+        raise ValueError("business-cessation balancing results require a matched per-asset register")
+
     profit_before_tax = -_sum([l for l in pl if l.treatment is not T.TAX_CHARGE])
     adjustments: list[CompLine] = []
 
@@ -197,8 +295,22 @@ def compute(
     add("Exempt income deducted", _sum(exempt), "exempt", ids(exempt))  # credit balances: negative
 
     for c in allowances:
-        add(f"Capital deduction: {c.name}", -c.allowance(), "capital_allowances", (f"allowance:{c.name}",))
-        add(f"Balancing charge: {c.name}", c.balancing_charge(), "balancing_charge", (f"allowance:{c.name}",))
+        allowance_sources = tuple(f"asset:{a.code}" for a in c.assets) or (f"allowance:{c.name}",)
+        add(f"Capital deduction: {c.name}", -c.allowance(), "capital_allowances", allowance_sources)
+        if c.assets and c.business_ceased:
+            for code, result in c.asset_disposal_results():
+                if result > ZERO:
+                    add(f"Balancing charge on cessation: {c.name} · {code}", result, "cessation", (f"asset:{code}",))
+                elif result < ZERO:
+                    add(f"Balancing deduction on cessation: {c.name} · {code}", -abs(result), "cessation", (f"asset:{code}",))
+        elif c.assets:
+            for code, result in c.asset_disposal_results():
+                if result > ZERO:
+                    add(f"Disposal gain: {c.name} · {code}", result, "disposal_gain", (f"asset:{code}",))
+                elif result < ZERO:
+                    add(f"Disposal loss: {c.name} · {code}", result, "disposal_loss", (f"asset:{code}",))
+        else:
+            add(f"Balancing charge: {c.name}", c.balancing_charge(), "balancing_charge", (f"allowance:{c.name}",))
     if leases:
         rentals = sum((l.payments for l in leases), ZERO)
         add("Lease rentals paid in the year deducted", -rentals, "lease", tuple(l.document_id for l in leases))

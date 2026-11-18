@@ -105,6 +105,10 @@ confirmed mapping, and confirmed mappings carry forward to the next year by acco
 replace IFRS 16 depreciation and interest with rentals paid. Working papers for a tax professional, not
 tax advice: see [ADR 0006](docs/adr/0006-tax-and-financial-mapping.md).
 
+The Tax tab also shows a provisional Kenyan instalment-tax plan from the preparer's prior-year assessment,
+current-year tax computation, agricultural income proportion and dated instalment payment records. Review
+the statutory basis and applicable law for the accounting period; the plan is not a penalty calculation.
+
 ### Roles
 
 | Role | Can |

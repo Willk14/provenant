@@ -41,7 +41,7 @@ The Postgres suite needs a superuser URL (it creates a database per run and test
   computation returns 409 while any account with a balance is unconfirmed. Roll forward returns a proposal and
   saves nothing.
 - **Changeable tax law is input, not code.** Capital allowance rates and methods are preparer inputs with a
-  stated basis. Only settled points go in `Rules` (`KENYA`, versioned `ke-2026.1`); bump the version when
+  stated basis. Only settled points go in `Rules` (`KENYA`, versioned `ke-2026.3`); bump the version when
   rules change. Output is working papers, not tax advice.
 - **Every computation line names its sources** (`tb line id`, `allowance:<class>`, `credit:<i>`, lease
   document id) so the UI can trace it.
@@ -73,9 +73,13 @@ push only when the owner asks.
 4. **Demo data fix:** in `scripts/seed_demo.py` the client trial balance's balancing figure, retained earnings
    brought forward (3100), comes out as a 182.9M debit. Rebalance the balance-sheet lines so retained
    earnings is a credit; recheck the figures quoted in README if they change.
-5. **Tax rules still missing** (ADR 0006 "Not in this slice"): balancing deduction when a class is fully
-   disposed of, minimum tax, interest restriction / thin capitalisation, instalment due dates and penalties.
-   Each as an engine change with a hand-worked test first.
+5. **Tax rules still missing** (ADR 0006 "Not in this slice"): minimum tax, interest restriction / thin
+   capitalisation and instalment penalties. Instalment planning and due dates are implemented with a
+   preparer-entered prior-year assessment, current-year estimate, agriculture income ratio and dated receipts.
+   Business-cessation balancing charges and deductions
+   now require a matching register and reviewer-approved computation. The current fixed-asset-register path
+   uses per-asset opening residual values and disposal outcomes; class-only
+   inputs remain available when no matching register is supplied. Each new rule needs a hand-worked test.
 6. **Schema fixes from real documents (ADR 0005):** discount rate as a preparer input with its basis;
    amendment signing date separate from the date new terms start; expansions as their own change;
    springing covenants and business-day cure periods.

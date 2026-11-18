@@ -56,7 +56,7 @@ export default function ClientsPage() {
         <div style={{ flex: 1 }}>
           <strong>Add a client</strong>
           <div className="muted" style={{ fontSize: 13 }}>
-            Kenya corporation tax (Income Tax Act). Rules version ke-2026.1.
+            Kenya corporation tax (Income Tax Act). Rules version ke-2026.3.
           </div>
         </div>
         <input
