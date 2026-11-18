@@ -25,7 +25,8 @@ wrong, and nobody can see why.
   each amendment's hash and effective date), and the Excel export includes it on a Chain sheet.
 
 ## Not supported yet (refused, never guessed)
-- Mid-period effective dates.
+- Mid-period dates for new terms. (Since ADR 0005 #4 an amendment's agreed date may fall mid-period: it is
+  remeasured at the first period boundary on or after it, and the schedule shows both dates.)
 - Decreases in scope or partial terminations (IFRS 16.46(a)), and early terminations.
 - Period-specific rent deferrals and concessions; changes apply uniformly from the effective date.
 - Modifications that are separate leases (IFRS 16.44); a new lease is uploaded as its own lease.

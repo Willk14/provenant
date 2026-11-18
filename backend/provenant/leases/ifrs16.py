@@ -5,7 +5,7 @@ Pure and deterministic: the same verified terms always give the same schedule, t
 import calendar
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal, localcontext
 from enum import StrEnum
 
@@ -185,26 +185,34 @@ def monthly_rate(annual_percent: str) -> Decimal:
 
 @dataclass(frozen=True)
 class Modification:
-    """A lease modification that is not a separate lease (IFRS 16.44-46): from `effective`, the remaining
-    payments are remeasured at a revised discount rate. Changes apply uniformly from that date.
+    """A lease modification that is not a separate lease (IFRS 16.44-46).
 
-    shortcut: no decreases in scope (partial terminations), no period-specific rent deferrals; both need
-    their own treatment (IFRS 16.46(a) and the rent-concession guidance) and are refused rather than guessed.
+    Two dates matter (ADR 0005 finding 4). `effective` is the modification's effective date: when the parties
+    agree, usually the signing date. The liability is remeasured then, at the revised rate, over the revised
+    payments. `terms_start` is when the new rent or extended term begins; it may be months later (an extension
+    signed in May that starts in September). Until then the old rent continues.
+
+    shortcut: the remeasurement is posted at the first period boundary on or after the agreement date, so
+    interest for the days in between accrues at the previous rate; the schedule records both dates. New terms
+    must start on a period boundary. No decreases in scope (partial terminations) or period-specific rent
+    deferrals: both need their own treatment (IFRS 16.46(a), rent-concession guidance) and are refused.
     """
 
     effective: date
     rate_per_period: Decimal  # revised discount rate, required for a modification (IFRS 16.45(c))
-    payment: Decimal | None = None  # new rent for the first period from the effective date, if it changes
+    payment: Decimal | None = None  # new rent for the first period from `terms_start`, if it changes
     total_periods: int | None = None  # new total term in months from the original commencement, if it changes
-    steps: Steps = ()  # escalations of the new rent, by period counted from the effective date
-    free_periods: frozenset[int] = frozenset()  # rent-free periods counted from the effective date
+    steps: Steps = ()  # escalations of the new rent, by period counted from `terms_start`
+    free_periods: frozenset[int] = frozenset()  # rent-free periods counted from `terms_start`
+    terms_start: date | None = None  # when the new rent or term starts; defaults to the effective date
+    expiry: date | None = None  # new expiry date: how amendments usually state the term (finding 5)
 
     REQUIRED = ("effective_date", "annual_discount_rate")
-    CHANGES = ("monthly_payment", "term_months", "rent_steps", "free_periods")
-    FIELDS = REQUIRED + CHANGES
+    CHANGES = ("monthly_payment", "term_months", "expiry_date", "rent_steps", "free_periods")
+    FIELDS = REQUIRED + ("terms_start_date",) + CHANGES
 
     def __post_init__(self) -> None:
-        if self.payment is None and self.total_periods is None:
+        if self.payment is None and self.total_periods is None and self.expiry is None:
             raise ValueError("an amendment must change the payment or the term")
         if self.payment is None and (self.steps or self.free_periods):
             raise ValueError("a new rent schedule needs the new monthly payment it starts from")
@@ -212,10 +220,16 @@ class Modification:
             raise ValueError("payment must be positive")
         if self.rate_per_period < 0:
             raise ValueError("rate must be non-negative")
+        if self.terms_start is not None and self.terms_start < self.effective:
+            raise ValueError(f"new terms start {self.terms_start} before the amendment is agreed ({self.effective})")
+
+    @property
+    def starts(self) -> date:
+        return self.terms_start or self.effective
 
     @property
     def rent(self) -> RentSchedule | None:
-        """The new rent, counted from the effective date; None when the rent carries on unchanged."""
+        """The new rent, counted from when the new terms start; None when the rent carries on unchanged."""
         return None if self.payment is None else RentSchedule(self.payment, self.steps, self.free_periods)
 
     @classmethod
@@ -235,13 +249,17 @@ class Modification:
 
         payment, term = value("monthly_payment"), value("term_months")
         effective = date.fromisoformat(value("effective_date"))
+        starts = date.fromisoformat(s) if (s := value("terms_start_date")) else None
+        expiry = date.fromisoformat(e) if (e := value("expiry_date")) else None
         return cls(
             effective=effective,
             rate_per_period=monthly_rate(value("annual_discount_rate")),
             payment=to_decimal(payment) if payment else None,
             total_periods=int(term) if term else None,
-            steps=resolve_steps(value("rent_steps"), effective),
-            free_periods=resolve_free(value("free_periods"), effective),
+            steps=resolve_steps(value("rent_steps"), starts or effective),
+            free_periods=resolve_free(value("free_periods"), starts or effective),
+            terms_start=starts,
+            expiry=expiry,
         )
 
 
@@ -266,6 +284,8 @@ class Remeasurement:
     rou_before: Decimal  # carrying amount just before
     rou_adjustment: Decimal
     gain: Decimal  # a decrease larger than the ROU carrying amount goes to profit or loss (IFRS 16.39)
+    remeasured_on: date | None = None  # the period boundary it is posted at (on or after `effective`)
+    terms_start: date | None = None  # when the new rent or term starts
 
     @property
     def adjustment(self) -> Decimal:
@@ -301,14 +321,38 @@ def present_value(terms: LeaseTerms) -> Decimal:
     return _pv([rent.amount(n) for n in range(1, terms.periods + 1)], terms.rate_per_period, terms.timing)
 
 
-def _boundary(commencement: date, effective: date, total: int) -> int:
-    """Which period a modification takes effect after. It must fall on a period boundary inside the term."""
+def _remeasure_after(commencement: date, effective: date, total: int) -> int:
+    """The period a modification is remeasured after: the first boundary on or after it is agreed."""
     for k in range(1, total):
-        if add_months(commencement, k) == effective:
+        if add_months(commencement, k) >= effective:
             return k
     raise ValueError(
-        f"effective date {effective} must be a period boundary inside the remaining term "
-        f"(e.g. {add_months(commencement, 1)}); mid-period modifications are not supported yet"
+        f"amendment agreed {effective} is not before the last period of the lease "
+        f"(which starts {add_months(commencement, total - 1)}); an agreement after the term is a new lease"
+    )
+
+
+def _boundary(commencement: date, when: date, first: int, last: int, what: str) -> int:
+    """The period boundary `when` falls on, between periods `first` and `last` of the lease."""
+    for k in range(first, last + 1):
+        if add_months(commencement, k) == when:
+            return k
+    raise ValueError(
+        f"{what} {when} must be a period boundary between {add_months(commencement, first)} and "
+        f"{add_months(commencement, last)}; mid-period changes are not supported yet"
+    )
+
+
+def _expiry_periods(commencement: date, expiry: date) -> int:
+    """Months from commencement to an expiry date, stated either as the last day or the boundary itself."""
+    for k in range(1, 12 * 100):
+        end = add_months(commencement, k)
+        if expiry in (end, end - timedelta(days=1)):
+            return k
+        if end > expiry:
+            break
+    raise ValueError(
+        f"new expiry date {expiry} is not at the end of a whole period from commencement {commencement}"
     )
 
 
@@ -331,7 +375,7 @@ def build_schedule(terms: LeaseTerms, modifications: Sequence[Modification] = ()
     opening, rou_left, start = liability, rou, 0
 
     for segment, modification in enumerate([*ordered, None]):
-        stop = total if modification is None else _boundary(terms.commencement, modification.effective, total)
+        stop = total if modification is None else _remeasure_after(terms.commencement, modification.effective, total)
         if stop <= start:
             raise ValueError(f"amendment effective {modification.effective} is not after the previous one")
         per_period = round_money(rou_left / (total - start))
@@ -351,20 +395,32 @@ def build_schedule(terms: LeaseTerms, modifications: Sequence[Modification] = ()
         if modification is None:
             break
         new_total = modification.total_periods or total
+        if modification.expiry is not None:
+            by_expiry = _expiry_periods(terms.commencement, modification.expiry)
+            if modification.total_periods is not None and modification.total_periods != by_expiry:
+                raise ValueError(f"amendment agreed {modification.effective}: a {modification.total_periods}-month "
+                                 f"term and expiry {modification.expiry} ({by_expiry} months) disagree")
+            new_total = by_expiry
         if new_total <= stop:
-            raise ValueError(f"amendment effective {modification.effective} ends the lease; terminations are not supported")
+            raise ValueError(f"amendment agreed {modification.effective} ends the lease; terminations are not supported")
+        # New rent from the period that starts on `terms_start`, which may be as late as the end of the current
+        # term (an extension); the old rent runs until then. A gap after expiry would be a new lease.
+        rent_from = _boundary(terms.commencement, modification.starts, stop, min(total, new_total - 1),
+                              "new terms start")
         if (new_rent := modification.rent) is not None:
-            new_rent.check_within(new_total - stop, f"amendment effective {modification.effective}")
-            pay = lambda n, rent=new_rent, offset=stop: rent.amount(n - offset)  # noqa: E731
+            new_rent.check_within(new_total - rent_from, f"amendment agreed {modification.effective}")
+            pay = lambda n, rent=new_rent, offset=rent_from, old=pay: (  # noqa: E731
+                old(n) if n <= offset else rent.amount(n - offset))
         rate, total = modification.rate_per_period, new_total
         remeasured = round_money(_pv([pay(n) for n in range(stop + 1, total + 1)], rate, terms.timing))
         rou_adjustment = remeasured - opening
         gain = ZERO
         if rou_left + rou_adjustment < 0:  # cannot take the asset below zero; the rest is a gain (IFRS 16.39)
             gain, rou_adjustment = -(rou_left + rou_adjustment), -rou_left
-        remeasurements.append(
-            Remeasurement(stop, modification.effective, opening, remeasured, rou_left, rou_adjustment, gain)
-        )
+        remeasurements.append(Remeasurement(
+            stop, modification.effective, opening, remeasured, rou_left, rou_adjustment, gain,
+            remeasured_on=add_months(terms.commencement, stop), terms_start=modification.starts,
+        ))
         opening, rou_left, start = remeasured, rou_left + rou_adjustment, stop
 
     return LeaseSchedule(terms, liability, rou, tuple(periods), tuple(remeasurements))

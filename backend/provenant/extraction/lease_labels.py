@@ -27,6 +27,9 @@ PATTERNS = {
     "commencement_date": r"commencement date\s*[:\-]?\s*(\d{4}-\d{2}-\d{2}|\d{1,2}\s+[a-z]+\s+\d{4})",
     "effective_date": r"effective date\s*[:\-]?\s*(\d{4}-\d{2}-\d{2}|\d{1,2}\s+[a-z]+\s+\d{4})",
     "term_months": r"(?:lease\s+)?term\s*[:\-]?\s*(\d{1,3})\s*months",
+    "terms_start_date": r"(?:new terms|extended term|extension|expansion)\s+(?:start|commencement)\s+date\s*[:\-]?\s*"
+    r"(\d{4}-\d{2}-\d{2}|\d{1,2}\s+[a-z]+\s+\d{4})",
+    "expiry_date": r"(?:new\s+)?expir(?:y|ation)\s+date\s*[:\-]?\s*(\d{4}-\d{2}-\d{2}|\d{1,2}\s+[a-z]+\s+\d{4})",
     # A colon or a currency marker must sit between label and amount: real leases contain blank forms like
     # "INSERT MONTHLY RENT 2. Acceptance of Premises", where the next number is a section number.
     "monthly_payment": r"monthly\s+(?:rent|payment)\s*(?::\s*(?:[a-z]{3}\b|[$€£])?|(?:[a-z]{3}\b|[$€£]))\s*"

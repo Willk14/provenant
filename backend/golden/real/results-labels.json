@@ -1,8 +1,8 @@
 {
   "extractor": "labels@2",
   "totals": {
-    "missing": 20,
-    "correct": 19
+    "missing": 31,
+    "correct": 26
   },
   "cases": {
     "imxi-keybank-credit": {
@@ -54,7 +54,7 @@
       "found_correct": 0,
       "proposed": 0,
       "proposed_correct": 0,
-      "correct": 3,
+      "correct": 5,
       "missing": 2,
       "misses": [
         "missing  term_months: expected '24', got None",
@@ -63,54 +63,65 @@
     },
     "kura-amendment": {
       "kind": "amendment",
-      "found": 2,
+      "found": 4,
       "found_correct": 0,
       "proposed": 0,
       "proposed_correct": 0,
-      "missing": 2,
-      "correct": 2,
+      "missing": 4,
+      "correct": 4,
       "misses": [
-        "missing  effective_date: expected '2025-09-01', got None",
+        "missing  effective_date: expected '2025-05-06', got None",
+        "missing  terms_start_date: expected '2025-09-01', got None",
+        "missing  expiry_date: expected '2025-10-31', got None",
         "missing  monthly_payment: expected '25,844.90', got None"
       ]
     },
     "tenaya-amendment": {
       "kind": "amendment",
-      "found": 2,
+      "found": 5,
       "found_correct": 0,
       "proposed": 0,
       "proposed_correct": 0,
-      "missing": 2,
-      "correct": 2,
+      "missing": 5,
+      "correct": 3,
       "misses": [
-        "missing  effective_date: expected '2025-06-01', got None",
-        "missing  monthly_payment: expected '202,312.50', got None"
+        "missing  effective_date: expected '2024-06-14', got None",
+        "missing  terms_start_date: expected '2025-06-01', got None",
+        "missing  expiry_date: expected '2027-11-30', got None",
+        "missing  monthly_payment: expected '202,312.50', got None",
+        "missing  rent_steps: expected '2026-06-01: 209,393.44; 2027-06-01: 216,722.21', got None"
       ]
     },
     "neuroone-amendment": {
       "kind": "amendment",
-      "found": 2,
+      "found": 6,
       "found_correct": 0,
       "proposed": 0,
       "proposed_correct": 0,
-      "missing": 2,
+      "missing": 6,
       "correct": 2,
       "misses": [
-        "missing  effective_date: expected '2025-04-01', got None",
-        "missing  monthly_payment: expected '6,410', got None"
+        "missing  effective_date: expected '2024-05-20', got None",
+        "missing  terms_start_date: expected '2025-04-01', got None",
+        "missing  expiry_date: expected '2028-06-30', got None",
+        "missing  monthly_payment: expected '6,410', got None",
+        "missing  rent_steps: expected '2026-04-01: 6,635; 2027-04-01: 6,867; 2028-04-01: 7,107', got None",
+        "missing  free_periods: expected '2025-04, 2025-05, 2028-06', got None"
       ]
     },
     "bicara-expansion": {
       "kind": "amendment",
-      "found": 2,
+      "found": 4,
       "found_correct": 0,
       "proposed": 0,
       "proposed_correct": 0,
-      "missing": 2,
-      "correct": 2,
+      "missing": 4,
+      "correct": 4,
       "misses": [
-        "missing  effective_date: expected '2024-10-01', got None",
-        "missing  monthly_payment: expected '25,301.33', got None"
+        "missing  effective_date: expected '2024-09-24', got None",
+        "missing  terms_start_date: expected '2024-10-01', got None",
+        "missing  monthly_payment: expected '25,301.33', got None",
+        "missing  free_periods: expected '2024-10', got None"
       ]
     }
   }

@@ -53,9 +53,12 @@ for IFRS 16 / ASC 842 accounting.
 {common}
 
 Value formats and rules:
-- effective_date: YYYY-MM-DD, the date the amendment's new rent or term starts (e.g. the first day of the
-  extended term, or the expansion space commencement date).
-- monthly_payment: the NEW fixed monthly base rent from that date, digits only, no currency. If it
+- effective_date: YYYY-MM-DD, the date the parties agree the amendment: the date it is made, signed or
+  "effective as of" (its IFRS 16 effective date). NOT the date the new rent starts.
+- terms_start_date: YYYY-MM-DD, the date the new rent or extended term starts (e.g. the first day of the
+  extended term, or the expansion space commencement date). Null if it is the same as effective_date.
+- expiry_date: YYYY-MM-DD, the new expiration date of the lease term, if the amendment changes it.
+- monthly_payment: the NEW fixed monthly base rent from terms_start_date, digits only, no currency. If it
   escalates, the first period's amount. Null if the amendment does not change the rent.
 - term_months: the NEW total lease term in months measured from the ORIGINAL commencement, only if the
   document states it outright. Null if it states only an extension length or a new expiry date.
@@ -109,6 +112,8 @@ class LeaseExtraction(BaseModel):
 
 class AmendmentExtraction(BaseModel):
     effective_date: Cited
+    terms_start_date: Cited
+    expiry_date: Cited
     monthly_payment: Cited
     term_months: Cited
     annual_discount_rate: Cited

@@ -87,7 +87,9 @@
     "url": "https://www.sec.gov/Archives/edgar/data/1422143/000095017025105051/kura-ex10_1.htm",
     "source_sha256": "91fdcca8a85045ffffdb981a5bb5a90a85288fc460f26a74c4bd266e75b03f65",
     "expected": {
-      "effective_date": "2025-09-01",
+      "effective_date": "2025-05-06",
+      "terms_start_date": "2025-09-01",
+      "expiry_date": "2025-10-31",
       "monthly_payment": "25,844.90",
       "term_months": null,
       "annual_discount_rate": null,
@@ -97,7 +99,8 @@
     "notes": [
       "Two-month extension to October 31, 2025; the Extended Term starts September 1, 2025 at $25,844.90 a month.",
       "Signed (effective as of) May 6, 2025. Under IFRS 16 the modification's effective date is the agreement date, not the date the new rent starts: the schema conflates them.",
-      "The new total term from original commencement is not stated (original commencement is in a separate Confirmation)."
+      "The new total term from original commencement is not stated (original commencement is in a separate Confirmation).",
+      "Relabelled for the two-date schema (2026-11-19): effective_date is the agreement date (made and entered into effective as of May 6, 2025); terms_start_date is when the Extended Term and new rent start; expiry_date is the new expiry (October 31, 2025)."
     ]
   },
   {
@@ -106,7 +109,9 @@
     "url": "https://www.sec.gov/Archives/edgar/data/1858848/000095017024094059/tnya-ex10_1.htm",
     "source_sha256": "8bb3a5b546d45b04a25ba35fe185d92f07b9d8f9a370762b9cac202dd64ff2c7",
     "expected": {
-      "effective_date": "2025-06-01",
+      "effective_date": "2024-06-14",
+      "terms_start_date": "2025-06-01",
+      "expiry_date": "2027-11-30",
       "monthly_payment": "202,312.50",
       "term_months": null,
       "annual_discount_rate": null,
@@ -117,7 +122,8 @@
       "30-month extension June 1, 2025 - November 30, 2027; signed June 14, 2024.",
       "Rent escalates: $202,312.50, then $209,393.44, then $216,722.21 a month. The schema holds one payment.",
       "Total term from the 2016 commencement is not stated.",
-      "Rent steps from the Section 4.1 table."
+      "Rent steps from the Section 4.1 table.",
+      "Relabelled for the two-date schema: signed June 14, 2024 (effective_date); extension and new rent from June 1, 2025 (terms_start_date); expires November 30, 2027."
     ]
   },
   {
@@ -126,7 +132,9 @@
     "url": "https://www.sec.gov/Archives/edgar/data/1500198/000121390024068633/ea021081901ex10-1_neuroone.htm",
     "source_sha256": "d52fe850c96ed266c6884827c83b40a3e3b9f079f3508950648ba726f0c12793",
     "expected": {
-      "effective_date": "2025-04-01",
+      "effective_date": "2024-05-20",
+      "terms_start_date": "2025-04-01",
+      "expiry_date": "2028-06-30",
       "monthly_payment": "6,410",
       "term_months": null,
       "annual_discount_rate": null,
@@ -136,7 +144,8 @@
     "notes": [
       "39-month extension April 1, 2025 - June 30, 2028; the document calls May 20, 2024 its 'Effective Date' (signing), which is the IFRS 16 modification date.",
       "Rent escalates yearly ($6,410 -> $7,107) with abatement in April and May 2025 and June 2028.",
-      "Rent steps from the Section 3 table; abated months April and May 2025 and June 2028."
+      "Rent steps from the Section 3 table; abated months April and May 2025 and June 2028.",
+      "Relabelled for the two-date schema: made as of May 20, 2024 (effective_date); extension from April 1, 2025 (terms_start_date); Expiration Date June 30, 2028."
     ]
   },
   {
@@ -145,7 +154,9 @@
     "url": "https://www.sec.gov/Archives/edgar/data/2023658/000202365824000002/leaseagreement.htm",
     "source_sha256": "dfd2461beebd193df96b5e3d65351d9c3d2059a3f3dae5af1d1f709ed514adb1",
     "expected": {
-      "effective_date": "2024-10-01",
+      "effective_date": "2024-09-24",
+      "terms_start_date": "2024-10-01",
+      "expiry_date": null,
       "monthly_payment": "25,301.33",
       "term_months": null,
       "annual_discount_rate": null,
@@ -155,7 +166,8 @@
     "notes": [
       "Expansion, not an extension: adds 4,744 RSF from October 1, 2024 at $25,301.33 a month FOR THE EXPANSION SPACE ONLY, October abated.",
       "The schema's 'new monthly payment' means the whole rent; an expansion may be a separate lease under IFRS 16.44. Labelled with the stated figure; scoring it is a schema question.",
-      "Expansion rent does not change across the two table rows; October 2024 abated."
+      "Expansion rent does not change across the two table rows; October 2024 abated.",
+      "Relabelled for the two-date schema: made as of September 24, 2024 (effective_date); expansion space from October 1, 2024 (terms_start_date). No new expiry is labelled: the expansion runs with the existing term."
     ]
   }
 ]

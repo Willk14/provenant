@@ -92,7 +92,7 @@ def test_decrease_beyond_the_asset_goes_to_profit_or_loss():
     ("modifications", "message"),
     [
         ([Modification(date(2026, 7, 15), Decimal("0.01"), payment=Decimal("1"))], "period boundary"),
-        ([Modification(date(2027, 3, 31), Decimal("0.01"), payment=Decimal("1"))], "period boundary"),
+        ([Modification(date(2027, 3, 31), Decimal("0.01"), payment=Decimal("1"))], "new lease"),
         ([Modification(AFTER_6, Decimal("0.01"), total_periods=6)], "terminations"),
         (
             [Modification(AFTER_6, Decimal("0.01"), payment=Decimal("1")),
@@ -134,3 +134,59 @@ def test_rejected_change_means_unchanged(make_field):
     )
     m = Modification.from_fields(fields)
     assert m.payment is None and m.total_periods == 18
+
+
+def test_extension_signed_mid_term_starts_when_the_original_term_ends():
+    """ADR 0005 finding 4 (the Kura case): agreed in July, extended term and new rent start at expiry.
+
+    BASE: 12 months from 31 Jan 2026 at 1,000 in arrears, 1% a month. Agreed 15 Jul 2026, inside period 6
+    (30 Jun - 31 Jul): remeasured at the next boundary, 31 Jul 2026, after period 6. New expiry 30 Apr 2027
+    (15 periods); new rent 1,100 from 31 Jan 2027 (after period 12), so periods 7-12 stay at 1,000.
+    Revised rate 1.5%:
+      PV = 1,000 x a(6, 1.5%) + 1,100 x a(3, 1.5%) / 1.015^6
+         = 5,697.19 + 3,203.42 / 1.093443 = 5,697.19 + 2,929.66 = 8,626.85
+    """
+    mod = Modification(date(2026, 7, 15), Decimal("0.015"), payment=Decimal("1100"),
+                       terms_start=date(2027, 1, 31), expiry=date(2027, 4, 30))
+    s = build_schedule(BASE, [mod])
+    (r,) = s.remeasurements
+    assert (r.after_period, r.effective, r.remeasured_on, r.terms_start) == (
+        6, date(2026, 7, 15), date(2026, 7, 31), date(2027, 1, 31))
+    assert r.liability_after == Decimal("8626.85")
+    assert [p.payment for p in s.periods] == [Decimal("1000")] * 12 + [Decimal("1100")] * 3
+    assert [p.segment for p in s.periods] == [0] * 6 + [1] * 9
+    assert s.periods[-1].closing == 0
+    totals = balances(s)
+    assert totals[LEASE_LIABILITY] == 0 and totals[ROU_ASSET] + totals[ACCUMULATED_DEPRECIATION] == 0
+
+
+def test_new_expiry_date_is_read_as_the_last_day_or_the_boundary():
+    # From 1 Jan 2026, 15 periods end on 1 Apr 2027; leases say "expires on 31 March 2027".
+    terms = LeaseTerms(date(2026, 1, 1), 12, Decimal("1000"), Decimal("0.01"))
+    s = build_schedule(terms, [Modification(date(2026, 6, 1), Decimal("0.01"), expiry=date(2027, 3, 31))])
+    assert len(s.periods) == 15 and s.periods[-1].closing == 0
+    with pytest.raises(ValueError, match="disagree"):
+        build_schedule(terms, [Modification(date(2026, 6, 1), Decimal("0.01"), total_periods=18,
+                                            expiry=date(2027, 3, 31))])
+    with pytest.raises(ValueError, match="whole period"):
+        build_schedule(terms, [Modification(date(2026, 6, 1), Decimal("0.01"), expiry=date(2027, 3, 15))])
+
+
+@pytest.mark.parametrize(
+    ("modification", "message"),
+    [
+        # New terms cannot start before the parties agree them
+        (lambda: Modification(AFTER_6, Decimal("0.01"), payment=Decimal("1"), terms_start=date(2026, 6, 30)),
+         "before the amendment is agreed"),
+        # New rent must start on a boundary (31 Oct is one, 15 Oct is not)
+        (lambda: build_schedule(BASE, [Modification(AFTER_6, Decimal("0.01"), payment=Decimal("1"),
+                                                    terms_start=date(2026, 10, 15))]), "period boundary"),
+        # A gap after the old expiry (31 Jan 2027) would be a new lease
+        (lambda: build_schedule(BASE, [Modification(AFTER_6, Decimal("0.01"), payment=Decimal("1"),
+                                                    terms_start=date(2027, 3, 31), total_periods=18)]),
+         "period boundary"),
+    ],
+)
+def test_new_terms_start_is_checked(modification, message):
+    with pytest.raises(ValueError, match=message):
+        modification()

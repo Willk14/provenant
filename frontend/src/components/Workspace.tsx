@@ -11,11 +11,10 @@ import { TermsPanel, type PendingBox } from "@/components/TermsPanel";
 import { api, ApiError } from "@/lib/api";
 import { formatDate, shortHash } from "@/lib/format";
 import { resolveInputs, type Selection } from "@/lib/trace";
-import { fieldLabel, KINDS, type DocumentSummary, type FieldName, type Schedule } from "@/lib/types";
+import { fieldLabel, KINDS, leaseTermsOutstanding, type DocumentSummary, type FieldName, type Schedule } from "@/lib/types";
 import { usePersona } from "@/lib/usePersona";
 
 export type Tab = "terms" | "schedule";
-const VERIFIED = new Set(["auto_accepted", "approved", "corrected"]);
 
 export function Workspace({ id, initialField, initialTab }: { id: string; initialField?: FieldName; initialTab?: Tab }) {
   const persona = usePersona();
@@ -41,9 +40,7 @@ export function Workspace({ id, initialField, initialTab }: { id: string; initia
       if (next.kind !== "lease" || next.status !== "extracted") return;
       // Don't ask for a schedule the server will refuse over the lease's own terms; say what is outstanding.
       // Amendments are checked by the server, which names the one that blocks.
-      const outstanding = KINDS.lease.order.filter(
-        (n) => !next.fields.some((f) => f.name === n && VERIFIED.has(f.status)),
-      );
+      const outstanding = leaseTermsOutstanding(next.fields);
       if (outstanding.length) {
         setSchedule(null);
         setBlocked(`Still to verify: ${outstanding.map((n) => fieldLabel(n).toLowerCase()).join(", ")}`);

@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { formatAmount, formatDate } from "./format";
 import { isUsableBox, toCss, toPdfBox } from "./geometry";
 import { resolveInputs, TRACE } from "./trace";
-import { KINDS, type Field, type FieldName, type Schedule } from "./types";
+import { KINDS, leaseTermsOutstanding, type Field, type FieldName, type Schedule } from "./types";
 
 describe("formatAmount", () => {
   it("groups thousands without float rounding", () => {
@@ -69,5 +69,24 @@ describe("resolveInputs", () => {
   it("collects every segment for lease-wide totals, without duplicates", () => {
     const ids = resolveInputs(schedule, { figure: "payment", period: null, segment: null }).map((f) => f.id);
     expect(ids).toEqual(["L-pay", "A-pay", "L-timing"]);
+  });
+});
+
+describe("leaseTermsOutstanding", () => {
+  const ok = (name: FieldName) => ({ name, status: "approved" as const });
+  const required = ["commencement_date", "term_months", "monthly_payment", "payment_timing", "annual_discount_rate"] as const;
+
+  it("does not wait for optional rent steps or free months the lease does not have", () => {
+    expect(leaseTermsOutstanding(required.map(ok))).toEqual([]);
+  });
+
+  it("waits for missing required terms and for optional ones found but not yet verified", () => {
+    const fields = [...required.slice(1).map(ok), { name: "rent_steps" as const, status: "needs_review" as const }];
+    expect(leaseTermsOutstanding(fields)).toEqual(["commencement_date", "rent_steps"]);
+  });
+
+  it("treats a rejected optional term as absent, like the server", () => {
+    const fields = [...required.map(ok), { name: "free_periods" as const, status: "rejected" as const }];
+    expect(leaseTermsOutstanding(fields)).toEqual([]);
   });
 });

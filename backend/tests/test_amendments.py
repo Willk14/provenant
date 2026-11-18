@@ -124,3 +124,31 @@ def test_off_boundary_effective_date_blocks_with_an_explanation(client, app):
     approve_pending(client, amendment_id)
     r = client.get(f"/documents/{lease_id}/lease-schedule", headers=who("x", "preparer"))
     assert r.status_code == 409 and "period boundary" in r.json()["detail"]
+
+
+def test_extension_signed_mid_term_reads_its_three_dates_and_remeasures(client, app):
+    """The Kura pattern end to end: agreed 15 July, extension and new rent from the end of the original term."""
+    lines = [
+        "SECOND AMENDMENT TO LEASE",
+        "Effective Date: 15 July 2026",
+        "Extension Commencement Date: 31 January 2027",
+        "New Expiry Date: 30 April 2027",
+        "Monthly Rent: KES 1,100.00 payable monthly in arrears",
+        "Discount Rate: 18%",
+    ]
+    lease_id, amendment_id = lease_with_amendment(client, app, lines)
+    got = {name: f["value"] for name, f in fields(client, amendment_id).items()}
+    assert (got["effective_date"], got["terms_start_date"], got["expiry_date"]) == (
+        "2026-07-15", "2027-01-31", "2027-04-30")
+    approve_pending(client, lease_id)
+    approve_pending(client, amendment_id)
+
+    s = client.get(f"/documents/{lease_id}/lease-schedule", headers=PREPARER)
+    assert s.status_code == 200, s.text
+    s = s.json()
+    (r,) = s["remeasurements"]
+    # Worked in test_modifications: remeasured after period 6 (31 Jul 2026) to 8,626.85
+    assert (r["effective"], r["remeasured_on"], r["terms_start"], r["after_period"]) == (
+        "2026-07-15", "2026-07-31", "2027-01-31", 6)
+    assert Decimal(r["liability_after"]) == Decimal("8626.85")
+    assert [Decimal(p["payment"]) for p in s["periods"]] == [Decimal(1000)] * 12 + [Decimal(1100)] * 3

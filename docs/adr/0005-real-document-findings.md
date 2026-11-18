@@ -42,8 +42,16 @@ lease (Recursion 2022) and four lease amendments (Kura, Tenaya, NeuroOne extensi
    not when the new rent starts. Kura signed in May 2025 for an extension starting September 2025. The
    current model conflates the two and refuses extensions that start at the end of the term. It needs both
    dates.
+   *Done (2026-11-19):* `effective_date` is the agreed date (IFRS 16 effective date) and the remeasurement
+   uses the revised rate and payments from then; `terms_start_date` (optional, defaults to the agreed date)
+   is when the new rent or extended term begins, and the old rent runs until then. New terms may start at
+   the end of the current term (the Kura case), not after it. Shortcut: a mid-period agreement is
+   remeasured at the next period boundary, and the schedule shows agreed, remeasured and new-terms dates.
 5. **Amendments state a new expiry date, not a total term from the original commencement.** The schema should
    take the new expiry date.
+   *Done (2026-11-19):* `expiry_date`, read as either the last day of a period or the boundary itself; if a
+   total term is also given, the two must agree. The real golden amendments are relabelled with all three
+   dates from their own text.
 6. **Expansions add space at their own rent.** Bicara's figure is for the expansion space only, and under
    IFRS 16.44 added space at market rent can be a separate lease. The model needs "expansion" as its own
    kind of change.

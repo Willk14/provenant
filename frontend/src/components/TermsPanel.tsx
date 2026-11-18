@@ -31,6 +31,8 @@ interface Props {
 const PLACEHOLDERS: Record<FieldName, string> = {
   commencement_date: "YYYY-MM-DD",
   effective_date: "YYYY-MM-DD",
+  terms_start_date: "YYYY-MM-DD",
+  expiry_date: "YYYY-MM-DD",
   term_months: "Months, e.g. 24",
   monthly_payment: "Amount, e.g. 120,000",
   annual_discount_rate: "Percentage, e.g. 14%",
@@ -74,6 +76,8 @@ export function displayValue(field: Pick<Field, "name" | "value">): string {
       return /^\d+$/.test(field.value) ? `${field.value} days` : field.value;
     case "commencement_date":
     case "effective_date":
+    case "terms_start_date":
+    case "expiry_date":
     case "first_test_date":
       return /^\d{4}-\d{2}-\d{2}$/.test(field.value) ? formatDate(field.value) : field.value;
     case "payment_timing":

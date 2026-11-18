@@ -1,6 +1,8 @@
 export type FieldName =
   | "commencement_date"
   | "effective_date"
+  | "terms_start_date"
+  | "expiry_date"
   | "term_months"
   | "monthly_payment"
   | "annual_discount_rate"
@@ -84,6 +86,10 @@ export interface Remeasurement {
   rou_before: string;
   rou_adjustment: string;
   gain: string;
+  /** The period boundary the remeasurement is posted at (on or after the agreement date). */
+  remeasured_on?: string | null;
+  /** When the new rent or term starts. */
+  terms_start?: string | null;
 }
 
 export interface Segment {
@@ -132,10 +138,12 @@ export const KINDS: Record<DocumentKind, KindSpec> = {
     labels: {},
   },
   amendment: {
-    order: ["effective_date", "monthly_payment", "rent_steps", "free_periods", "term_months", "annual_discount_rate"],
+    order: ["effective_date", "terms_start_date", "monthly_payment", "rent_steps", "free_periods", "expiry_date",
+      "term_months", "annual_discount_rate"],
     required: new Set(["effective_date", "annual_discount_rate"]),
     judgement: new Set(["effective_date", "annual_discount_rate"]),
     labels: {
+      effective_date: "Agreed (IFRS 16 effective) date",
       monthly_payment: "New monthly payment",
       term_months: "New total term (months)",
       rent_steps: "New rent steps",
@@ -160,6 +168,8 @@ export const KINDS: Record<DocumentKind, KindSpec> = {
 export const FIELD_LABELS: Record<FieldName, string> = {
   commencement_date: "Commencement date",
   effective_date: "Effective date",
+  terms_start_date: "New terms start",
+  expiry_date: "New expiry date",
   term_months: "Lease term (months)",
   monthly_payment: "Monthly payment",
   payment_timing: "Payment timing",
@@ -238,3 +248,16 @@ export function fieldLabel(name: FieldName, kind: DocumentKind = "lease"): strin
 
 /** The lease's terms, in display order (kept for callers that only deal with leases). */
 export const FIELD_ORDER: FieldName[] = KINDS.lease.order;
+
+const VERIFIED_STATUSES: ReadonlySet<string> = new Set(["auto_accepted", "approved", "corrected"]);
+
+/** The lease's own terms still blocking its schedule, by the server's rule (LeaseTerms.from_fields): every
+ *  required term verified; an optional one (rent steps, free months) only if present and not rejected. */
+export function leaseTermsOutstanding(fields: Pick<Field, "name" | "status">[]): FieldName[] {
+  const kind = KINDS.lease;
+  return kind.order.filter((name) => {
+    const field = fields.find((f) => f.name === name);
+    if (kind.required.has(name)) return !field || !VERIFIED_STATUSES.has(field.status);
+    return !!field && field.status !== "rejected" && !VERIFIED_STATUSES.has(field.status);
+  });
+}

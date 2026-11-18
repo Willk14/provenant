@@ -186,7 +186,12 @@ export function SchedulePanel({
                         }
                       >
                         <span className="remeasure-title">
-                          Remeasured from {formatDate(remeasured.r.effective)} · {remeasured.r.filename}
+                          Agreed {formatDate(remeasured.r.effective)}
+                          {remeasured.r.remeasured_on && remeasured.r.remeasured_on !== remeasured.r.effective &&
+                            `, remeasured ${formatDate(remeasured.r.remeasured_on)}`}
+                          {remeasured.r.terms_start && remeasured.r.terms_start !== remeasured.r.effective &&
+                            `, new terms from ${formatDate(remeasured.r.terms_start)}`}{" "}
+                          · {remeasured.r.filename}
                         </span>
                         <span className="num">
                           Liability {formatAmount(remeasured.r.liability_before)} →{" "}

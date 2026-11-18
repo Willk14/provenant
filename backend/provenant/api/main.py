@@ -138,6 +138,8 @@ class RemeasurementOut(BaseModel):
     rou_before: Decimal
     rou_adjustment: Decimal
     gain: Decimal
+    remeasured_on: date | None = None  # the period boundary it is posted at, on or after `effective`
+    terms_start: date | None = None  # when the new rent or term starts
 
 
 class SegmentOut(BaseModel):
