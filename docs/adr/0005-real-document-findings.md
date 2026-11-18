@@ -26,6 +26,11 @@ lease (Recursion 2022) and four lease amendments (Kura, Tenaya, NeuroOne extensi
 2. **Rent is a schedule, not a number.** All four amendments escalate annually, and two have rent-free
    months. One lease quotes rent per square foot on an area not yet fixed. The engine needs a payment
    schedule (amount per period), with free periods.
+   *Done (2026-11-18):* leases and amendments take `rent_steps` ("13: 1,030.00", or a date for rent tables)
+   and `free_periods` ("1, 2" or "2025-04"). The core turns dates into periods. Present value, schedule,
+   journal and remeasurement run on the per-period rent; an amendment's new rent replaces the lease's
+   steps from its effective date. The real golden set now labels the amendments' rent tables. Rent per
+   square foot on an unfixed area is still not representable.
 3. **Commencement is often an event**, with an outside date ("no later than May 31, 2022"). The schema needs
    "not yet known" as a state, and a confirmation document to fill it later.
 4. **An amendment's IFRS 16 effective date is when the parties agree**, which is usually the signing date,

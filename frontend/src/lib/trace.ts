@@ -12,7 +12,14 @@ export type Figure =
   | "end_date"
   | "remeasurement";
 
-const PRESENT_VALUE: FieldName[] = ["monthly_payment", "term_months", "annual_discount_rate", "payment_timing"];
+const PRESENT_VALUE: FieldName[] = [
+  "monthly_payment",
+  "rent_steps",
+  "free_periods",
+  "term_months",
+  "annual_discount_rate",
+  "payment_timing",
+];
 
 /**
  * Which verified inputs each figure depends on, following provenant/leases/ifrs16.py:
@@ -27,9 +34,16 @@ export const TRACE: Record<Figure, FieldName[]> = {
   closing: PRESENT_VALUE,
   depreciation: PRESENT_VALUE,
   interest: ["annual_discount_rate", "payment_timing"],
-  payment: ["monthly_payment", "payment_timing"],
+  payment: ["monthly_payment", "rent_steps", "free_periods", "payment_timing"],
   end_date: ["commencement_date", "term_months"],
-  remeasurement: ["effective_date", "monthly_payment", "term_months", "annual_discount_rate"],
+  remeasurement: [
+    "effective_date",
+    "monthly_payment",
+    "rent_steps",
+    "free_periods",
+    "term_months",
+    "annual_discount_rate",
+  ],
 };
 
 export const FIGURE_LABELS: Record<Figure, string> = {

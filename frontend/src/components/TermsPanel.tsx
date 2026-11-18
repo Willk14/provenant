@@ -35,6 +35,8 @@ const PLACEHOLDERS: Record<FieldName, string> = {
   monthly_payment: "Amount, e.g. 120,000",
   annual_discount_rate: "Percentage, e.g. 14%",
   payment_timing: "advance or arrears",
+  rent_steps: "e.g. 13: 1,030.00; 25: 1,060.90  or  2026-06-01: 1,030.00",
+  free_periods: "e.g. 1, 2  or  2025-04, 2025-05",
   max_leverage_ratio: "Ratio, e.g. 3.50x",
   min_interest_cover: "Ratio, e.g. 4.00x",
   min_liquidity: "Amount, e.g. 50,000,000",
@@ -48,6 +50,25 @@ export function displayValue(field: Pick<Field, "name" | "value">): string {
     case "monthly_payment":
     case "min_liquidity":
       return /^[\d,]+(\.\d+)?$/.test(field.value) ? formatAmount(field.value.replace(/,/g, "")) : field.value;
+    case "rent_steps":
+      return field.value
+        .split(";")
+        .map((step) => {
+          const [when, amount = ""] = step.split(":").map((s) => s.trim());
+          const from = /^\d+$/.test(when) ? `month ${when}` : /^\d{4}-\d{2}-\d{2}$/.test(when) ? formatDate(when) : when;
+          return /^[\d,]+(\.\d+)?$/.test(amount) ? `${formatAmount(amount.replace(/,/g, ""))} from ${from}` : step.trim();
+        })
+        .join(" · ");
+    case "free_periods":
+      return field.value
+        .split(",")
+        .map((m) => {
+          const month = m.trim();
+          return /^\d{4}-\d{2}$/.test(month)
+            ? new Date(`${month}-01T00:00:00Z`).toLocaleDateString("en-GB", { month: "short", year: "numeric", timeZone: "UTC" })
+            : `month ${month}`;
+        })
+        .join(", ");
     case "reporting_days":
     case "cure_period_days":
       return /^\d+$/.test(field.value) ? `${field.value} days` : field.value;
@@ -253,7 +274,9 @@ function TermCard({
       <div className="term" data-missing="true" data-active={drawingFor === name}>
         <div className="term-head">
           {label}
-          <span className="pill">{optional && doc.kind === "amendment" ? "Unchanged" : "Not found"}</span>
+          <span className="pill">
+            {!optional ? "Not found" : doc.kind === "amendment" ? "Unchanged" : doc.kind === "lease" ? "None found" : "Not found"}
+          </span>
         </div>
         {box ? (
           entryForm
@@ -264,7 +287,9 @@ function TermCard({
                 ? "The extractor could not find this term. Mark where the document states it."
                 : doc.kind === "amendment"
                   ? "No change to this term was found, so the lease's value carries over. If the amendment does change it, mark where."
-                  : "Not found in the agreement, so it is not tested. If the agreement does have it, mark where."}
+                  : doc.kind === "lease"
+                    ? "None found, so the rent is treated as flat with no free months. If the lease has them, mark where."
+                    : "Not found in the agreement, so it is not tested. If the agreement does have it, mark where."}
             </div>
             <div className="term-actions">
               <button

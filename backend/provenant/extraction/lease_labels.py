@@ -58,6 +58,8 @@ def normalise(name: str, raw: str) -> tuple[str, bool]:
     if name in ("reporting_days", "cure_period_days"):
         number = re.match(r"\d{1,3}", raw)
         return (number.group(0), True) if number else (raw, False)
+    if name == "rent_steps":  # "2026-06-01: $209,393.44" -> "2026-06-01: 209,393.44"
+        return re.sub(r"(?i):\s*(?:[a-z]{3}\b|[$€£])\s*", ": ", raw), True
     if name in ("monthly_payment", "min_liquidity"):
         number = re.search(r"\d[\d,]*(?:\.\d{1,2})?", raw)  # drop a currency code or symbol
         return (number.group(0), True) if number else (raw, False)

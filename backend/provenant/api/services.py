@@ -42,7 +42,7 @@ COVENANT_GATE = ConfidenceGate(
 )
 
 KINDS = {
-    "lease": Kind(LeaseTerms.REQUIRED, LeaseTerms.REQUIRED, LEASE_GATE),
+    "lease": Kind(LeaseTerms.FIELDS, LeaseTerms.REQUIRED, LEASE_GATE),
     "amendment": Kind(Modification.FIELDS, Modification.REQUIRED, AMENDMENT_GATE),
     "credit_agreement": Kind(CovenantTerms.FIELDS, CovenantTerms.REQUIRED, COVENANT_GATE),
 }
@@ -381,10 +381,16 @@ def lease_schedule(s: Session, tenant_id: str, document_id: str) -> ChainedSched
     except ValueError as exc:
         raise Conflict(str(exc)) from exc
 
-    segments = [Segment(lease.id, 1, {r.name: r.id for r in lease_rows if r.name in LeaseTerms.REQUIRED})]
-    for (_, amendment, rows), remeasurement in zip(chain, schedule.remeasurements):
+    def usable(rows: list[FieldRow], names: tuple[str, ...]) -> dict[str, str]:
+        return {r.name: r.id for r in rows if r.name in names and r.status != "rejected"}
+
+    segments = [Segment(lease.id, 1, usable(lease_rows, LeaseTerms.FIELDS))]
+    for (modification, amendment, rows), remeasurement in zip(chain, schedule.remeasurements):
         inputs = dict(segments[-1].inputs)
-        inputs.update({r.name: r.id for r in rows if r.name in Modification.FIELDS and r.status != "rejected"})
+        if modification.rent is not None:  # a new rent replaces the old schedule's steps and free months
+            inputs.pop("rent_steps", None)
+            inputs.pop("free_periods", None)
+        inputs.update(usable(rows, Modification.FIELDS))
         segments.append(Segment(amendment.id, remeasurement.after_period + 1, inputs))
 
     lineage = [lease.sha256] + [f"{a.sha256}@{m.effective.isoformat()}" for m, a, _ in chain]

@@ -44,6 +44,15 @@ Built as thin vertical slices. Each milestone ships something a user can run end
 - [ ] OIDC sign-in in the web app (it uses the dev persona switcher today)
 - [ ] Component tests (React Testing Library) and a Playwright smoke test in CI
 
+## Schema fixes from real documents (ADR 0005), before new features
+- [x] Rent schedules: escalation steps and rent-free months, by month number or date
+- [ ] Discount rate as a preparer input with its basis, not an extracted term
+- [ ] Amendments: signing (IFRS 16 effective) date separate from the date new terms start; new expiry date
+      instead of total term
+- [ ] Expansions as their own kind of change (possibly a separate lease under IFRS 16.44)
+- [ ] Springing covenants, business-day cure periods, relative first test dates, threshold step-ups
+- [ ] Run the Claude evaluation on the real set (needs an API key) and calibrate confidence per extractor
+
 ## M3 — Covenants and full-population analytics
 - [x] Credit agreements as a document kind: leverage, interest cover, liquidity, first test date, certificate
       deadline and cure window extracted with page + box; thresholds need a partner (ADR 0004)

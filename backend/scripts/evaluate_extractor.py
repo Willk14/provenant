@@ -21,6 +21,7 @@ from pathlib import Path
 
 from fpdf import FPDF
 
+from provenant.core.formats import parse_free_periods, parse_rent_steps
 from provenant.extraction import extractor_from_env
 
 GOLDEN = Path(__file__).resolve().parent.parent / "golden"
@@ -36,10 +37,18 @@ def make_pdf(pages: list[list[str]]) -> bytes:
     return bytes(pdf.output())
 
 
-def canonical(value: str | None) -> str | None:
-    """Compare meaning, not formatting: 3.5x == 3.50x, 6,410 == 6410.00, 12 % == 12%."""
+def canonical(value: str | None, name: str = "") -> str | None:
+    """Compare meaning, not formatting: 3.5x == 3.50x, 6,410 == 6410.00, 12 % == 12%; schedules compare as
+    sorted steps and sets of months, so order and spacing do not matter."""
     if value is None:
         return None
+    try:
+        if name == "rent_steps":
+            return repr(sorted((str(k), canonical(str(v))) for k, v in parse_rent_steps(value)))
+        if name == "free_periods":
+            return repr(sorted(str(m) for m in parse_free_periods(value)))
+    except ValueError:
+        return value.strip()
     text = value.strip().lower().replace(",", "").replace(" ", "")
     for suffix in ("%", "x"):
         if text.endswith(suffix):
@@ -58,7 +67,7 @@ def score(expected: dict, got: dict) -> tuple[Counter, list[str]]:
     for name, want in expected.items():
         field = got.get(name)
         value = field.value if field else None
-        right = canonical(value) == canonical(want)
+        right = canonical(value, name) == canonical(want, name)
         totals["found"] += want is not None
         totals["found_correct"] += want is not None and right
         totals["proposed"] += value is not None

@@ -26,6 +26,8 @@ OFFICE_LEASE = [
         ("p", "Commencement Date: 1 February 2026"),
         ("p", "Lease Term: 36 months"),
         ("p", "Monthly Rent: KES 450,000.00 payable monthly in advance"),
+        ("p", "Rent escalation: from month 13 the monthly rent is KES 472,500.00 and from month 25 it is "
+              "KES 496,125.00. The first two months of the Lease Term are rent free."),
         ("p", "Discount Rate: 13.5%"),
         ("s", "2. Use"),
         ("p", "The premises shall be used as offices for the Tenant's analytics business and for no other purpose "

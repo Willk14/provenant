@@ -5,6 +5,8 @@ export type FieldName =
   | "monthly_payment"
   | "annual_discount_rate"
   | "payment_timing"
+  | "rent_steps"
+  | "free_periods"
   | "max_leverage_ratio"
   | "min_interest_cover"
   | "min_liquidity"
@@ -110,18 +112,27 @@ export interface KindSpec {
 
 export const KINDS: Record<DocumentKind, KindSpec> = {
   lease: {
-    order: ["commencement_date", "term_months", "monthly_payment", "payment_timing", "annual_discount_rate"],
+    order: [
+      "commencement_date",
+      "term_months",
+      "monthly_payment",
+      "rent_steps",
+      "free_periods",
+      "payment_timing",
+      "annual_discount_rate",
+    ],
     required: new Set(["commencement_date", "term_months", "monthly_payment", "payment_timing", "annual_discount_rate"]),
     judgement: new Set(["annual_discount_rate", "payment_timing"]),
     labels: {},
   },
   amendment: {
-    order: ["effective_date", "monthly_payment", "term_months", "annual_discount_rate"],
+    order: ["effective_date", "monthly_payment", "rent_steps", "free_periods", "term_months", "annual_discount_rate"],
     required: new Set(["effective_date", "annual_discount_rate"]),
     judgement: new Set(["effective_date", "annual_discount_rate"]),
     labels: {
       monthly_payment: "New monthly payment",
       term_months: "New total term (months)",
+      rent_steps: "New rent steps",
       annual_discount_rate: "Revised discount rate (annual)",
     },
   },
@@ -146,6 +157,8 @@ export const FIELD_LABELS: Record<FieldName, string> = {
   term_months: "Lease term (months)",
   monthly_payment: "Monthly payment",
   payment_timing: "Payment timing",
+  rent_steps: "Rent steps (escalations)",
+  free_periods: "Rent-free months",
   annual_discount_rate: "Discount rate (annual)",
   max_leverage_ratio: "Maximum leverage (net debt / EBITDA)",
   min_interest_cover: "Minimum interest cover (EBITDA / interest)",

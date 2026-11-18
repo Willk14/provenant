@@ -704,6 +704,10 @@ select {
   gap: 6px;
 }
 
+.draw-hint .btn {
+  color: var(--ink); /* the banner's white text would otherwise vanish on the white button */
+}
+
 /* Floats over the PDF so entering draw mode never moves the page under the cursor. */
 .draw-hint {
   position: absolute;

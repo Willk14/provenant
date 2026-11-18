@@ -69,13 +69,16 @@
       "term_months": "24",
       "monthly_payment": null,
       "payment_timing": "advance",
-      "annual_discount_rate": null
+      "annual_discount_rate": null,
+      "rent_steps": null,
+      "free_periods": null
     },
     "notes": [
       "Commencement is event-based (delivery + tenant works), with an outside date of May 31, 2022: no stated commencement date.",
       "Rent is quoted per square foot ($25.00 office / $18.00 lab, rising in month 13) on an area not yet fixed (25,000-55,000 RSF): no monthly amount exists in the document.",
       "Section 3: Base Rent payable monthly in advance.",
-      "No discount rate: a lessee's incremental borrowing rate is never in the lease."
+      "No discount rate: a lessee's incremental borrowing rate is never in the lease.",
+      "No scheduled rent-free months (abatements are conditional: interruptions, casualty); steps are per square foot, so no monetary steps."
     ]
   },
   {
@@ -87,7 +90,9 @@
       "effective_date": "2025-09-01",
       "monthly_payment": "25,844.90",
       "term_months": null,
-      "annual_discount_rate": null
+      "annual_discount_rate": null,
+      "rent_steps": null,
+      "free_periods": null
     },
     "notes": [
       "Two-month extension to October 31, 2025; the Extended Term starts September 1, 2025 at $25,844.90 a month.",
@@ -104,12 +109,15 @@
       "effective_date": "2025-06-01",
       "monthly_payment": "202,312.50",
       "term_months": null,
-      "annual_discount_rate": null
+      "annual_discount_rate": null,
+      "rent_steps": "2026-06-01: 209,393.44; 2027-06-01: 216,722.21",
+      "free_periods": null
     },
     "notes": [
       "30-month extension June 1, 2025 - November 30, 2027; signed June 14, 2024.",
       "Rent escalates: $202,312.50, then $209,393.44, then $216,722.21 a month. The schema holds one payment.",
-      "Total term from the 2016 commencement is not stated."
+      "Total term from the 2016 commencement is not stated.",
+      "Rent steps from the Section 4.1 table."
     ]
   },
   {
@@ -121,11 +129,14 @@
       "effective_date": "2025-04-01",
       "monthly_payment": "6,410",
       "term_months": null,
-      "annual_discount_rate": null
+      "annual_discount_rate": null,
+      "rent_steps": "2026-04-01: 6,635; 2027-04-01: 6,867; 2028-04-01: 7,107",
+      "free_periods": "2025-04, 2025-05, 2028-06"
     },
     "notes": [
       "39-month extension April 1, 2025 - June 30, 2028; the document calls May 20, 2024 its 'Effective Date' (signing), which is the IFRS 16 modification date.",
-      "Rent escalates yearly ($6,410 -> $7,107) with abatement in April and May 2025 and June 2028."
+      "Rent escalates yearly ($6,410 -> $7,107) with abatement in April and May 2025 and June 2028.",
+      "Rent steps from the Section 3 table; abated months April and May 2025 and June 2028."
     ]
   },
   {
@@ -137,11 +148,14 @@
       "effective_date": "2024-10-01",
       "monthly_payment": "25,301.33",
       "term_months": null,
-      "annual_discount_rate": null
+      "annual_discount_rate": null,
+      "rent_steps": null,
+      "free_periods": "2024-10"
     },
     "notes": [
       "Expansion, not an extension: adds 4,744 RSF from October 1, 2024 at $25,301.33 a month FOR THE EXPANSION SPACE ONLY, October abated.",
-      "The schema's 'new monthly payment' means the whole rent; an expansion may be a separate lease under IFRS 16.44. Labelled with the stated figure; scoring it is a schema question."
+      "The schema's 'new monthly payment' means the whole rent; an expansion may be a separate lease under IFRS 16.44. Labelled with the stated figure; scoring it is a schema question.",
+      "Expansion rent does not change across the two table rows; October 2024 abated."
     ]
   }
 ]

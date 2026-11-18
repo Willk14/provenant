@@ -45,7 +45,8 @@ Value formats and rules:
   a monthly figure, return null.
 - payment_timing: "advance" or "arrears".
 - annual_discount_rate: percentage with a % sign, only if the lease itself states a discount, implicit or
-  incremental borrowing rate. Leases rarely do; do not use late-payment or interest-on-arrears rates.""",
+  incremental borrowing rate. Leases rarely do; do not use late-payment or interest-on-arrears rates.
+{schedule}""",
     "amendment": """You extract the changes a lease amendment (extension, side letter, expansion) makes,
 for IFRS 16 / ASC 842 accounting.
 
@@ -59,7 +60,8 @@ Value formats and rules:
 - term_months: the NEW total lease term in months measured from the ORIGINAL commencement, only if the
   document states it outright. Null if it states only an extension length or a new expiry date.
 - annual_discount_rate: percentage with a % sign, only if the amendment states a discount or incremental
-  borrowing rate. Amendments rarely do.""",
+  borrowing rate. Amendments rarely do.
+{schedule}""",
     "credit_agreement": """You extract the financial covenants of a credit / facility agreement.
 
 {common}
@@ -79,6 +81,16 @@ Value formats and rules:
 }
 
 
+SCHEDULE = """- rent_steps: every later change in the fixed monthly base rent after the first amount, as
+  "<start>: <amount>" entries separated by "; ". Use the period's start date as YYYY-MM-DD when the
+  document gives dates (e.g. "2026-06-01: 209,393.44; 2027-06-01: 216,722.21"), or the month number when it
+  counts months (e.g. "13: 25,750.00"). Copy amounts as written; do not compute them. Null if the rent never
+  changes or is only stated per square foot. Quote the rent table or sentence.
+- free_periods: months with no base rent (abatement, rent-free), as YYYY-MM when dated or month numbers
+  when counted (e.g. "2025-04, 2025-05" or "1, 2"). Only scheduled free months, not conditional abatements
+  (e.g. after damage or service interruption). Null if none."""
+
+
 class Cited(BaseModel):
     value: str | None = Field(description="Normalised value, or null if not stated")
     page: int | None = Field(description="1-based page number where the quote appears")
@@ -91,6 +103,8 @@ class LeaseExtraction(BaseModel):
     monthly_payment: Cited
     payment_timing: Cited
     annual_discount_rate: Cited
+    rent_steps: Cited
+    free_periods: Cited
 
 
 class AmendmentExtraction(BaseModel):
@@ -98,6 +112,8 @@ class AmendmentExtraction(BaseModel):
     monthly_payment: Cited
     term_months: Cited
     annual_discount_rate: Cited
+    rent_steps: Cited
+    free_periods: Cited
 
 
 class CovenantExtraction(BaseModel):
@@ -158,7 +174,7 @@ class ClaudeLeaseExtractor:
                 betas=["server-side-fallback-2026-07-01"],
                 fallbacks="default",  # on a safety decline, the API retries on a fallback model
                 output_config={"effort": "high"},
-                system=INSTRUCTIONS[kind].format(common=COMMON),
+                system=INSTRUCTIONS[kind].format(common=COMMON, schedule=SCHEDULE),
                 messages=[{"role": "user", "content": f"<document>\n{document}\n</document>"}],
                 output_format=SCHEMAS[kind],
             )
