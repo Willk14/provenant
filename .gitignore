@@ -9,3 +9,4 @@ node_modules/
 storage/
 *.db
 .dev/
+backend/golden/real/cache/

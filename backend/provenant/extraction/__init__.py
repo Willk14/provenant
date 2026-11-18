@@ -8,8 +8,9 @@ from provenant.provenance import ExtractedField
 class Extractor(Protocol):
     name: str
 
-    def extract(self, pdf: bytes, document_sha256: str) -> list[ExtractedField]:
-        """Return proposed fields, each with a SourceRef into `pdf`. Status must be PROPOSED."""
+    def extract(self, pdf: bytes, document_sha256: str, kind: str = "lease") -> list[ExtractedField]:
+        """Return proposed fields for a document of `kind` (lease, amendment, credit_agreement), each with a
+        SourceRef into `pdf`. Status must be PROPOSED. Extra fields are allowed; the service keeps the kind's."""
         ...
 
 

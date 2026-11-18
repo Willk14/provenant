@@ -3,7 +3,13 @@ from types import SimpleNamespace
 
 import pytest
 
-from provenant.extraction.claude import ClaudeLeaseExtractor, Cited, ExtractionRefused, LeaseExtraction
+from provenant.extraction.claude import (
+    ClaudeLeaseExtractor,
+    Cited,
+    CovenantExtraction,
+    ExtractionRefused,
+    LeaseExtraction,
+)
 from tests.test_api import make_pdf
 
 LINES = [
@@ -63,6 +69,22 @@ def test_hallucinated_quotes_and_bad_pages_are_dropped():
 def test_refusal_raises_so_the_job_is_retried():
     with pytest.raises(ExtractionRefused):
         ClaudeLeaseExtractor(FakeClient(None, stop_reason="refusal")).extract(make_pdf(LINES), SHA)
+
+
+def test_credit_agreements_use_the_covenant_schema_and_normalise_ratios():
+    lines = ["22. Financial covenants", "The Leverage Ratio shall not exceed 3.50:1.00 at any Test Date."]
+    output = CovenantExtraction(
+        max_leverage_ratio=Cited(value="3.50:1.00", page=1, quote="3.50:1.00"),
+        **{n: Cited(value=None, page=None, quote=None) for n in CovenantExtraction.model_fields if n != "max_leverage_ratio"},
+    )
+    client = FakeClient(None)
+    client.output = output
+    (field,) = ClaudeLeaseExtractor(client).extract(make_pdf(lines), SHA, kind="credit_agreement")
+    assert (field.name, field.value) == ("max_leverage_ratio", "3.50x")
+    assert client.calls[0]["output_format"] is CovenantExtraction
+    assert "financial covenants" in client.calls[0]["system"]
+    with pytest.raises(ValueError, match="no extraction schema"):
+        ClaudeLeaseExtractor(client).extract(make_pdf(lines), SHA, kind="invoice")
 
 
 def test_scanned_pdf_without_text_is_not_sent():

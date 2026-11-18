@@ -27,7 +27,10 @@ PATTERNS = {
     "commencement_date": r"commencement date\s*[:\-]?\s*(\d{4}-\d{2}-\d{2}|\d{1,2}\s+[a-z]+\s+\d{4})",
     "effective_date": r"effective date\s*[:\-]?\s*(\d{4}-\d{2}-\d{2}|\d{1,2}\s+[a-z]+\s+\d{4})",
     "term_months": r"(?:lease\s+)?term\s*[:\-]?\s*(\d{1,3})\s*months",
-    "monthly_payment": r"monthly\s+(?:rent|payment)\s*[:\-]?\s*(?:[a-z]{3}|[$€£])?\s*(\d[\d,]*(?:\.\d{1,2})?)",
+    # A colon or a currency marker must sit between label and amount: real leases contain blank forms like
+    # "INSERT MONTHLY RENT 2. Acceptance of Premises", where the next number is a section number.
+    "monthly_payment": r"monthly\s+(?:rent|payment)\s*(?::\s*(?:[a-z]{3}\b|[$€£])?|(?:[a-z]{3}\b|[$€£]))\s*"
+    r"(\d[\d,]*(?:\.\d{1,2})?)",
     "annual_discount_rate": r"(?:discount|incremental borrowing|interest)\s+rate\s*[:\-]?\s*(\d+(?:\.\d+)?\s*%)",
     "payment_timing": r"payable\s+(?:monthly\s+)?in\s+(advance|arrears)",
 }
@@ -50,14 +53,22 @@ def normalise(name: str, raw: str) -> tuple[str, bool]:
     if name == "payment_timing":
         return raw.lower(), True
     if name in ("max_leverage_ratio", "min_interest_cover"):
-        return f"{raw}x", True  # "3.50:1" and "3.50 times" are both 3.50x
+        number = re.match(r"\d{1,2}(?:\.\d{1,2})?", raw)  # "3.50:1", "3.50 times" and "3.50x" are all 3.50x
+        return (f"{number.group(0)}x", True) if number else (raw, False)
+    if name in ("reporting_days", "cure_period_days"):
+        number = re.match(r"\d{1,3}", raw)
+        return (number.group(0), True) if number else (raw, False)
+    if name in ("monthly_payment", "min_liquidity"):
+        number = re.search(r"\d[\d,]*(?:\.\d{1,2})?", raw)  # drop a currency code or symbol
+        return (number.group(0), True) if number else (raw, False)
     return raw, True
 
 
 class LeaseLabelExtractor:
     name = "labels@2"
 
-    def extract(self, pdf: bytes, document_sha256: str) -> list[ExtractedField]:
+    def extract(self, pdf: bytes, document_sha256: str, kind: str = "lease") -> list[ExtractedField]:
+        # Patterns are kind-agnostic; the service keeps only the terms of the document's kind.
         found: dict[str, ExtractedField] = {}
         with open_pages(pdf) as pages:
             for page in pages:

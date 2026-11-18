@@ -18,7 +18,7 @@ class Flaky:
     def __init__(self, failures: int) -> None:
         self.failures = failures
 
-    def extract(self, pdf, sha):
+    def extract(self, pdf, sha, kind="lease"):
         if self.failures:
             self.failures -= 1
             raise RuntimeError("transient")

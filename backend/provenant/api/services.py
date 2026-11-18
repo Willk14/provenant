@@ -196,7 +196,7 @@ def extract_document(
         s.commit()
         kind = KINDS[doc.kind]
         try:
-            for proposal in extractor.extract(store.get(doc.sha256), doc.sha256):
+            for proposal in extractor.extract(store.get(doc.sha256), doc.sha256, kind=doc.kind):
                 if proposal.name in kind.fields:  # e.g. a lease's "effective date" wording is not a term here
                     s.add(FieldRow.from_domain(tenant_id, doc.id, kind.gate.route(proposal)))
             doc.status = "extracted"

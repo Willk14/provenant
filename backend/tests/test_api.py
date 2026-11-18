@@ -202,7 +202,7 @@ def test_failed_extraction_is_recorded_and_reupload_retries(database_url, tmp_pa
     class Broken:
         name = "broken@0"
 
-        def extract(self, pdf, sha):
+        def extract(self, pdf, sha, kind="lease"):
             raise RuntimeError("model unavailable")
 
     data = make_pdf(LEASE_LINES)  # fpdf stamps the creation time, so build the bytes once

@@ -1,0 +1,117 @@
+{
+  "extractor": "labels@2",
+  "totals": {
+    "missing": 20,
+    "correct": 19
+  },
+  "cases": {
+    "imxi-keybank-credit": {
+      "kind": "credit_agreement",
+      "found": 5,
+      "found_correct": 0,
+      "proposed": 0,
+      "proposed_correct": 0,
+      "missing": 5,
+      "correct": 1,
+      "misses": [
+        "missing  max_leverage_ratio: expected '3.50x', got None",
+        "missing  min_interest_cover: expected '3.00x', got None",
+        "missing  first_test_date: expected '2024-09-30', got None",
+        "missing  reporting_days: expected '45', got None",
+        "missing  cure_period_days: expected '15', got None"
+      ]
+    },
+    "ceridian-2021-credit": {
+      "kind": "credit_agreement",
+      "found": 3,
+      "found_correct": 1,
+      "proposed": 1,
+      "proposed_correct": 1,
+      "missing": 2,
+      "correct": 4,
+      "misses": [
+        "missing  max_leverage_ratio: expected '7.25x', got None",
+        "missing  reporting_days: expected '45', got None"
+      ]
+    },
+    "dayforce-2024-credit": {
+      "kind": "credit_agreement",
+      "found": 3,
+      "found_correct": 0,
+      "proposed": 0,
+      "proposed_correct": 0,
+      "missing": 3,
+      "correct": 3,
+      "misses": [
+        "missing  max_leverage_ratio: expected '7.25x', got None",
+        "missing  reporting_days: expected '45', got None",
+        "missing  cure_period_days: expected '15', got None"
+      ]
+    },
+    "recursion-lease": {
+      "kind": "lease",
+      "found": 2,
+      "found_correct": 0,
+      "proposed": 0,
+      "proposed_correct": 0,
+      "correct": 3,
+      "missing": 2,
+      "misses": [
+        "missing  term_months: expected '24', got None",
+        "missing  payment_timing: expected 'advance', got None"
+      ]
+    },
+    "kura-amendment": {
+      "kind": "amendment",
+      "found": 2,
+      "found_correct": 0,
+      "proposed": 0,
+      "proposed_correct": 0,
+      "missing": 2,
+      "correct": 2,
+      "misses": [
+        "missing  effective_date: expected '2025-09-01', got None",
+        "missing  monthly_payment: expected '25,844.90', got None"
+      ]
+    },
+    "tenaya-amendment": {
+      "kind": "amendment",
+      "found": 2,
+      "found_correct": 0,
+      "proposed": 0,
+      "proposed_correct": 0,
+      "missing": 2,
+      "correct": 2,
+      "misses": [
+        "missing  effective_date: expected '2025-06-01', got None",
+        "missing  monthly_payment: expected '202,312.50', got None"
+      ]
+    },
+    "neuroone-amendment": {
+      "kind": "amendment",
+      "found": 2,
+      "found_correct": 0,
+      "proposed": 0,
+      "proposed_correct": 0,
+      "missing": 2,
+      "correct": 2,
+      "misses": [
+        "missing  effective_date: expected '2025-04-01', got None",
+        "missing  monthly_payment: expected '6,410', got None"
+      ]
+    },
+    "bicara-expansion": {
+      "kind": "amendment",
+      "found": 2,
+      "found_correct": 0,
+      "proposed": 0,
+      "proposed_correct": 0,
+      "missing": 2,
+      "correct": 2,
+      "misses": [
+        "missing  effective_date: expected '2024-10-01', got None",
+        "missing  monthly_payment: expected '25,301.33', got None"
+      ]
+    }
+  }
+}
