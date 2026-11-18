@@ -93,9 +93,12 @@ interest_expense, other`. Each quarter holds that quarter's P&L; it must balance
 | Upload a year-end trial balance CSV (`year_end`; `code,name,balance` or `debit,credit`) | `POST /clients/{id}/trial-balances` |
 | Mapping per account: FS line, tax treatment, suggestion rule, lead schedule | `GET /clients/{id}/years/{ye}/mapping` |
 | Confirm one account / all suggestions | `PUT /clients/{id}/mappings/{code}`, `POST .../confirm-suggestions` |
-| Preparer inputs: losses brought forward, capital allowance classes (rate + basis) | `PUT .../inputs` |
+| Preparer inputs: prior-year return, losses, capital allowance classes (rate + basis), tax credits | `PUT .../inputs` |
 | Link a verified lease to the client | `PUT /documents/{id}/client` |
-| Corporation tax and deferred tax computation, every line traced | `GET /clients/{id}/years/{ye}/tax` |
+| Prior-year roll forward (a proposal: nothing saved) | `POST .../inputs/roll-forward` |
+| Fixed asset register CSV (`asset_code,description,class,acquired,cost[,disposed,proceeds]`) | `POST`/`GET .../fixed-assets` |
+| Supporting documents (PDF, PNG, JPEG, XLSX, CSV) with a category | `POST`/`GET .../attachments`, `GET /clients/{id}/attachments/{aid}/file` |
+| Corporation tax, credits to tax due, and deferred tax; every line traced | `GET /clients/{id}/years/{ye}/tax` |
 
 Suggestions are never final: the computation refuses (409) until every account with a balance has a
 confirmed mapping, and confirmed mappings carry forward to the next year by account code. Linked leases

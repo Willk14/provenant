@@ -222,6 +222,70 @@ def main(base: str) -> None:
                    files={"file": ("kilima-tb-fy2026.csv", client_tb_csv(), "text/csv")})
     r.raise_for_status()
     print(f"{r.status_code} client Kilima Analytics Ltd, trial balance FY2026 -> {cid}")
+    r = httpx.post(f"{base}/clients/{cid}/years/2026-12-31/confirm-suggestions", headers=PAT)
+    r.raise_for_status()
+    print(f"{r.status_code} confirmed {r.json()['confirmed']} suggested mappings (Sundry 7 is left for a person)")
+    seed_tax_records(base, cid)
+
+
+FIXED_ASSET_REGISTER = b"""asset_code,description,class,acquired,cost,disposed,proceeds
+IT-2019-01,Server room fit-out,Computers and office equipment,2019-04-01,18000000,,
+IT-2021-04,Developer workstations (40),Computers and office equipment,2021-02-15,14500000,,
+IT-2022-07,Office furniture - Westlands,Computers and office equipment,2022-07-01,9500000,,
+IT-2023-02,Network switches and Wi-Fi,Computers and office equipment,2023-03-10,6000000,,
+IT-2024-11,Laptops (35),Computers and office equipment,2024-11-20,8000000,,
+IT-2022-03,Old laptops (sold to staff),Computers and office equipment,2022-03-01,2500000,2026-09-30,300000
+IT-2026-01,GPU servers,Computers and office equipment,2026-02-12,5200000,,
+IT-2026-02,Laptops (12),Computers and office equipment,2026-06-03,2800000,,
+"""
+
+TAX_INPUTS = {
+    "losses_brought_forward": "40000000",
+    "prior_return": {"reference": "KRA202507654321", "filed_on": "2026-06-24"},
+    "allowances": [{
+        "name": "Computers and office equipment", "wdv_brought_forward": "30000000", "additions": "0",
+        "rate_percent": "25", "method": "reducing",
+        "basis": "Second Schedule, as applied by the preparer for FY2026 (confirm against the Finance Act in force)",
+    }],
+}
+
+RECEIPT = [[("h", "Kenya Revenue Authority - Payment receipt"), ("p", "PRN 2026-INST-04  Instalment tax, 4th instalment"),
+            ("p", "Taxpayer: Kilima Analytics Ltd   Amount: KES 13,500,000.00   Paid: 20 December 2026")]]
+WHT_CERT = [[("h", "Withholding tax certificate"), ("p", "Payer: Rift Valley Bank Ltd   Certificate no. WHT-RVB-2026-118"),
+             ("p", "Payee: Kilima Analytics Ltd   Interest on call deposits: KES 3,100,000.00"),
+             ("p", "Tax withheld at 15%: KES 465,000.00")]]
+
+
+BANK_CSV = "date,description,amount\n2026-12-20,KRA instalment tax,-13500000\n".encode()
+
+
+def seed_tax_records(base: str, cid: str, inputs: dict | None = None) -> None:
+    """The records a consultant gathers for the year: register, receipts and certificates, credits."""
+    year = f"{base}/clients/{cid}/years/2026-12-31"
+    r = httpx.post(f"{year}/fixed-assets", headers=PAT,
+                   files={"file": ("kilima-fixed-asset-register.csv", FIXED_ASSET_REGISTER, "text/csv")})
+    r.raise_for_status()
+    ids = {}
+    for name, category, code, pages in (
+        ("kra-instalment-receipt-q4.pdf", "instalment_receipt", "", RECEIPT),
+        ("wht-certificate-rift-valley-bank.pdf", "withholding_certificate", "4200", WHT_CERT),
+    ):
+        r = httpx.post(f"{year}/attachments", headers=PAT, data={"category": category, "account_code": code},
+                       files={"file": (name, make_pdf(pages), "application/pdf")})
+        r.raise_for_status()
+        ids[category] = r.json()["id"]
+    r = httpx.post(f"{year}/attachments", headers=PAT, data={"category": "bank_statement", "note": "December 2026"},
+                   files={"file": ("equity-bank-dec-2026.csv", BANK_CSV, "text/csv")})
+    r.raise_for_status()
+    credits = [
+        {"kind": "instalment", "description": f"Instalment {n} of 4", "amount": "13500000",
+         "reference": f"PRN 2026-INST-0{n}", "evidence": ids["instalment_receipt"] if n == 4 else None}
+        for n in range(1, 5)
+    ] + [{"kind": "withholding", "description": "Rift Valley Bank - interest on call deposits", "amount": "465000",
+          "reference": "WHT-RVB-2026-118", "evidence": ids["withholding_certificate"]}]
+    r = httpx.put(f"{year}/inputs", headers=PAT, json={**(inputs or TAX_INPUTS), "credits": credits})
+    r.raise_for_status()
+    print(f"{r.status_code} tax records: fixed asset register, 3 supporting documents, 5 credits")
 
 
 if __name__ == "__main__":

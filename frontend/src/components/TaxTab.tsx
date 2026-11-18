@@ -5,35 +5,25 @@ import { useCallback, useEffect, useState } from "react";
 
 import { api, ApiError } from "@/lib/api";
 import { formatAmount } from "@/lib/format";
-import { taxApi, type Allowance, type Computation, type Inputs } from "@/lib/tax";
+import { taxApi, type Computation } from "@/lib/tax";
 import type { DocumentSummary } from "@/lib/types";
 
 interface Props {
   clientId: string;
   yearEnd: string;
   onOpenMapping: () => void;
+  onOpenRecords: () => void;
 }
-
-const EMPTY_CLASS: Allowance = {
-  name: "",
-  wdv_brought_forward: "0",
-  additions: "0",
-  rate_percent: "",
-  method: "reducing",
-  basis: "",
-};
 
 function pct(rate: string): string {
   return `${(Number(rate) * 100).toFixed(0)}%`;
 }
 
-export function TaxTab({ clientId, yearEnd, onOpenMapping }: Props) {
+export function TaxTab({ clientId, yearEnd, onOpenMapping, onOpenRecords }: Props) {
   const [computation, setComputation] = useState<Computation | null>(null);
   const [blocked, setBlocked] = useState<string | null>(null);
-  const [inputs, setInputs] = useState<Inputs | null>(null);
   const [leases, setLeases] = useState<DocumentSummary[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
 
   const recompute = useCallback(async () => {
     try {
@@ -48,8 +38,7 @@ export function TaxTab({ clientId, yearEnd, onOpenMapping }: Props) {
 
   const load = useCallback(async () => {
     try {
-      const [loaded, docs] = await Promise.all([taxApi.inputs(clientId, yearEnd), api.documents()]);
-      setInputs(loaded);
+      const docs = await api.documents();
       setLeases(docs.filter((d) => d.kind === "lease"));
       await recompute();
       setError(null);
@@ -62,20 +51,6 @@ export function TaxTab({ clientId, yearEnd, onOpenMapping }: Props) {
     void load();
   }, [load]);
 
-  async function save() {
-    if (!inputs) return;
-    setSaving(true);
-    setError(null);
-    try {
-      await taxApi.saveInputs(clientId, yearEnd, inputs);
-      await recompute();
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setSaving(false);
-    }
-  }
-
   async function link(documentId: string, client: string | null) {
     try {
       await taxApi.linkLease(documentId, client);
@@ -87,8 +62,6 @@ export function TaxTab({ clientId, yearEnd, onOpenMapping }: Props) {
 
   const linked = leases.filter((d) => d.client_id === clientId);
   const unlinked = leases.filter((d) => !d.client_id);
-  const update = (i: number, patch: Partial<Allowance>) =>
-    setInputs((cur) => cur && { ...cur, allowances: cur.allowances.map((a, j) => (j === i ? { ...a, ...patch } : a)) });
 
   return (
     <div className="tax-layout">
@@ -111,7 +84,7 @@ export function TaxTab({ clientId, yearEnd, onOpenMapping }: Props) {
             )}
           </div>
         ) : computation ? (
-          <ComputationView c={computation} />
+          <ComputationView c={computation} clientId={clientId} />
         ) : (
           <div className="empty">Computing…</div>
         )}
@@ -120,58 +93,13 @@ export function TaxTab({ clientId, yearEnd, onOpenMapping }: Props) {
       <aside>
         <div className="term" style={{ cursor: "default" }}>
           <div className="term-label">Preparer inputs</div>
-          {inputs && (
-            <>
-              <label className="field">
-                <span>Tax losses brought forward</span>
-                <input
-                  className="input"
-                  value={inputs.losses_brought_forward}
-                  onChange={(e) => setInputs({ ...inputs, losses_brought_forward: e.target.value })}
-                />
-              </label>
-              <div className="term-label" style={{ marginTop: 12 }}>
-                Capital deductions (Second Schedule)
-              </div>
-              <p className="term-note" style={{ marginTop: 2 }}>
-                Rates change with Finance Acts, so each class carries the rate you apply and its basis.
-              </p>
-              {inputs.allowances.map((a, i) => (
-                <div key={i} className="allowance">
-                  <input className="input" placeholder="Class, e.g. Plant and machinery" value={a.name}
-                    onChange={(e) => update(i, { name: e.target.value })} aria-label="Class name" />
-                  <div className="allowance-grid">
-                    <label className="field"><span>WDV b/f</span>
-                      <input className="input" value={a.wdv_brought_forward} onChange={(e) => update(i, { wdv_brought_forward: e.target.value })} /></label>
-                    <label className="field"><span>Additions</span>
-                      <input className="input" value={a.additions} onChange={(e) => update(i, { additions: e.target.value })} /></label>
-                    <label className="field"><span>Rate %</span>
-                      <input className="input" value={a.rate_percent} onChange={(e) => update(i, { rate_percent: e.target.value })} /></label>
-                    <label className="field"><span>Method</span>
-                      <select className="input" value={a.method} onChange={(e) => update(i, { method: e.target.value as Allowance["method"] })}>
-                        <option value="reducing">Reducing balance</option>
-                        <option value="straight_line">Straight line</option>
-                      </select></label>
-                  </div>
-                  <input className="input" placeholder="Basis, e.g. Second Schedule para. … (Finance Act year)" value={a.basis}
-                    onChange={(e) => update(i, { basis: e.target.value })} aria-label="Basis for the rate" />
-                  <button className="btn btn-sm btn-ghost btn-danger" type="button"
-                    onClick={() => setInputs({ ...inputs, allowances: inputs.allowances.filter((_, j) => j !== i) })}>
-                    Remove class
-                  </button>
-                </div>
-              ))}
-              <div className="term-actions">
-                <button className="btn btn-sm" type="button"
-                  onClick={() => setInputs({ ...inputs, allowances: [...inputs.allowances, { ...EMPTY_CLASS }] })}>
-                  Add class
-                </button>
-                <button className="btn btn-primary btn-sm" disabled={saving} onClick={save}>
-                  {saving ? "Saving…" : "Save and recompute"}
-                </button>
-              </div>
-            </>
-          )}
+          <p className="term-note" style={{ marginTop: 2 }}>
+            Prior-year position, capital deduction classes, the fixed asset register, tax credits and supporting
+            documents live under Records &amp; inputs.
+          </p>
+          <div className="term-actions">
+            <button className="btn btn-sm" type="button" onClick={onOpenRecords}>Open records &amp; inputs</button>
+          </div>
         </div>
 
         <div className="term" style={{ cursor: "default" }}>
@@ -214,7 +142,8 @@ function Row({ label, amount, strong, note }: { label: string; amount: string; s
   );
 }
 
-function ComputationView({ c }: { c: Computation }) {
+function ComputationView({ c, clientId }: { c: Computation; clientId: string }) {
+  const due = Number(c.tax_due);
   return (
     <div className="card comp">
       <div className="comp-head">
@@ -223,8 +152,12 @@ function ComputationView({ c }: { c: Computation }) {
           <div className="faint" style={{ fontSize: 12 }}>Rules {c.rules_version} · amounts in the trial balance currency</div>
         </div>
         <div className="comp-total">
-          <div className="faint" style={{ fontSize: 12 }}>Tax payable at {pct(c.rate)}</div>
-          <div className="workings-value" style={{ margin: 0 }}>{formatAmount(c.tax_payable)}</div>
+          <div className="faint" style={{ fontSize: 12 }}>
+            {c.credits.length ? (due < 0 ? "Tax refundable" : "Tax due after credits") : `Tax payable at ${pct(c.rate)}`}
+          </div>
+          <div className="workings-value" style={{ margin: 0 }}>
+            {formatAmount((c.credits.length ? c.tax_due : c.tax_payable).replace(/^-/, ""))}
+          </div>
         </div>
       </div>
       {c.warnings.map((w) => (
@@ -247,7 +180,12 @@ function ComputationView({ c }: { c: Computation }) {
                         <b>{c.leases.find((l) => l.document_id === s)?.name}</b> <span aria-hidden>↗</span>
                       </Link>
                     ) : (
-                      <span key={s} className="chip"><span className="faint">input</span> <b>{s.replace(/^allowance:/, "")}</b></span>
+                      <span key={s} className="chip">
+                        <span className="faint">
+                          {c.allowances.find((x) => `allowance:${x.name}` === s)?.from_register ? "register" : "input"}
+                        </span>{" "}
+                        <b>{s.replace(/^allowance:/, "")}</b>
+                      </span>
                     ),
                   )}
                 </div>
@@ -263,6 +201,33 @@ function ComputationView({ c }: { c: Computation }) {
           />
           <Row label="Taxable profit" amount={c.taxable_profit} strong />
           <Row label={`Tax payable at ${pct(c.rate)}`} amount={c.tax_payable} strong />
+          {c.credits.map((line) => (
+            <tr key={line.label}>
+              <td>
+                Less: {line.label.toLowerCase()}
+                <div className="faint" style={{ fontSize: 12 }}>{line.basis}</div>
+                <div className="chips" style={{ marginTop: 4 }}>
+                  {line.sources.map((s) => {
+                    const item = c.credit_items[Number(s.replace("credit:", ""))];
+                    if (!item) return null;
+                    const text = `${item.description}${item.reference ? ` · ${item.reference}` : ""} · ${formatAmount(item.amount)}`;
+                    return item.evidence ? (
+                      <button key={s} type="button" className="chip chip-elsewhere"
+                        onClick={() => void taxApi.openAttachment(clientId, item.evidence as string, item.evidence_filename ?? "")}>
+                        <b>{text}</b> <span className="faint">{item.evidence_filename}</span> <span aria-hidden>↗</span>
+                      </button>
+                    ) : (
+                      <span key={s} className="chip"><b>{text}</b> <span className="faint">no evidence attached</span></span>
+                    );
+                  })}
+                </div>
+              </td>
+              <td className="num">{formatAmount(line.amount)}</td>
+            </tr>
+          ))}
+          {c.credits.length > 0 && (
+            <Row label={due < 0 ? "Tax refundable" : "Tax due"} amount={c.tax_due.replace(/^-/, "")} strong />
+          )}
           {c.losses_carried_forward !== "0" && Number(c.losses_carried_forward) > 0 && (
             <Row label="Tax losses carried forward" amount={c.losses_carried_forward} />
           )}

@@ -72,7 +72,10 @@ Built as thin vertical slices. Each milestone ships something a user can run end
       losses brought forward, IFRS 16 lease crossover from verified schedules, deferred tax (IAS 12)
 - [x] Clients and tax UI: mapping table, computation with every line traced to accounts, inputs or leases
 - [ ] Reviewer sign-off on mappings and computations (maker-checker, as for extracted terms)
-- [ ] Instalment tax, withholding tax credits, thin capitalisation and interest restriction
+- [x] Records & inputs: prior-year return and roll forward, fixed asset register (additions, disposals,
+      balancing charges), instalment / withholding / overpayment credits to tax due, supporting documents
+      as evidence
+- [ ] Thin capitalisation and interest restriction; balancing deductions; minimum tax
 - [ ] Export the computation and lead schedules to Excel; iTax return figures
 - [ ] Learn suggestions from a firm's confirmed mappings across clients
 

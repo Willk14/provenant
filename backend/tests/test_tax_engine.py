@@ -2,7 +2,7 @@ from decimal import Decimal
 
 import pytest
 
-from provenant.tax.engine import AllowanceClass, LeaseYear, MappedLine, compute
+from provenant.tax.engine import AllowanceClass, LeaseYear, MappedLine, TaxCredit, compute
 from provenant.tax.mapping import TaxTreatment as T, check_mapping, suggest
 
 D = Decimal
@@ -114,3 +114,29 @@ def test_unknown_accounts_are_not_guessed_and_mappings_must_be_consistent():
     with pytest.raises(ValueError, match="does not apply"):
         check_mapping("revenue", "balance_sheet")
     assert check_mapping("operating_expenses", "disallowable") is T.DISALLOWABLE
+
+
+def test_disposal_proceeds_above_the_pool_are_a_balancing_charge():
+    c = AllowanceClass("Motor vehicles", D(100_000), D(0), D("0.25"), "reducing", "basis", disposals=D(150_000))
+    assert (c.allowance(), c.balancing_charge(), c.wdv_carried_forward()) == (0, D(50_000), 0)
+    partial = AllowanceClass("Plant", D(300_000), D(100_000), D("0.25"), "reducing", "basis", disposals=D(20_000))
+    assert (partial.allowance(), partial.balancing_charge(), partial.wdv_carried_forward()) == (D(95_000), 0, D(285_000))
+    run = compute(TB, [PLANT, c], [LEASE], losses_brought_forward=D(50_000))
+    charge = next(a for a in run.adjustments if a.label.startswith("Balancing charge"))
+    assert charge.amount == D(50_000) and "Second Schedule" in charge.basis
+    assert run.taxable_profit == D(190_000)  # 140,000 + 50,000
+
+
+def test_credits_take_the_tax_payable_to_tax_due_or_refundable():
+    credits = [TaxCredit("instalment", "Q1-Q4 instalments", D(30_000), "KRA-PRN-1"),
+               TaxCredit("withholding", "Certificate from Safari Bank", D(5_000), "WHT-77")]
+    run = compute(TB, [PLANT], [LEASE], losses_brought_forward=D(50_000), credits=credits)
+    assert run.tax_payable == D(42_000) and run.tax_due == D(7_000)
+    assert [(l.label, l.amount, l.sources) for l in run.credits] == [
+        ("Instalment tax paid", D(-30_000), ("credit:0",)), ("Withholding tax credits", D(-5_000), ("credit:1",))]
+    refund = compute(TB, [PLANT], [LEASE], D(50_000), credits=[*credits, TaxCredit("overpayment", "FY2025", D(10_000))])
+    assert refund.tax_due == D(-3_000)  # refundable
+    with pytest.raises(ValueError, match="credit kind"):
+        TaxCredit("rebate", "x", D(1))
+    with pytest.raises(ValueError, match="positive"):
+        TaxCredit("instalment", "x", D(0))

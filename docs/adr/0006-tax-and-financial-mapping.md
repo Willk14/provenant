@@ -32,8 +32,24 @@ mapping is invisible and the adjustments are re-keyed.
    basis, because they change with Finance Acts. The rule set is versioned and every computation records
    the version it used.
 
+## Addendum: the records a consultant inputs
+- **Prior-year return.** The return's acknowledgement number and filing date, losses brought forward and
+  each class's opening written-down value. "Roll forward" proposes these from last year's computation (and
+  an overpayment credit if it ended refundable); it saves nothing until a person reviews and saves.
+- **Fixed asset register** (CSV per client-year, replaced on re-upload). For a capital deduction class with
+  the same name, the register supplies the year's additions (cost of assets acquired in the year) and
+  disposals (proceeds of assets disposed of in the year); typed figures are ignored for that class. Proceeds
+  above the pool are a balancing charge. Register classes with no matching deduction class are flagged:
+  the rate and basis are never guessed.
+- **Tax credits:** instalment tax, withholding tax, overpayment brought forward and other credits, each with
+  a reference and optionally the supporting document that evidences it. The computation ends at tax due,
+  or refundable when credits exceed the tax charged.
+- **Supporting documents:** PDF, PNG, JPEG, XLSX or CSV per client-year, content-addressed like leases,
+  type-checked by their leading bytes, served with `nosniff`. A document that evidences a credit cannot be
+  deleted until the credit no longer points at it.
+
 ## Not in this slice
-- Instalment tax, withholding tax credits, minimum tax, turnover tax, VAT and transfer pricing.
+- Minimum tax, turnover tax, VAT and transfer pricing; balancing deductions on a class's final disposal.
 - Claude-suggested mappings (deterministic keyword suggestions only).
 - iTax return line mapping and filing exports.
 - Partner sign-off of the computation (mappings are confirmed; computation review follows).

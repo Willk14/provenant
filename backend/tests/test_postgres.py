@@ -65,3 +65,17 @@ def test_review_log_cannot_be_edited_or_deleted(client, app, database_url):
     for statement in ("update review_events set after = 'tampered'", "delete from review_events"):
         with tenant_session(factory, "firm-a") as s, pytest.raises(DBAPIError, match="permission denied|append-only"):
             s.execute(text(statement))
+
+
+def test_tax_records_are_tenant_isolated(client, app, database_url):
+    from tests.test_tax_records import REGISTER, ready_client, upload
+
+    cid = ready_client(client)
+    assert upload(client, cid, "fixed-assets", REGISTER, "far.csv").status_code == 201
+    assert upload(client, cid, "attachments", b"date,amount\n", "bank.csv", category="bank_statement").status_code == 201
+    factory = make_sessionmaker(make_engine(database_url))
+    with tenant_session(factory, "firm-a") as s:
+        assert s.scalar(text("select count(*) from fixed_assets")) == 4
+    with tenant_session(factory, "firm-b") as s:
+        for table in ("fixed_asset_registers", "fixed_assets", "client_attachments"):
+            assert s.scalar(text(f"select count(*) from {table}")) == 0

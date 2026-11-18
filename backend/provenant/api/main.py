@@ -451,7 +451,7 @@ def create_app(
             inputs=[FieldOut.of(f) for f in r.fields],
         )
 
-    tax_routes.add_routes(app, Auth, Db)
+    tax_routes.add_routes(app, Auth, Db, store)
 
     app.state.session_factory, app.state.store, app.state.extractor = factory, store, extractor
     return app

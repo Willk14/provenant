@@ -4,12 +4,13 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { MappingTab } from "@/components/MappingTab";
+import { RecordsTab } from "@/components/RecordsTab";
 import { TaxTab } from "@/components/TaxTab";
 import { formatDate } from "@/lib/format";
 import { taxApi, type Client } from "@/lib/tax";
 import { usePersona } from "@/lib/usePersona";
 
-type Tab = "mapping" | "tax";
+type Tab = "mapping" | "records" | "tax";
 
 export function ClientWorkspace({ id }: { id: string }) {
   const persona = usePersona();
@@ -84,18 +85,30 @@ export function ClientWorkspace({ id }: { id: string }) {
             <button role="tab" aria-selected={tab === "mapping"} onClick={() => setTab("mapping")}>
               Financial mapping
             </button>
+            <button role="tab" aria-selected={tab === "records"} onClick={() => setTab("records")}>
+              Records &amp; inputs
+            </button>
             <button role="tab" aria-selected={tab === "tax"} onClick={() => setTab("tax")}>
               Tax computation
             </button>
           </div>
           {tab === "mapping" ? (
             <MappingTab clientId={id} yearEnd={yearEnd} onChanged={() => setVersion((v) => v + 1)} />
+          ) : tab === "records" ? (
+            <RecordsTab
+              key={yearEnd}
+              clientId={id}
+              yearEnd={yearEnd}
+              onSaved={() => setVersion((v) => v + 1)}
+              onOpenComputation={() => setTab("tax")}
+            />
           ) : (
             <TaxTab
               key={`${yearEnd}-${version}`}
               clientId={id}
               yearEnd={yearEnd}
               onOpenMapping={() => setTab("mapping")}
+              onOpenRecords={() => setTab("records")}
             />
           )}
         </>

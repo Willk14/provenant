@@ -1322,3 +1322,142 @@ select {
     display: none;
   }
 }
+
+/* Records & inputs */
+.records-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 400px;
+  gap: 16px;
+  align-items: start;
+}
+
+.records-main,
+.records-side {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+.record-card {
+  padding: 16px 18px;
+}
+
+.record-card h3 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.record-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.record-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0 10px;
+}
+
+.record-grid-class {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.record-row {
+  padding: 10px 0 6px;
+  border-top: 1px solid var(--line);
+  margin-top: 10px;
+}
+
+.input.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.save-bar {
+  position: sticky;
+  top: 8px;
+  z-index: 5;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface, var(--bg));
+}
+
+.save-bar-dirty {
+  border-color: var(--warn, var(--line));
+}
+
+.credit-table {
+  margin-top: 10px;
+}
+
+.credit-table td {
+  padding: 4px 4px;
+}
+
+.credit-table .input {
+  width: 100%;
+  min-width: 0;
+}
+
+.register-table {
+  margin-top: 8px;
+  font-size: 13px;
+}
+
+.attachment-list {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+}
+
+.attachment-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+}
+
+.attachment-name {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+button.chip {
+  font: inherit;
+  cursor: pointer;
+}
+
+@media (max-width: 1100px) {
+  .records-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .record-grid,
+  .record-grid-class {
+    grid-template-columns: 1fr 1fr;
+  }
+  .credit-table thead {
+    display: none;
+  }
+  .credit-table tr {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+}

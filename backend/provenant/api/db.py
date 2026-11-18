@@ -159,8 +159,61 @@ class TaxInputsRow(Base):
     year_end: Mapped[date] = mapped_column(Date)
     losses_brought_forward_cents: Mapped[int] = mapped_column(BigInteger, default=0)
     allowances_json: Mapped[str] = mapped_column(Text, default="[]")
+    credits_json: Mapped[str] = mapped_column(Text, default="[]")  # instalments, withholding, overpayments
+    prior_return_json: Mapped[str] = mapped_column(Text, default="{}")  # reference and filing date of last year's return
     updated_by: Mapped[str] = mapped_column(String(200))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
+class FixedAssetRegisterRow(Base):
+    """A client's fixed asset register as at a year end. Uploading again replaces it."""
+
+    __tablename__ = "fixed_asset_registers"
+    __table_args__ = (UniqueConstraint("client_id", "year_end"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(String(64), index=True)
+    client_id: Mapped[str] = mapped_column(ForeignKey("clients.id"), index=True)
+    year_end: Mapped[date] = mapped_column(Date)
+    filename: Mapped[str] = mapped_column(String(255))
+    sha256: Mapped[str] = mapped_column(String(64))
+    uploaded_by: Mapped[str] = mapped_column(String(200))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class FixedAssetRow(Base):
+    __tablename__ = "fixed_assets"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[str] = mapped_column(String(64), index=True)
+    register_id: Mapped[str] = mapped_column(ForeignKey("fixed_asset_registers.id", ondelete="CASCADE"), index=True)
+    asset_code: Mapped[str] = mapped_column(String(64))
+    description: Mapped[str] = mapped_column(String(255))
+    asset_class: Mapped[str] = mapped_column(String(100))
+    acquired_on: Mapped[date] = mapped_column(Date)
+    cost_cents: Mapped[int] = mapped_column(BigInteger)
+    disposed_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    proceeds_cents: Mapped[int] = mapped_column(BigInteger, default=0)
+
+
+class ClientAttachmentRow(Base):
+    """A supporting record for a client's year: bank statement, KRA certificate, receipt, invoice, payroll."""
+
+    __tablename__ = "client_attachments"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(String(64), index=True)
+    client_id: Mapped[str] = mapped_column(ForeignKey("clients.id"), index=True)
+    year_end: Mapped[date] = mapped_column(Date)
+    category: Mapped[str] = mapped_column(String(32))
+    filename: Mapped[str] = mapped_column(String(255))
+    sha256: Mapped[str] = mapped_column(String(64))
+    content_type: Mapped[str] = mapped_column(String(100))
+    size_bytes: Mapped[int] = mapped_column(Integer)
+    account_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    note: Mapped[str] = mapped_column(String(500), default="")
+    uploaded_by: Mapped[str] = mapped_column(String(200))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
 class TrialBalanceRow(Base):

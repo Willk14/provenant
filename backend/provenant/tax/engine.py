@@ -35,6 +35,11 @@ KENYA = Rules(
         "exempt": "Income not chargeable to tax",
         "losses": "Income Tax Act s.15(4): losses carried forward",
         "rate": "Income Tax Act Third Schedule: resident corporation rate",
+        "balancing_charge": "Income Tax Act Second Schedule: disposal proceeds above the written-down value are taxed",
+        "instalment": "Instalment tax paid for the year (Income Tax Act s.12)",
+        "withholding": "Tax withheld at source, credited against the tax charged (hold the certificate)",
+        "overpayment": "Overpayment brought forward from the prior year's return",
+        "other_credit": "Other credit, on the basis stated by the preparer",
     },
 )
 
@@ -60,25 +65,60 @@ class AllowanceClass:
     method: str  # "reducing" (on WDV + additions) or "straight_line" (on cost: additions + original cost basis)
     basis: str
     cost_basis: Decimal = ZERO  # straight line: the qualifying cost the rate applies to (excluding additions)
+    disposals: Decimal = ZERO  # proceeds from assets of this class disposed of in the year
 
     def __post_init__(self) -> None:
         if not ZERO <= self.rate <= 1:
             raise ValueError(f"{self.name}: rate must be between 0 and 1")
         if self.method not in ("reducing", "straight_line"):
             raise ValueError(f"{self.name}: method must be reducing or straight_line")
-        if min(self.wdv_brought_forward, self.additions, self.cost_basis) < 0:
+        if min(self.wdv_brought_forward, self.additions, self.cost_basis, self.disposals) < 0:
             raise ValueError(f"{self.name}: values cannot be negative")
         if not self.basis.strip():
             raise ValueError(f"{self.name}: state the basis for the rate (e.g. the Second Schedule paragraph)")
 
+    def _pool(self) -> Decimal:
+        return self.wdv_brought_forward + self.additions - self.disposals
+
     def allowance(self) -> Decimal:
-        base = self.wdv_brought_forward + self.additions
+        pool = max(self._pool(), ZERO)
         if self.method == "reducing":
-            return round_money(base * self.rate)
-        return min(base, round_money((self.cost_basis + self.additions) * self.rate))  # never below zero WDV
+            return round_money(pool * self.rate)
+        return min(pool, round_money((self.cost_basis + self.additions) * self.rate))  # never below zero WDV
+
+    def balancing_charge(self) -> Decimal:
+        """Disposal proceeds above the pool: the excess allowances are clawed back as income."""
+        return max(-self._pool(), ZERO)
 
     def wdv_carried_forward(self) -> Decimal:
-        return self.wdv_brought_forward + self.additions - self.allowance()
+        return max(self._pool(), ZERO) - self.allowance()
+
+
+CREDIT_KINDS = {
+    "instalment": "Instalment tax paid",
+    "withholding": "Withholding tax credits",
+    "overpayment": "Overpayment brought forward",
+    "other": "Other credits",
+}
+
+
+@dataclass(frozen=True)
+class TaxCredit:
+    """Tax already paid or suffered for the year, set against the tax charged."""
+
+    kind: str  # one of CREDIT_KINDS
+    description: str
+    amount: Decimal
+    reference: str = ""  # receipt, certificate or return number
+    evidence: str | None = None  # supporting document id
+
+    def __post_init__(self) -> None:
+        if self.kind not in CREDIT_KINDS:
+            raise ValueError(f"credit kind must be one of {', '.join(CREDIT_KINDS)}")
+        if self.amount <= 0:
+            raise ValueError(f"{self.description or self.kind}: credit amount must be positive")
+        if not self.description.strip():
+            raise ValueError("each credit needs a description (e.g. the payer or the instalment)")
 
 
 @dataclass(frozen=True)
@@ -116,6 +156,8 @@ class Computation:
     tax_payable: Decimal
     deferred: tuple[CompLine, ...]  # temporary differences (positive = taxable)
     deferred_tax: Decimal  # liability positive, asset negative
+    credits: tuple[CompLine, ...] = ()  # negative: each reduces the tax still to pay
+    tax_due: Decimal = ZERO  # tax payable less credits; negative means refundable
     warnings: tuple[str, ...] = field(default_factory=tuple)
 
 
@@ -129,6 +171,7 @@ def compute(
     leases: Sequence[LeaseYear] = (),
     losses_brought_forward: Decimal = ZERO,
     rules: Rules = KENYA,
+    credits: Sequence[TaxCredit] = (),
 ) -> Computation:
     if losses_brought_forward < 0:
         raise ValueError("losses brought forward cannot be negative")
@@ -155,6 +198,7 @@ def compute(
 
     for c in allowances:
         add(f"Capital deduction: {c.name}", -c.allowance(), "capital_allowances", (f"allowance:{c.name}",))
+        add(f"Balancing charge: {c.name}", c.balancing_charge(), "balancing_charge", (f"allowance:{c.name}",))
     if leases:
         rentals = sum((l.payments for l in leases), ZERO)
         add("Lease rentals paid in the year deducted", -rentals, "lease", tuple(l.document_id for l in leases))
@@ -198,6 +242,15 @@ def compute(
         deferred.append(CompLine("Tax losses carried forward (asset, subject to recoverability)", -losses_cf, rules.basis["losses"]))
     deferred_tax = round_money(sum((d.amount for d in deferred), ZERO) * rules.corporation_tax_rate)
 
+    credit_lines = []
+    for kind, label in CREDIT_KINDS.items():
+        these = [c for c in credits if c.kind == kind]
+        if these:
+            sources = tuple(f"credit:{i}" for i, c in enumerate(credits) if c.kind == kind)
+            basis = rules.basis["other_credit" if kind == "other" else kind]
+            credit_lines.append(CompLine(label, -sum((c.amount for c in these), ZERO), basis, sources))
+    tax_due = tax_payable + sum((c.amount for c in credit_lines), ZERO)
+
     return Computation(
         rules_version=rules.version,
         profit_before_tax=profit_before_tax,
@@ -211,5 +264,7 @@ def compute(
         tax_payable=tax_payable,
         deferred=tuple(deferred),
         deferred_tax=deferred_tax,
+        credits=tuple(credit_lines),
+        tax_due=tax_due,
         warnings=tuple(warnings),
     )

@@ -1,13 +1,19 @@
-"""HTTP routes for clients, trial balances, financial mapping and tax computations."""
+"""HTTP routes for clients, trial balances, financial mapping, tax records and tax computations."""
+import json
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
+from urllib.parse import quote
 
-from fastapi import FastAPI, File, Form, UploadFile
+from fastapi import FastAPI, File, Form, Response, UploadFile
 from pydantic import BaseModel, Field
 
 from provenant.api import tax
+from provenant.api.services import MAX_UPLOAD_BYTES
+from provenant.api.storage import BlobStore
 from provenant.core import tb_csv
+from provenant.tax import register as fa_register
+from provenant.tax.engine import CREDIT_KINDS
 from provenant.tax.mapping import FS_LINES, TaxTreatment
 
 
@@ -71,15 +77,78 @@ class AllowanceIn(BaseModel):
     method: str = "reducing"
     basis: str = Field(max_length=300)
     cost_basis: str = "0"
+    disposals: str = "0"
+
+
+class CreditIn(BaseModel):
+    kind: str = Field(max_length=32)
+    description: str = Field(max_length=200)
+    amount: str
+    reference: str = Field(default="", max_length=100)
+    evidence: str | None = Field(default=None, max_length=36)  # supporting document id
+
+
+class PriorReturnIn(BaseModel):
+    reference: str = Field(default="", max_length=100)  # e.g. the KRA acknowledgement number
+    filed_on: str = ""
 
 
 class InputsIn(BaseModel):
     losses_brought_forward: str = "0"
-    allowances: list[AllowanceIn] = []
+    allowances: list[AllowanceIn] = Field(default=[], max_length=50)
+    credits: list[CreditIn] = Field(default=[], max_length=200)
+    prior_return: PriorReturnIn = PriorReturnIn()
 
 
 class InputsOut(InputsIn):
     updated_by: str | None = None
+
+
+class AssetOut(BaseModel):
+    code: str
+    description: str
+    asset_class: str
+    acquired: date
+    cost: Decimal
+    disposed: date | None
+    proceeds: Decimal
+
+
+class ClassYearOut(BaseModel):
+    asset_class: str
+    additions: Decimal
+    disposals: Decimal
+    cost_held: Decimal
+    assets_added: list[str]
+    assets_disposed: list[str]
+    assets_held: int
+
+
+class RegisterOut(BaseModel):
+    id: str
+    filename: str
+    sha256: str
+    uploaded_by: str
+    classes: list[ClassYearOut]
+    assets: list[AssetOut]
+
+
+class AttachmentOut(BaseModel):
+    id: str
+    year_end: date
+    category: str
+    filename: str
+    content_type: str
+    size_bytes: int
+    account_code: str | None
+    note: str
+    uploaded_by: str
+    created_at: datetime
+
+
+class RecordsMetaOut(BaseModel):
+    credit_kinds: dict[str, str]
+    attachment_categories: dict[str, str]
 
 
 class CompLineOut(BaseModel):
@@ -101,9 +170,22 @@ class LeaseYearOut(BaseModel):
 
 class AllowanceOut(BaseModel):
     name: str
+    additions: Decimal
+    disposals: Decimal
     allowance: Decimal
+    balancing_charge: Decimal
     wdv_carried_forward: Decimal
     basis: str
+    from_register: bool
+
+
+class CreditItemOut(BaseModel):
+    kind: str
+    description: str
+    amount: Decimal
+    reference: str
+    evidence: str | None
+    evidence_filename: str | None
 
 
 class ComputationOut(BaseModel):
@@ -119,10 +201,29 @@ class ComputationOut(BaseModel):
     tax_payable: Decimal
     deferred: list[CompLineOut]
     deferred_tax: Decimal
+    credits: list[CompLineOut]  # sources are "credit:<index>" into credit_items
+    tax_due: Decimal  # negative: refundable
+    credit_items: list[CreditItemOut]
     warnings: list[str]
     leases: list[LeaseYearOut]
     allowances: list[AllowanceOut]
     accounts: dict[str, str]  # trial balance line id -> "code name", to label each line's sources
+
+
+def _inputs_out(row) -> InputsOut:
+    if row is None:
+        return InputsOut()
+    return InputsOut(
+        losses_brought_forward=str(Decimal(row.losses_brought_forward_cents) / 100),
+        allowances=json.loads(row.allowances_json), credits=json.loads(row.credits_json),
+        prior_return=json.loads(row.prior_return_json or "{}"), updated_by=row.updated_by,
+    )
+
+
+def _attachment_out(a) -> AttachmentOut:
+    return AttachmentOut(id=a.id, year_end=a.year_end, category=a.category, filename=a.filename,
+                         content_type=a.content_type, size_bytes=a.size_bytes, account_code=a.account_code,
+                         note=a.note, uploaded_by=a.uploaded_by, created_at=a.created_at)
 
 
 def _tb_out(tb) -> TrialBalanceOut:
@@ -134,7 +235,7 @@ def _line(c) -> CompLineOut:
     return CompLineOut(label=c.label, amount=c.amount, basis=c.basis, sources=list(c.sources))
 
 
-def add_routes(app: FastAPI, Auth, Db) -> None:  # noqa: N803 - the app's Annotated dependency types
+def add_routes(app: FastAPI, Auth, Db, store: BlobStore) -> None:  # noqa: N803 - the app's Annotated dependency types
     @app.post("/clients", response_model=ClientOut, status_code=201)
     def create_client(body: ClientIn, p: Auth, s: Db) -> ClientOut:
         c = tax.create_client(s, p, body.name)
@@ -191,19 +292,61 @@ def add_routes(app: FastAPI, Auth, Db) -> None:  # noqa: N803 - the app's Annota
     @app.get("/clients/{client_id}/years/{year_end}/inputs", response_model=InputsOut)
     def get_inputs(client_id: str, year_end: date, p: Auth, s: Db) -> InputsOut:
         tax.get_client(s, p.tenant_id, client_id)
-        row = tax.get_inputs(s, p.tenant_id, client_id, year_end)
-        if row is None:
-            return InputsOut()
-        import json
-
-        return InputsOut(losses_brought_forward=str(Decimal(row.losses_brought_forward_cents) / 100),
-                         allowances=json.loads(row.allowances_json), updated_by=row.updated_by)
+        return _inputs_out(tax.get_inputs(s, p.tenant_id, client_id, year_end))
 
     @app.put("/clients/{client_id}/years/{year_end}/inputs", response_model=InputsOut)
     def set_inputs(client_id: str, year_end: date, body: InputsIn, p: Auth, s: Db) -> InputsOut:
         row = tax.set_inputs(s, p, client_id, year_end, body.losses_brought_forward,
-                             [a.model_dump() for a in body.allowances])
-        return InputsOut(**body.model_dump(), updated_by=row.updated_by)
+                             [a.model_dump() for a in body.allowances], [c.model_dump() for c in body.credits],
+                             body.prior_return.model_dump())
+        return _inputs_out(row)
+
+    @app.post("/clients/{client_id}/years/{year_end}/inputs/roll-forward", response_model=InputsIn)
+    def roll_forward(client_id: str, year_end: date, p: Auth, s: Db) -> InputsIn:
+        return InputsIn(**tax.roll_forward(s, p, client_id, year_end))
+
+    @app.get("/tax-records/meta", response_model=RecordsMetaOut)
+    def records_meta(p: Auth) -> RecordsMetaOut:
+        return RecordsMetaOut(credit_kinds=CREDIT_KINDS, attachment_categories=tax.ATTACHMENT_CATEGORIES)
+
+    @app.post("/clients/{client_id}/years/{year_end}/fixed-assets", response_model=RegisterOut, status_code=201)
+    def upload_register(client_id: str, year_end: date, p: Auth, s: Db, file: UploadFile = File()) -> RegisterOut:
+        data = file.file.read(fa_register.MAX_BYTES + 1)
+        reg = tax.upload_register(s, p, client_id, year_end, file.filename or "", data)
+        return _register_out(s, p.tenant_id, reg)
+
+    @app.get("/clients/{client_id}/years/{year_end}/fixed-assets", response_model=RegisterOut | None)
+    def register(client_id: str, year_end: date, p: Auth, s: Db) -> RegisterOut | None:
+        tax.get_client(s, p.tenant_id, client_id)
+        reg = tax.get_register(s, p.tenant_id, client_id, year_end)
+        return _register_out(s, p.tenant_id, reg) if reg else None
+
+    @app.post("/clients/{client_id}/years/{year_end}/attachments", response_model=AttachmentOut, status_code=201)
+    def upload_attachment(
+        client_id: str, year_end: date, p: Auth, s: Db, file: UploadFile = File(), category: str = Form(),
+        account_code: str = Form(""), note: str = Form(""),
+    ) -> AttachmentOut:
+        data = file.file.read(MAX_UPLOAD_BYTES + 1)
+        return _attachment_out(tax.upload_attachment(s, p, store, client_id, year_end, category,
+                                                     file.filename or "", data, account_code, note))
+
+    @app.get("/clients/{client_id}/years/{year_end}/attachments", response_model=list[AttachmentOut])
+    def attachments(client_id: str, year_end: date, p: Auth, s: Db) -> list[AttachmentOut]:
+        tax.get_client(s, p.tenant_id, client_id)
+        return [_attachment_out(a) for a in tax.list_attachments(s, p.tenant_id, client_id, year_end)]
+
+    @app.get("/clients/{client_id}/attachments/{attachment_id}/file")
+    def attachment_file(client_id: str, attachment_id: str, p: Auth, s: Db) -> Response:
+        a = tax.get_attachment(s, p.tenant_id, client_id, attachment_id)
+        inline = a.content_type in ("application/pdf", "image/png", "image/jpeg")
+        return Response(store.get(a.sha256), media_type=a.content_type, headers={
+            "Content-Disposition": f"{'inline' if inline else 'attachment'}; filename*=UTF-8''{quote(a.filename)}",
+            "X-Content-Type-Options": "nosniff",
+        })
+
+    @app.delete("/clients/{client_id}/attachments/{attachment_id}", status_code=204)
+    def delete_attachment(client_id: str, attachment_id: str, p: Auth, s: Db) -> None:
+        tax.delete_attachment(s, p, client_id, attachment_id)
 
     @app.get("/clients/{client_id}/years/{year_end}/tax", response_model=ComputationOut)
     def computation(client_id: str, year_end: date, p: Auth, s: Db) -> ComputationOut:
@@ -215,9 +358,30 @@ def add_routes(app: FastAPI, Auth, Db) -> None:  # noqa: N803 - the app's Annota
             losses_brought_forward=c.losses_brought_forward, losses_used=c.losses_used,
             losses_carried_forward=c.losses_carried_forward, taxable_profit=c.taxable_profit, rate=c.rate,
             tax_payable=c.tax_payable, deferred=[_line(d) for d in c.deferred], deferred_tax=c.deferred_tax,
+            credits=[_line(x) for x in c.credits], tax_due=c.tax_due,
+            credit_items=[
+                CreditItemOut(kind=x.kind, description=x.description, amount=x.amount, reference=x.reference,
+                              evidence=x.evidence, evidence_filename=r.attachments.get(x.evidence or ""))
+                for x in r.credits
+            ],
             warnings=list(c.warnings),
             leases=[LeaseYearOut(**vars(l)) for l in r.leases],
-            allowances=[AllowanceOut(name=a.name, allowance=a.allowance(), wdv_carried_forward=a.wdv_carried_forward(),
-                                     basis=a.basis) for a in r.allowances],
+            allowances=[AllowanceOut(name=a.name, additions=a.additions, disposals=a.disposals,
+                                     allowance=a.allowance(), balancing_charge=a.balancing_charge(),
+                                     wdv_carried_forward=a.wdv_carried_forward(), basis=a.basis,
+                                     from_register=a.name in r.from_register) for a in r.allowances],
             accounts={str(a.line.id): f"{a.line.code} {a.line.name}" for a in r.accounts},
         )
+
+
+def _register_out(s, tenant_id: str, reg) -> RegisterOut:
+    assets = tax.register_assets(s, tenant_id, reg)
+    return RegisterOut(
+        id=reg.id, filename=reg.filename, sha256=reg.sha256, uploaded_by=reg.uploaded_by,
+        classes=[ClassYearOut(asset_class=c.asset_class, additions=c.additions, disposals=c.disposals,
+                              cost_held=c.cost_held, assets_added=list(c.assets_added),
+                              assets_disposed=list(c.assets_disposed), assets_held=c.assets_held)
+                 for c in tax.register_summary(s, tenant_id, reg)],
+        assets=[AssetOut(code=a.code, description=a.description, asset_class=a.asset_class, acquired=a.acquired,
+                         cost=a.cost, disposed=a.disposed, proceeds=a.proceeds) for a in assets],
+    )
