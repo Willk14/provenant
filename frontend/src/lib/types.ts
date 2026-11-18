@@ -47,6 +47,7 @@ export interface DocumentSummary {
   kind: DocumentKind;
   parent_id: string | null;
   parent_sha256: string | null;
+  client_id?: string | null;
   status: DocumentStatus;
   error: string | null;
   created_at: string;

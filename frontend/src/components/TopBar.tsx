@@ -22,6 +22,9 @@ export function TopBar() {
         <Link href="/" aria-current={path === "/" || path.startsWith("/documents") ? "page" : undefined}>
           Documents
         </Link>
+        <Link href="/clients" aria-current={path.startsWith("/clients") ? "page" : undefined}>
+          Clients &amp; tax
+        </Link>
         <Link href="/review" aria-current={path === "/review" ? "page" : undefined}>
           Review queue
         </Link>

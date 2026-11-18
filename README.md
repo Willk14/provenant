@@ -3,8 +3,8 @@
 > **Every number knows where it came from.**
 
 Provenant is a browser-native workspace for the work that sits **between the contract and the ledger**:
-lease accounting (IFRS 16 / ASC 842), debt-covenant monitoring, M&A due diligence and audit evidence
-matching. Lawyers and finance teams read the same documents for different reasons. Provenant reads
+tax consultancy and financial mapping (Kenya corporate tax first), lease accounting (IFRS 16 / ASC 842),
+debt-covenant monitoring, M&A due diligence and audit evidence matching. Lawyers and finance teams read the same documents for different reasons. Provenant reads
 them once, links every extracted figure to its exact spot in the source PDF, and passes only
 human-verified facts to a deterministic accounting engine.
 
@@ -84,6 +84,23 @@ Trial balance CSV: `code,name,category,balance` (debit positive) or `debit,credi
 Categories: `cash, borrowings, lease_liabilities, revenue, operating_expenses, depreciation_amortisation,
 interest_expense, other`. Each quarter holds that quarter's P&L; it must balance to the cent. See
 [ADR 0004](docs/adr/0004-covenant-testing.md) for definitions and what is not covered yet.
+
+### Clients, financial mapping and tax (Kenya)
+
+| Step | Call |
+|---|---|
+| Create a client | `POST /clients` |
+| Upload a year-end trial balance CSV (`year_end`; `code,name,balance` or `debit,credit`) | `POST /clients/{id}/trial-balances` |
+| Mapping per account: FS line, tax treatment, suggestion rule, lead schedule | `GET /clients/{id}/years/{ye}/mapping` |
+| Confirm one account / all suggestions | `PUT /clients/{id}/mappings/{code}`, `POST .../confirm-suggestions` |
+| Preparer inputs: losses brought forward, capital allowance classes (rate + basis) | `PUT .../inputs` |
+| Link a verified lease to the client | `PUT /documents/{id}/client` |
+| Corporation tax and deferred tax computation, every line traced | `GET /clients/{id}/years/{ye}/tax` |
+
+Suggestions are never final: the computation refuses (409) until every account with a balance has a
+confirmed mapping, and confirmed mappings carry forward to the next year by account code. Linked leases
+replace IFRS 16 depreciation and interest with rentals paid. Working papers for a tax professional, not
+tax advice: see [ADR 0006](docs/adr/0006-tax-and-financial-mapping.md).
 
 ### Roles
 

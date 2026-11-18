@@ -26,6 +26,7 @@ async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
     }
     throw new ApiError(response.status, detail);
   }
+  if (response.status === 204) return undefined as T; // e.g. linking a lease: nothing to read back
   const type = response.headers.get("content-type") ?? "";
   return (type.includes("application/json") ? response.json() : response.arrayBuffer()) as Promise<T>;
 }
@@ -35,6 +36,8 @@ function json(body: unknown): RequestInit {
 }
 
 export const api = {
+  /** Any endpoint, with identity headers and error handling (used by feature modules like lib/tax). */
+  raw: <T,>(path: string, init: RequestInit = {}) => call<T>(path, init),
   documents: () => call<DocumentSummary[]>("/documents"),
   document: (id: string) => call<DocumentSummary>(`/documents/${id}`),
   pdf: (id: string) => call<ArrayBuffer>(`/documents/${id}/file`),

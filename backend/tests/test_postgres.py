@@ -43,6 +43,21 @@ def test_trial_balances_are_tenant_isolated(client, app, database_url):
         assert s.scalar(text("select count(*) from trial_balances")) == 0
 
 
+def test_client_data_is_isolated_and_mapping_history_is_append_only(client, app, database_url):
+    from tests.test_tax_api import client_with_tb
+
+    cid = client_with_tb(client)
+    client.put(f"/clients/{cid}/mappings/5700", headers=PARTNER,
+               json={"fs_line": "operating_expenses", "tax_treatment": "deductible"})
+    factory = make_sessionmaker(make_engine(database_url))
+    with tenant_session(factory, "firm-b") as s:
+        for table in ("clients", "client_tb_lines", "account_mappings", "account_mapping_events"):
+            assert s.scalar(text(f"select count(*) from {table}")) == 0
+    for statement in ("update account_mapping_events set by = 'someone else'", "delete from account_mapping_events"):
+        with tenant_session(factory, "firm-a") as s, pytest.raises(DBAPIError, match="permission denied|append-only"):
+            s.execute(text(statement))
+
+
 def test_review_log_cannot_be_edited_or_deleted(client, app, database_url):
     _, fields = uploaded_lease(client, app)
     assert review(client, fields["payment_timing"]["id"], PARTNER).status_code == 200

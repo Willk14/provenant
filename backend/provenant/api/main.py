@@ -14,7 +14,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from provenant.api import covenants, services
+from provenant.api import covenants, services, tax_routes
 from provenant.covenants.engine import quarters_back
 from provenant.api.auth import AuthError, Authenticator, Principal, authenticator_from_env, principal_from
 from provenant.api.db import Document, FieldRow, make_engine, make_sessionmaker, tenant_session
@@ -63,6 +63,7 @@ class DocumentOut(BaseModel):
     kind: Literal["lease", "amendment", "credit_agreement"]
     parent_id: str | None
     parent_sha256: str | None
+    client_id: str | None = None
     status: str
     error: str | None
     created_at: datetime
@@ -84,7 +85,7 @@ class DocumentOut(BaseModel):
     ) -> "DocumentOut":
         return cls(
             id=d.id, sha256=d.sha256, filename=d.filename, size_bytes=d.size_bytes, uploaded_by=d.uploaded_by,
-            kind=d.kind, parent_id=d.parent_id, parent_sha256=d.parent_sha256,
+            kind=d.kind, parent_id=d.parent_id, parent_sha256=d.parent_sha256, client_id=d.client_id,
             status=d.status, error=d.error, created_at=d.created_at, needs_review=needs_review,
             missing_terms=missing_terms, fields=[FieldOut.of(f) for f in fields],
             amendments=[DocumentOut.of(a) for a in amendments], parent=DocumentOut.of(parent) if parent else None,
@@ -449,6 +450,8 @@ def create_app(
             alerts=[AlertOut(severity=a.severity, on=a.on, message=a.message) for a in covenants.alerts(r.test_dates, as_of)],
             inputs=[FieldOut.of(f) for f in r.fields],
         )
+
+    tax_routes.add_routes(app, Auth, Db)
 
     app.state.session_factory, app.state.store, app.state.extractor = factory, store, extractor
     return app

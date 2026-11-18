@@ -50,6 +50,7 @@ class Document(Base):
     # schedule was built from can be proven to be exactly these files.
     parent_id: Mapped[str | None] = mapped_column(ForeignKey("documents.id"), index=True)
     parent_sha256: Mapped[str | None] = mapped_column(String(64))
+    client_id: Mapped[str | None] = mapped_column(String(36), index=True)  # the client a lease belongs to
     status: Mapped[str] = mapped_column(String(16), default="queued")  # queued|extracting|extracted|failed
     error: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
@@ -74,6 +75,92 @@ class Job(Base):
     locked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_error: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class ClientRow(Base):
+    """A client of the firm (the tenant). Trial balances, mappings and tax computations belong to a client."""
+
+    __tablename__ = "clients"
+    __table_args__ = (UniqueConstraint("tenant_id", "name"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(String(64), index=True)
+    name: Mapped[str] = mapped_column(String(200))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class ClientTrialBalanceRow(Base):
+    __tablename__ = "client_trial_balances"
+    __table_args__ = (UniqueConstraint("client_id", "year_end"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(String(64), index=True)
+    client_id: Mapped[str] = mapped_column(ForeignKey("clients.id"), index=True)
+    year_end: Mapped[date] = mapped_column(Date)
+    filename: Mapped[str] = mapped_column(String(255))
+    sha256: Mapped[str] = mapped_column(String(64))
+    uploaded_by: Mapped[str] = mapped_column(String(200))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class ClientTBLineRow(Base):
+    __tablename__ = "client_tb_lines"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[str] = mapped_column(String(64), index=True)
+    trial_balance_id: Mapped[str] = mapped_column(ForeignKey("client_trial_balances.id"), index=True)
+    code: Mapped[str] = mapped_column(String(64))
+    name: Mapped[str] = mapped_column(String(255))
+    balance_cents: Mapped[int] = mapped_column(BigInteger)
+
+
+class AccountMappingRow(Base):
+    """Current mapping of one client account (by code). Keyed by code, so it carries forward across years."""
+
+    __tablename__ = "account_mappings"
+    __table_args__ = (UniqueConstraint("client_id", "code"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(String(64), index=True)
+    client_id: Mapped[str] = mapped_column(ForeignKey("clients.id"), index=True)
+    code: Mapped[str] = mapped_column(String(64))
+    fs_line: Mapped[str | None] = mapped_column(String(64))
+    tax_treatment: Mapped[str | None] = mapped_column(String(32))
+    status: Mapped[str] = mapped_column(String(16))  # unmapped | suggested | confirmed
+    rule: Mapped[str | None] = mapped_column(String(255))  # why it was suggested
+    confirmed_by: Mapped[str | None] = mapped_column(String(200))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
+class AccountMappingEventRow(Base):
+    """Append-only history of mapping decisions: who mapped which account to what, and when."""
+
+    __tablename__ = "account_mapping_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[str] = mapped_column(String(64), index=True)
+    client_id: Mapped[str] = mapped_column(ForeignKey("clients.id"), index=True)
+    code: Mapped[str] = mapped_column(String(64))
+    fs_line: Mapped[str] = mapped_column(String(64))
+    tax_treatment: Mapped[str] = mapped_column(String(32))
+    by: Mapped[str] = mapped_column(String(200))
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class TaxInputsRow(Base):
+    """Preparer inputs for a client's year: losses brought forward and capital deduction classes (JSON)."""
+
+    __tablename__ = "tax_inputs"
+    __table_args__ = (UniqueConstraint("client_id", "year_end"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(String(64), index=True)
+    client_id: Mapped[str] = mapped_column(ForeignKey("clients.id"), index=True)
+    year_end: Mapped[date] = mapped_column(Date)
+    losses_brought_forward_cents: Mapped[int] = mapped_column(BigInteger, default=0)
+    allowances_json: Mapped[str] = mapped_column(Text, default="[]")
+    updated_by: Mapped[str] = mapped_column(String(200))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
 
 
 class TrialBalanceRow(Base):

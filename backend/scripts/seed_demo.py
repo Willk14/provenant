@@ -122,6 +122,45 @@ def trial_balance_csv(revenue, opex, da, interest, cash, borrowings, leases) -> 
     return out.getvalue().encode()
 
 
+# Kilima's statutory trial balance for the year ended 31 December 2026 (KES), for the tax computation.
+CLIENT_TB = [
+    ("1000", "Equity Bank current account", 38_450_000),
+    ("1010", "M-Pesa till float", 1_250_000),
+    ("1100", "Trade receivables", 96_300_000),
+    ("1500", "Computers and office equipment - cost", 64_000_000),
+    ("1510", "Accumulated depreciation - office equipment", -21_500_000),
+    ("1600", "Right-of-use asset - Westlands office", 10_400_000),
+    ("2000", "Trade payables", -18_700_000),
+    ("2100", "Accruals", -6_200_000),
+    ("2500", "Term loan - Rift Valley Bank", -95_000_000),
+    ("2600", "Lease liabilities", -10_250_000),
+    ("3000", "Share capital", -20_000_000),
+    ("4000", "Subscription revenue", -1_160_000_000),
+    ("4100", "Dividend income - unit trust", -2_400_000),
+    ("4200", "Interest income - call deposits", -3_100_000),
+    ("5000", "Cost of sales - cloud hosting", 384_000_000),
+    ("5100", "Staff salaries and wages", 431_000_000),
+    ("5110", "NSSF and SHIF contributions", 18_600_000),
+    ("5200", "Office and administrative expenses", 52_400_000),
+    ("5210", "Marketing and events", 21_300_000),
+    ("5220", "Donations - Kibera school", 1_500_000),
+    ("5230", "KRA penalties and interest", 850_000),
+    ("5240", "Client entertainment", 2_100_000),
+    ("5250", "Sundry 7", 640_000),
+    ("5400", "Depreciation - office equipment", 12_800_000),
+    ("5410", "Depreciation - right-of-use asset", 4_950_000),
+    ("5500", "Interest on term loan", 12_400_000),
+    ("5510", "Interest on lease liabilities", 1_330_000),
+]
+CLIENT_TB.append(("3100", "Retained earnings brought forward", -sum(b for *_, b in CLIENT_TB)))
+
+
+def client_tb_csv() -> bytes:
+    out = io.StringIO()
+    csv.writer(out).writerows([["code", "name", "balance"], *([c, n, f"{b:.2f}"] for c, n, b in CLIENT_TB)])
+    return out.getvalue().encode()
+
+
 EQUIPMENT_LEASE = [
     [
         ("h", "EQUIPMENT RENTAL AGREEMENT"),
@@ -175,6 +214,14 @@ def main(base: str) -> None:
         )
         r.raise_for_status()
         print(f"{r.status_code} trial balance {period_end}")
+
+    client = httpx.post(f"{base}/clients", headers=PAT, json={"name": "Kilima Analytics Ltd"})
+    client.raise_for_status()
+    cid = client.json()["id"]
+    r = httpx.post(f"{base}/clients/{cid}/trial-balances", headers=PAT, data={"year_end": "2026-12-31"},
+                   files={"file": ("kilima-tb-fy2026.csv", client_tb_csv(), "text/csv")})
+    r.raise_for_status()
+    print(f"{r.status_code} client Kilima Analytics Ltd, trial balance FY2026 -> {cid}")
 
 
 if __name__ == "__main__":

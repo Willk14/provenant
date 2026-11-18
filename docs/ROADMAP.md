@@ -64,6 +64,18 @@ Built as thin vertical slices. Each milestone ships something a user can run end
 - [ ] Baskets, DSCR and other covenant types; year-to-date trial balances; Claude extraction of covenant terms
 - [ ] GL import → Parquet → DuckDB: Benford, duplicates, weekend/round-sum JE tests
 
+## Tax consultancy and financial mapping (ADR 0006)
+- [x] Clients as first-class records; documents (leases) linked to a client
+- [x] Year-end trial balance per client; keyword-suggested FS line and tax treatment, confirmed by a person,
+      append-only mapping history, carried forward by account code; lead schedule
+- [x] Kenya corporation tax: add-backs, exempt income, capital deductions (preparer rates with a basis),
+      losses brought forward, IFRS 16 lease crossover from verified schedules, deferred tax (IAS 12)
+- [x] Clients and tax UI: mapping table, computation with every line traced to accounts, inputs or leases
+- [ ] Reviewer sign-off on mappings and computations (maker-checker, as for extracted terms)
+- [ ] Instalment tax, withholding tax credits, thin capitalisation and interest restriction
+- [ ] Export the computation and lead schedules to Excel; iTax return figures
+- [ ] Learn suggestions from a firm's confirmed mappings across clients
+
 ## M4 — Due diligence and ERP
 - [ ] Data-room bulk ingestion; change-of-control / assignment / indemnity flags
 - [ ] ERP connectors (Xero, QuickBooks first) + AI-suggested chart-of-accounts mapping

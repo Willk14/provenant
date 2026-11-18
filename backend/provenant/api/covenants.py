@@ -1,7 +1,5 @@
 """Credit agreement use cases: trial balance upload and covenant runs."""
-import csv
 import hashlib
-import io
 from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal
@@ -13,12 +11,11 @@ from sqlalchemy.orm import Session
 from provenant.api.auth import PARTNER, PREPARER, REVIEWER, Principal
 from provenant.api.db import Document, FieldRow, TrialBalanceLineRow, TrialBalanceRow
 from provenant.api.services import Conflict, Forbidden, Invalid, NotFound, get_document, list_fields, require
-from provenant.core.money import round_money, to_decimal
+from provenant.core import tb_csv
 from provenant.covenants import Category, TBLine, Terms, TestDate, TrialBalance, run
 from provenant.covenants.engine import month_end
 
-MAX_TB_BYTES = 2 * 1024 * 1024
-MAX_TB_LINES = 20_000
+MAX_TB_BYTES = tb_csv.MAX_BYTES
 CENT = Decimal("0.01")
 
 
@@ -34,40 +31,16 @@ def parse_trial_balance(data: bytes, period_end: date) -> TrialBalance:
 
     Every line must be mapped to a known category, and the trial balance must balance to the cent.
     """
-    if len(data) > MAX_TB_BYTES:
-        raise Invalid("trial balance file exceeds 2 MB")
     try:
-        text = data.decode("utf-8-sig")
-    except UnicodeDecodeError as exc:
-        raise Invalid("trial balance must be a UTF-8 CSV file") from exc
-    reader = csv.DictReader(io.StringIO(text))
-    headers = {h.strip().lower() for h in reader.fieldnames or []}
-    if not {"code", "name", "category"} <= headers or not ({"balance"} <= headers or {"debit", "credit"} <= headers):
-        raise Invalid("columns needed: code, name, category, and balance (or debit and credit)")
-
+        rows = tb_csv.read(data, require_category=True)
+    except ValueError as exc:
+        raise Invalid(str(exc)) from exc
     categories = {c.value for c in Category}
     lines = []
-    for number, raw in enumerate(reader, start=2):  # row 1 is the header
-        row = {k.strip().lower(): (v or "").strip() for k, v in raw.items() if k}
-        if not any(row.values()):
-            continue
-        if len(lines) >= MAX_TB_LINES:
-            raise Invalid(f"trial balance has more than {MAX_TB_LINES} lines")
-        category = row["category"].lower()
-        if category not in categories:
-            raise Invalid(f"row {number}: category {row['category']!r} is not one of {', '.join(sorted(categories))}")
-        try:
-            if "balance" in row and row["balance"]:
-                balance = to_decimal(row["balance"])
-            else:
-                balance = to_decimal(row.get("debit") or "0") - to_decimal(row.get("credit") or "0")
-        except (ValueError, TypeError) as exc:
-            raise Invalid(f"row {number}: {exc}") from exc
-        if round_money(balance) != balance:
-            raise Invalid(f"row {number}: balance has more than two decimal places")
-        lines.append(TBLine(row["code"][:64], row["name"][:255], Category(category), balance))
-    if not lines:
-        raise Invalid("trial balance has no lines")
+    for row in rows:
+        if row.category not in categories:
+            raise Invalid(f"row {row.number}: category {row.category!r} is not one of {', '.join(sorted(categories))}")
+        lines.append(TBLine(row.code, row.name, Category(row.category), row.balance))
     if period_end != month_end(period_end.year, period_end.month):
         raise Invalid("the period end must be a month-end")
     try:
