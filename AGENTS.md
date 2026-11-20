@@ -41,7 +41,7 @@ The Postgres suite needs a superuser URL (it creates a database per run and test
   computation returns 409 while any account with a balance is unconfirmed. Roll forward returns a proposal and
   saves nothing.
 - **Changeable tax law is input, not code.** Capital allowance rates and methods are preparer inputs with a
-  stated basis. Only settled points go in `Rules` (`KENYA`, versioned `ke-2026.3`); bump the version when
+  stated basis. Only settled points go in `Rules` (`KENYA`, versioned `ke-2026.4`); bump the version when
   rules change. Output is working papers, not tax advice.
 - **Every computation line names its sources** (`tb line id`, `allowance:<class>`, `credit:<i>`, lease
   document id) so the UI can trace it.
@@ -80,6 +80,9 @@ push only when the owner asks.
    now require a matching register and reviewer-approved computation. The current fixed-asset-register path
    uses per-asset opening residual values and disposal outcomes; class-only
    inputs remain available when no matching register is supplied. Each new rule needs a hand-worked test.
+6a. **Compliance checks (ADR 0007), in progress:** eTIMS purchase reconciliation is done; next are variance
+   checks (VAT turnover vs revenue, PAYE vs staff costs, WHT certificates vs payments), M-Pesa and bank
+   statement parsers, and a board tax memo with figures bound to the computation.
 6. **Schema fixes from real documents (ADR 0005):** (discount rate input, amendment dates and expansions: done)
    springing covenants and business-day cure periods.
 7. ~~Mapping suggestions learned from the firm's confirmed mappings~~: done (`learn` / `suggest_for_firm` in

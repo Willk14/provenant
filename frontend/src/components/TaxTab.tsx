@@ -268,6 +268,8 @@ function ComputationView({ c, clientId, onApprove, onExport }: {
                   {a.sources.map((s) =>
                     c.accounts[s] ? (
                       <span key={s} className="chip"><b>{c.accounts[s]}</b></span>
+                    ) : c.etims_lines?.[s] ? (
+                      <span key={s} className="chip"><span className="faint">no eTIMS</span> <b>{c.etims_lines[s]}</b></span>
                     ) : c.leases.some((l) => l.document_id === s) ? (
                       <Link key={s} className="chip chip-elsewhere" href={`/documents/${s}?tab=schedule`}>
                         <b>{c.leases.find((l) => l.document_id === s)?.name}</b> <span aria-hidden>↗</span>

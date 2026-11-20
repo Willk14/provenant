@@ -78,6 +78,10 @@ Built as thin vertical slices. Each milestone ships something a user can run end
 - [x] Per-class business cessation input, item-level balancing results, and reviewer-approved computation
 - [x] Instalment tax planner: lower of current-year estimate and 110% prior-year assessment, withholding reduction,
       agricultural proportions, accounting-period due dates, dated payment allocation, and balance deadline
+- [x] eTIMS purchase reconciliation (ADR 0007): ledger vs eTIMS invoices, decisions with reasons, applied add-back
+- [ ] Variance checks: VAT turnover vs revenue, PAYE vs staff costs, WHT certificates vs payments
+- [ ] M-Pesa and bank statement parsers, categories suggested and confirmed
+- [ ] Board tax memo with every figure bound to the computation
 - [ ] Minimum tax and interest limits
 - [ ] Export the computation and lead schedules to Excel; iTax return figures
 - [x] Suggestions learned from the firm's confirmed mappings at other clients (two-thirds agreement, no ties)

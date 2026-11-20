@@ -2,7 +2,7 @@
 import hashlib
 import json
 from dataclasses import asdict
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
 from decimal import Decimal
 
@@ -395,6 +395,7 @@ class TaxRun:
     credits: list[TaxCredit]
     from_register: set[str]  # allowance classes whose additions and disposals came from the register
     attachments: dict[str, str]  # attachment id -> filename, for credits' evidence
+    etims_lines: dict[str, str] = field(default_factory=dict)  # "etims:<id>" -> "supplier invoice", for sources
 
 
 def year_start(year_end: date) -> date:
@@ -482,8 +483,11 @@ def tax_computation(s: Session, tenant_id: str, client_id: str, year_end: date) 
         if classes_with_disposals:
             raise Conflict("upload the fixed asset register to calculate disposal results per asset for: "
                            + ", ".join(classes_with_disposals[:8]))
+    from provenant.api import etims  # local import: etims builds on this module
+
+    unsupported, etims_lines = etims.addback(s, tenant_id, client_id, year_end)
     try:
-        computation = compute(lines, allowances, leases, losses, KENYA, credits)
+        computation = compute(lines, allowances, leases, losses, KENYA, credits, unsupported)
     except ValueError as exc:
         raise Invalid(str(exc)) from exc
     if unmatched:
@@ -491,7 +495,7 @@ def tax_computation(s: Session, tenant_id: str, client_id: str, year_end: date) 
                 " (add a class with the same name, its rate and basis)")
         computation = replace(computation, warnings=(*computation.warnings, note))
     attachments = {a.id: a.filename for a in list_attachments(s, tenant_id, client_id, year_end)}
-    return TaxRun(computation, accounts, leases, allowances, credits, from_register, attachments)
+    return TaxRun(computation, accounts, leases, allowances, credits, from_register, attachments, etims_lines)
 
 
 def tax_snapshot(s: Session, tenant_id: str, client_id: str, year_end: date) -> tuple[str, str]:

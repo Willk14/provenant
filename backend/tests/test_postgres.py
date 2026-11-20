@@ -97,3 +97,18 @@ def test_tax_approvals_are_isolated_and_append_only(client, app, database_url):
     for statement in ("update tax_approvals set reviewer = 'tampered'", "delete from tax_approvals"):
         with tenant_session(factory, "firm-a") as s, pytest.raises(DBAPIError, match="permission denied|append-only"):
             s.execute(text(statement))
+
+
+def test_etims_records_are_tenant_isolated(client, app, database_url):
+    from tests.test_etims import ETIMS
+    from tests.test_etims_api import CLIENT_LEDGER, setup, upload
+
+    _, year = setup(client)
+    assert upload(client, f"{year}/etims/ledger", CLIENT_LEDGER, "p.csv").status_code == 201
+    assert upload(client, f"{year}/etims/invoices", ETIMS, "e.csv").status_code == 201
+    factory = make_sessionmaker(make_engine(database_url))
+    with tenant_session(factory, "firm-a") as s:
+        assert s.scalar(text("select count(*) from purchase_lines")) == 7
+    with tenant_session(factory, "firm-b") as s:
+        for table in ("purchase_ledgers", "purchase_lines", "etims_exports", "etims_invoices", "etims_decisions"):
+            assert s.scalar(text(f"select count(*) from {table}")) == 0

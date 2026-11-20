@@ -227,6 +227,7 @@ class ComputationOut(BaseModel):
     leases: list[LeaseYearOut]
     allowances: list[AllowanceOut]
     accounts: dict[str, str]  # trial balance line id -> "code name", to label each line's sources
+    etims_lines: dict[str, str] = {}  # "etims:<id>" -> "supplier invoice": purchases with no eTIMS invoice
 
 
 def _inputs_out(row) -> InputsOut:
@@ -435,6 +436,7 @@ def add_routes(app: FastAPI, Auth, Db, store: BlobStore) -> None:  # noqa: N803 
                                          "source": f"asset:{item.code}",
                                      } for item in a.asset_schedule()]) for a in r.allowances],
             accounts={str(a.line.id): f"{a.line.code} {a.line.name}" for a in r.accounts},
+            etims_lines=r.etims_lines,
         )
 
     @app.post("/clients/{client_id}/years/{year_end}/tax/approval")

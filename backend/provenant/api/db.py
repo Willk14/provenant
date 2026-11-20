@@ -232,6 +232,92 @@ class ClientAttachmentRow(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
+class PurchaseLedgerRow(Base):
+    """A client's purchase ledger for a year, for eTIMS reconciliation. Uploading again replaces it.
+    `applied_by` is set when the preparer applies the reconciliation's add-back to the tax computation."""
+
+    __tablename__ = "purchase_ledgers"
+    __table_args__ = (UniqueConstraint("client_id", "year_end"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(String(64), index=True)
+    client_id: Mapped[str] = mapped_column(ForeignKey("clients.id"), index=True)
+    year_end: Mapped[date] = mapped_column(Date)
+    filename: Mapped[str] = mapped_column(String(255))
+    sha256: Mapped[str] = mapped_column(String(64))
+    uploaded_by: Mapped[str] = mapped_column(String(200))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    applied_by: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class PurchaseLineRow(Base):
+    __tablename__ = "purchase_lines"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[str] = mapped_column(String(64), index=True)
+    ledger_id: Mapped[str] = mapped_column(ForeignKey("purchase_ledgers.id", ondelete="CASCADE"), index=True)
+    row_number: Mapped[int] = mapped_column(Integer)
+    date: Mapped[date] = mapped_column(Date)
+    supplier: Mapped[str] = mapped_column(String(200))
+    supplier_pin: Mapped[str] = mapped_column(String(16))
+    invoice_number: Mapped[str] = mapped_column(String(64))
+    account_code: Mapped[str] = mapped_column(String(64))
+    amount_cents: Mapped[int] = mapped_column(BigInteger)
+    etims_number: Mapped[str] = mapped_column(String(64), default="")
+    description: Mapped[str] = mapped_column(String(255), default="")
+
+
+class EtimsExportRow(Base):
+    """A client's eTIMS purchase invoices for a year, as exported from KRA. Uploading again replaces it."""
+
+    __tablename__ = "etims_exports"
+    __table_args__ = (UniqueConstraint("client_id", "year_end"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(String(64), index=True)
+    client_id: Mapped[str] = mapped_column(ForeignKey("clients.id"), index=True)
+    year_end: Mapped[date] = mapped_column(Date)
+    filename: Mapped[str] = mapped_column(String(255))
+    sha256: Mapped[str] = mapped_column(String(64))
+    uploaded_by: Mapped[str] = mapped_column(String(200))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class EtimsInvoiceRow(Base):
+    __tablename__ = "etims_invoices"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[str] = mapped_column(String(64), index=True)
+    export_id: Mapped[str] = mapped_column(ForeignKey("etims_exports.id", ondelete="CASCADE"), index=True)
+    row_number: Mapped[int] = mapped_column(Integer)
+    cu_invoice_number: Mapped[str] = mapped_column(String(64))
+    supplier_pin: Mapped[str] = mapped_column(String(16))
+    supplier_name: Mapped[str] = mapped_column(String(200), default="")
+    invoice_number: Mapped[str] = mapped_column(String(64))
+    date: Mapped[date] = mapped_column(Date)
+    taxable_cents: Mapped[int] = mapped_column(BigInteger)
+    vat_cents: Mapped[int] = mapped_column(BigInteger, default=0)
+
+
+class EtimsDecisionRow(Base):
+    """A person's decision on one purchase (keyed so it survives re-uploads): exempt with a reason, or a match."""
+
+    __tablename__ = "etims_decisions"
+    __table_args__ = (UniqueConstraint("client_id", "year_end", "line_key"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(String(64), index=True)
+    client_id: Mapped[str] = mapped_column(ForeignKey("clients.id"), index=True)
+    year_end: Mapped[date] = mapped_column(Date)
+    line_key: Mapped[str] = mapped_column(String(200))
+    kind: Mapped[str] = mapped_column(String(16))  # exempt | match
+    reason: Mapped[str] = mapped_column(String(500), default="")
+    cu_invoice_number: Mapped[str] = mapped_column(String(64), default="")
+    decided_by: Mapped[str] = mapped_column(String(200))
+    decided_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
 class TrialBalanceRow(Base):
     """A borrower's quarterly trial balance, attached to the credit agreement it is tested against."""
 

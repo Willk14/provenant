@@ -81,7 +81,7 @@ def test_mapping_suggestions_confirmation_and_computation(client, app):
     assert any("no leases are linked" in w for w in c["warnings"])
     penalty = next(a for a in c["adjustments"] if a["label"].startswith("Disallowable"))
     assert [c["accounts"][s] for s in penalty["sources"]] == ["5300 KRA penalties"]
-    assert c["rules_version"] == "ke-2026.3"
+    assert c["rules_version"] == "ke-2026.4"
 
     lead = {l["fs_line"]: D(l["amount"]) for l in client.get(
         f"/clients/{cid}/years/2026-12-31/mapping", headers=PREPARER).json()["lead_schedule"]}

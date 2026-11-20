@@ -48,12 +48,22 @@ def _postgres_database(monkeypatch) -> str:
 
 
 @pytest.fixture
-def database_url(tmp_path, monkeypatch) -> str:
+def database_url(tmp_path, monkeypatch):
     if PG_ADMIN_URL:
-        return _postgres_database(monkeypatch)
+        url = _postgres_database(monkeypatch)
+        yield url
+        _drop_database(make_url(url).database)  # each test gets its own database; don't leave hundreds behind
+        return
     url = f"sqlite:///{(tmp_path / 'test.db').as_posix()}"
     upgrade(url)
-    return url
+    yield url
+
+
+def _drop_database(name: str) -> None:
+    engine = create_engine(make_url(PG_ADMIN_URL).set(drivername="postgresql+psycopg"), isolation_level="AUTOCOMMIT")
+    with engine.connect() as c:
+        c.execute(text(f"drop database if exists {name} with (force)"))
+    engine.dispose()
 
 
 @pytest.fixture

@@ -100,6 +100,10 @@ interest_expense, other`. Each quarter holds that quarter's P&L; it must balance
 | Supporting documents (PDF, PNG, JPEG, XLSX, CSV) with a category | `POST`/`GET .../attachments`, `GET /clients/{id}/attachments/{aid}/file` |
 | Corporation tax, credits to tax due, and deferred tax; every line traced | `GET /clients/{id}/years/{ye}/tax` |
 
+eTIMS reconciliation (ADR 0007): upload the purchase ledger and the eTIMS purchase invoices export
+(`POST .../etims/ledger`, `POST .../etims/invoices`), review matches (`GET .../etims`), decide exemptions or
+matches (`PUT .../etims/decisions`) and apply the unsupported total to the computation (`POST .../etims/apply`).
+
 Suggestions are never final: the computation refuses (409) until every account with a balance has a
 confirmed mapping, and confirmed mappings carry forward to the next year by account code. Linked leases
 replace IFRS 16 depreciation and interest with rentals paid. Working papers for a tax professional, not

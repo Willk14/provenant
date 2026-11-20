@@ -25,7 +25,7 @@ class Rules:
 
 KENYA = Rules(
     jurisdiction="KE",
-    version="ke-2026.3",
+    version="ke-2026.4",
     corporation_tax_rate=Decimal("0.30"),  # resident companies, Income Tax Act Third Schedule
     basis={
         "addback": "Income Tax Act s.16: deductions not allowed",
@@ -39,6 +39,8 @@ KENYA = Rules(
         "disposal_gain": "Income Tax Act Second Schedule paragraph 3: disposal surplus is a trading receipt",
         "disposal_loss": "Income Tax Act Second Schedule paragraph 3: disposal proceeds below item residual value are a trading loss",
         "cessation": "Income Tax Act Second Schedule paragraph 4: balancing charge or deduction when the business ceases and the item ceases to be owned",
+        "etims": "Expenditure not supported by an electronic tax invoice (eTIMS) is not deductible, under the "
+                 "Income Tax Act as amended by the Finance Act 2023 (preparer confirms the provision and exemptions)",
         "instalment": "Instalment tax paid for the year (Income Tax Act s.12)",
         "withholding": "Tax withheld at source, credited against the tax charged (hold the certificate)",
         "overpayment": "Overpayment brought forward from the prior year's return",
@@ -267,7 +269,10 @@ def compute(
     losses_brought_forward: Decimal = ZERO,
     rules: Rules = KENYA,
     credits: Sequence[TaxCredit] = (),
+    unsupported_expenses: Sequence[tuple[str, Decimal]] = (),
 ) -> Computation:
+    """`unsupported_expenses`: (source id, amount) for deductible purchases with no eTIMS invoice, once the
+    preparer has applied the eTIMS reconciliation. Each source names the purchase ledger row."""
     if losses_brought_forward < 0:
         raise ValueError("losses brought forward cannot be negative")
     pl = [l for l in lines if FS_LINES[l.fs_line].statement is Statement.PROFIT_OR_LOSS]
@@ -293,6 +298,10 @@ def compute(
     add("IFRS 16 lease interest added back", _sum(lease_interest), "lease", ids(lease_interest))
     exempt = by_treatment(T.EXEMPT)
     add("Exempt income deducted", _sum(exempt), "exempt", ids(exempt))  # credit balances: negative
+    if any(amount < 0 for _, amount in unsupported_expenses):
+        raise ValueError("unsupported expense amounts cannot be negative")
+    add("Expenses without an eTIMS invoice added back", sum((a for _, a in unsupported_expenses), ZERO), "etims",
+        tuple(source for source, _ in unsupported_expenses))
 
     for c in allowances:
         allowance_sources = tuple(f"asset:{a.code}" for a in c.assets) or (f"allowance:{c.name}",)

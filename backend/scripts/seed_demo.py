@@ -233,6 +233,7 @@ def main(base: str) -> None:
     r.raise_for_status()
     print(f"{r.status_code} confirmed {r.json()['confirmed']} suggested mappings (Sundry 7 is left for a person)")
     seed_tax_records(base, cid)
+    seed_etims(base, cid)
 
 
 FIXED_ASSET_REGISTER = b"""asset_code,description,class,acquired,cost,disposed,proceeds
@@ -299,6 +300,36 @@ def seed_tax_records(base: str, cid: str, inputs: dict | None = None) -> None:
     r = httpx.put(f"{year}/inputs", headers=PAT, json={**(inputs or TAX_INPUTS), "credits": credits})
     r.raise_for_status()
     print(f"{r.status_code} tax records: fixed asset register, 3 supporting documents, 5 credits")
+
+
+# Kilima's FY2026 purchases (a sample) and its eTIMS purchase invoices, for the eTIMS reconciliation tab.
+PURCHASE_LEDGER = b"""date,supplier,supplier_pin,invoice_number,account_code,amount,etims_number,description
+2026-01-15,Safaricom PLC,P051111111A,SC-2026-0115,5200,"185,000.00",KRACU0100001234,connectivity
+2026-02-03,Text Book Centre,P051234567B,TBC-8812,5200,42500,,stationery
+2026-03-20,AWS EMEA SARL,P052345678C,AWS-INV-3301,5000,"3,200,000.00",,cloud hosting (imported service)
+2026-04-11,Java House,P053456789D,JH-0411,5240,96000,,client entertainment
+2026-05-05,Rubis Energy,P054567890E,RB-77812,5200,64000,,fuel
+2026-06-30,Nairobi Cleaning Co,P055678901F,NCC-0630,5200,120000,,office cleaning
+2026-07-14,Kenya Power,P056789012G,KPLC-0714,5200,88400,,electricity
+2026-09-02,Copy Cat Ltd,P057890123H,CC-5590,5200,150000,,printer lease
+"""
+ETIMS_PURCHASES = b"""cu_invoice_number,supplier_pin,supplier_name,invoice_number,date,taxable_value,vat
+KRACU0100001234,P051111111A,Safaricom PLC,SC-2026-0115,2026-01-15,185000.00,29600.00
+KRACU0200008812,P051234567B,Text Book Centre,TBC8812,2026-02-03,42500,6800
+KRACU0300077812,P054567890E,Rubis Energy,RB-77812,2026-05-05,58000,9280
+KRACU0400000630,P055678901F,Nairobi Cleaning Co,NCC-630A,2026-07-02,120000,19200
+KRACU0500000714,P056789012G,Kenya Power,KPLC-0714,2026-07-14,88400,14144
+KRACU0600001999,P058901234J,Office Mart,OM-1999,2026-10-01,35000,5600
+"""
+
+
+def seed_etims(base: str, cid: str) -> None:
+    year = f"{base}/clients/{cid}/years/2026-12-31/etims"
+    for path, name, data in (("ledger", "kilima-purchases-fy2026.csv", PURCHASE_LEDGER),
+                             ("invoices", "kilima-etims-purchases-fy2026.csv", ETIMS_PURCHASES)):
+        r = httpx.post(f"{year}/{path}", headers=PAT, files={"file": (name, data, "text/csv")})
+        r.raise_for_status()
+    print(f"{r.status_code} eTIMS: purchase ledger and eTIMS invoices (not yet applied)")
 
 
 if __name__ == "__main__":

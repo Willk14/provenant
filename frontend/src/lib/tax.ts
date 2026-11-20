@@ -191,6 +191,7 @@ export interface Computation {
     }[];
   }[];
   accounts: Record<string, string>;
+  etims_lines?: Record<string, string>;
 }
 
 export const TREATMENT_LABELS: Record<string, string> = {
@@ -271,4 +272,62 @@ export const taxApi = {
   },
   linkLease: (documentId: string, clientId: string | null) =>
     api.raw<unknown>(`/documents/${documentId}/client`, json("PUT", { client_id: clientId })),
+};
+
+// --- eTIMS reconciliation ---------------------------------------------------------------------------------
+
+export type EtimsStatus = "matched" | "differs" | "probable" | "unmatched" | "exempt";
+
+export interface EtimsLine {
+  key: string;
+  row_number: number;
+  date: string;
+  supplier: string;
+  supplier_pin: string;
+  invoice_number: string;
+  account_code: string;
+  amount: string;
+  status: EtimsStatus;
+  note: string;
+  decided_by: string;
+  cu_invoice_number: string | null;
+  etims_amount: string | null;
+  unsupported: string;
+  in_addback: boolean;
+}
+
+export interface EtimsReconciliation {
+  ledger: { filename: string; sha256: string; uploaded_by: string } | null;
+  export: { filename: string; sha256: string; uploaded_by: string } | null;
+  lines: EtimsLine[];
+  etims_only: {
+    cu_invoice_number: string;
+    supplier_pin: string;
+    supplier_name: string;
+    invoice_number: string;
+    date: string;
+    taxable_value: string;
+  }[];
+  totals: Partial<Record<EtimsStatus | "addback", string>>;
+  probable: number;
+  applied_by: string | null;
+  applied_at: string | null;
+}
+
+const etimsBase = (id: string, yearEnd: string) => `/clients/${id}/years/${yearEnd}/etims`;
+
+function upload(path: string, file: File) {
+  const form = new FormData();
+  form.append("file", file);
+  return api.raw<EtimsReconciliation>(path, { method: "POST", body: form });
+}
+
+export const etimsApi = {
+  get: (id: string, yearEnd: string) => api.raw<EtimsReconciliation>(etimsBase(id, yearEnd)),
+  uploadLedger: (id: string, yearEnd: string, file: File) => upload(`${etimsBase(id, yearEnd)}/ledger`, file),
+  uploadInvoices: (id: string, yearEnd: string, file: File) => upload(`${etimsBase(id, yearEnd)}/invoices`, file),
+  decide: (id: string, yearEnd: string, body: { line_key: string; kind: "exempt" | "match" | "clear"; reason?: string; cu_invoice_number?: string }) =>
+    api.raw<EtimsReconciliation>(`${etimsBase(id, yearEnd)}/decisions`, json("PUT", body)),
+  apply: (id: string, yearEnd: string, on: boolean) =>
+    api.raw<EtimsReconciliation>(`${etimsBase(id, yearEnd)}/apply`, json("POST", { apply: on })),
 };

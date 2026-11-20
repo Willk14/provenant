@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { EtimsTab } from "@/components/EtimsTab";
 import { MappingTab } from "@/components/MappingTab";
 import { RecordsTab } from "@/components/RecordsTab";
 import { TaxTab } from "@/components/TaxTab";
@@ -10,7 +11,7 @@ import { formatDate } from "@/lib/format";
 import { taxApi, type Client } from "@/lib/tax";
 import { usePersona } from "@/lib/usePersona";
 
-type Tab = "mapping" | "records" | "tax";
+type Tab = "mapping" | "records" | "etims" | "tax";
 
 export function ClientWorkspace({ id }: { id: string }) {
   const persona = usePersona();
@@ -43,7 +44,7 @@ export function ClientWorkspace({ id }: { id: string }) {
             ← Clients &amp; tax
           </Link>
           <h1>{client?.name ?? "Loading…"}</h1>
-          <p className="muted">Kenya corporation tax · Income Tax Act · rules ke-2026.3</p>
+          <p className="muted">Kenya corporation tax · Income Tax Act · rules ke-2026.4</p>
         </div>
         {client && (
           <div className="year-picker">
@@ -88,12 +89,18 @@ export function ClientWorkspace({ id }: { id: string }) {
             <button role="tab" aria-selected={tab === "records"} onClick={() => setTab("records")}>
               Records &amp; inputs
             </button>
+            <button role="tab" aria-selected={tab === "etims"} onClick={() => setTab("etims")}>
+              eTIMS
+            </button>
             <button role="tab" aria-selected={tab === "tax"} onClick={() => setTab("tax")}>
               Tax computation
             </button>
           </div>
           {tab === "mapping" ? (
             <MappingTab clientId={id} yearEnd={yearEnd} onChanged={() => setVersion((v) => v + 1)} />
+          ) : tab === "etims" ? (
+            <EtimsTab key={yearEnd} clientId={id} yearEnd={yearEnd} onChanged={() => setVersion((v) => v + 1)}
+              onOpenComputation={() => setTab("tax")} />
           ) : tab === "records" ? (
             <RecordsTab
               key={yearEnd}

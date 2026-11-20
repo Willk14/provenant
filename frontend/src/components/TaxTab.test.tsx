@@ -20,7 +20,7 @@ function taxComputation(taxDue: string, taxPayable: string,
   return {
     approval: null,
     changed_since_approval: false,
-    rules_version: "ke-2026.3",
+    rules_version: "ke-2026.4",
     profit_before_tax: "1000.00",
     adjustments: [],
     taxable_before_losses: "1000.00",
