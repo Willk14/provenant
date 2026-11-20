@@ -236,6 +236,61 @@ def main(base: str) -> None:
     seed_etims(base, cid)
     seed_returns(base, cid)
     seed_statements(base, cid)
+    seed_ledger(base, cid)
+
+
+def general_ledger_csv() -> bytes:
+    """Kilima's FY2026 general ledger, generated deterministically: each profit or loss account's trial balance
+    figure is split into 40 postings against the bank (so the ledger reconciles to the trial balance exactly),
+    on weekdays in working hours by pat, rae or sam. Planted for the journal entry tests: a Saturday posting, an
+    after-hours posting by an intern, a duplicated catering invoice, a round 2,000,000 hosting charge and a
+    year-end accrual on 31 December."""
+    import random
+    from datetime import date, timedelta
+
+    rng = random.Random(2026)
+    rows = ["entry_id,date,posted_at,account_code,description,user,amount"]
+    entry = 0
+    for code, name, balance in CLIENT_TB:
+        if not code.startswith(("4", "5")):
+            continue
+        cents = round(balance * 100)
+        weights = [10 ** rng.uniform(0, 2) for _ in range(40)]
+        parts = [int(cents * w / sum(weights)) for w in weights]
+        parts[-1] += cents - sum(parts)  # the last posting absorbs rounding, so the account total is exact
+        for i, part in enumerate(parts):
+            entry += 1
+            day = date(2026, 1, 1) + timedelta(days=rng.randrange(365))
+            while day.weekday() >= 5:
+                day += timedelta(days=1)
+            hour, user, text = rng.randrange(8, 18), rng.choice(["pat", "rae", "sam"]), f"{name} {i + 1}"
+            if code == "5210" and i == 0:
+                day = date(2026, 3, 7)  # a Saturday
+            if code == "5200" and i == 0:
+                hour, user = 23, "intern1"
+            if code == "5240" and i in (0, 1):
+                day, text, part = date(2026, 4, 9), "Client lunch - Java House JH-0411", parts[0]
+                if i == 1:  # the duplicate repeats entry one; keep the account total by moving the difference
+                    parts[2] += parts[1] - part
+            if code == "5000" and i == 0:
+                parts[1] += part - 200_000_000
+                part = 200_000_000  # 2,000,000.00
+            if code == "5200" and i == 39:
+                day = date(2026, 12, 31)
+                text = "Year-end accrual"
+            amount = f"{part / 100:.2f}"
+            stamp = f"{day} {hour:02d}:{rng.randrange(60):02d}"
+            rows.append(f"J{entry:05d},{day},{stamp},{code},{text},{user},{amount}")
+            rows.append(f"J{entry:05d},{day},{stamp},1000,{text},{user},{-part / 100:.2f}")
+    return ("\n".join(rows) + "\n").encode()
+
+
+def seed_ledger(base: str, cid: str) -> None:
+    r = httpx.post(f"{base}/clients/{cid}/years/2026-12-31/ledger", headers=PAT,
+                   data={"approval_limit": "5,000,000"},
+                   files={"file": ("kilima-gl-fy2026.csv", general_ledger_csv(), "text/csv")})
+    r.raise_for_status()
+    print(f"{r.status_code} general ledger: {r.json()['lines']} lines, journal entry tests run")
 
 
 # A slice of Kilima's December 2026 M-Pesa Till statement (portal export, newest first) and Equity Bank

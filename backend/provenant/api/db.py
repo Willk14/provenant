@@ -401,6 +401,44 @@ class MemoDraftRow(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
 
 
+class GeneralLedgerRow(Base):
+    """A client's general ledger for a year: the uploaded CSV and its normalised Parquet, both content-addressed
+    in the blob store. Uploading again replaces it (ADR 0009)."""
+
+    __tablename__ = "general_ledgers"
+    __table_args__ = (UniqueConstraint("client_id", "year_end"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(String(64), index=True)
+    client_id: Mapped[str] = mapped_column(ForeignKey("clients.id"), index=True)
+    year_end: Mapped[date] = mapped_column(Date)
+    filename: Mapped[str] = mapped_column(String(255))
+    csv_sha256: Mapped[str] = mapped_column(String(64))
+    parquet_sha256: Mapped[str] = mapped_column(String(64))
+    lines: Mapped[int] = mapped_column(BigInteger)
+    approval_limit_cents: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    uploaded_by: Mapped[str] = mapped_column(String(200))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class JournalExceptionRow(Base):
+    """A person's decision on a flagged entry for one test: cleared (reviewer, with a reason) or escalated."""
+
+    __tablename__ = "journal_exceptions"
+    __table_args__ = (UniqueConstraint("client_id", "year_end", "entry_id", "test"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(String(64), index=True)
+    client_id: Mapped[str] = mapped_column(ForeignKey("clients.id"), index=True)
+    year_end: Mapped[date] = mapped_column(Date)
+    entry_id: Mapped[str] = mapped_column(String(64))
+    test: Mapped[str] = mapped_column(String(32))
+    status: Mapped[str] = mapped_column(String(16))  # cleared | escalated
+    reason: Mapped[str] = mapped_column(String(1000))
+    decided_by: Mapped[str] = mapped_column(String(200))
+    decided_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
 class TrialBalanceRow(Base):
     """A borrower's quarterly trial balance, attached to the credit agreement it is tested against."""
 

@@ -1537,3 +1537,86 @@ button.chip {
     border: 0;
   }
 }
+
+/* General ledger: journal entry tests */
+.ledger-tests {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 10px;
+}
+
+.ledger-test {
+  text-align: left;
+  padding: 10px 12px;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+
+.ledger-test[aria-pressed="true"] {
+  outline: 2px solid var(--ink-2);
+}
+
+.ledger-test:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.ledger-count {
+  font-size: 22px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  margin-top: 4px;
+}
+
+.record-layout-2 {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.benford {
+  display: flex;
+  gap: 6px;
+  align-items: flex-end;
+  height: 120px;
+  margin-top: 8px;
+}
+
+.benford-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: 100%;
+}
+
+.benford-bars {
+  position: relative;
+  flex: 1;
+  width: 100%;
+  display: flex;
+  align-items: flex-end;
+}
+
+.benford-bar {
+  width: 100%;
+  max-height: 100%;
+  background: var(--ink-3);
+  border-radius: 3px 3px 0 0;
+}
+
+.benford-expected {
+  position: absolute;
+  left: -2px;
+  right: -2px;
+  height: 2px;
+  background: var(--warn);
+}
+
+@media (max-width: 1000px) {
+  .record-layout-2 {
+    grid-template-columns: 1fr;
+  }
+}

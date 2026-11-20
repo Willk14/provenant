@@ -159,3 +159,21 @@ def test_memo_drafts_are_tenant_isolated(client, app, database_url):
         assert s.scalar(text("select count(*) from memo_drafts")) == 1
     with tenant_session(factory, "firm-b") as s:
         assert s.scalar(text("select count(*) from memo_drafts")) == 0
+
+
+def test_ledgers_and_journal_exceptions_are_tenant_isolated(client, app, database_url):
+    from tests.test_api import REVIEWER
+    from tests.test_journal import GL
+    from tests.test_ledger_api import upload
+    from tests.test_tax_api import client_with_tb
+
+    year = f"/clients/{client_with_tb(client)}/years/2026-12-31"
+    assert upload(client, year, GL.encode()).status_code == 201
+    client.put(f"{year}/ledger/exceptions", headers=REVIEWER, json={
+        "entry_id": "E5", "test": "unbalanced", "status": "cleared", "reason": "Rounding on a supplier credit note"})
+    factory = make_sessionmaker(make_engine(database_url))
+    with tenant_session(factory, "firm-a") as s:
+        assert s.scalar(text("select count(*) from journal_exceptions")) == 1
+    with tenant_session(factory, "firm-b") as s:
+        for table in ("general_ledgers", "journal_exceptions"):
+            assert s.scalar(text(f"select count(*) from {table}")) == 0

@@ -14,7 +14,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from provenant.api import covenants, etims, memo, services, statements, tax_routes, variance
+from provenant.api import covenants, etims, ledger, memo, services, statements, tax_routes, variance
 from provenant.covenants.engine import quarters_back
 from provenant.api.auth import AuthError, Authenticator, Principal, authenticator_from_env, principal_from
 from provenant.api.db import Document, FieldRow, make_engine, make_sessionmaker, tenant_session
@@ -492,6 +492,7 @@ def create_app(
     variance.add_routes(app, Auth, Db)
     statements.add_routes(app, Auth, Db)
     memo.add_routes(app, Auth, Db)
+    ledger.add_routes(app, Auth, Db, store)
 
     app.state.session_factory, app.state.store, app.state.extractor = factory, store, extractor
     return app

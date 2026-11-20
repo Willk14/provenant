@@ -23,3 +23,17 @@ class BlobStore:
 
     def get(self, sha256: str) -> bytes:
         return self._path(sha256).read_bytes()
+
+    def put_file(self, sha256: str, source: Path) -> None:
+        """Store a large file by moving it in (a general ledger must not pass through memory)."""
+        path = self._path(sha256)
+        if path.exists():
+            source.unlink(missing_ok=True)
+            return
+        path.parent.mkdir(parents=True, exist_ok=True)
+        os.replace(source, path)
+
+    def local_path(self, sha256: str) -> Path:
+        """For engines that read files directly (DuckDB over Parquet). shortcut: local disk only; a cloud store
+        would download to a cache first."""
+        return self._path(sha256)

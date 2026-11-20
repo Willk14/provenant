@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { ChecksTab } from "@/components/ChecksTab";
 import { EtimsTab } from "@/components/EtimsTab";
+import { LedgerTab } from "@/components/LedgerTab";
 import { MappingTab } from "@/components/MappingTab";
 import { MemoTab } from "@/components/MemoTab";
 import { RecordsTab } from "@/components/RecordsTab";
@@ -14,7 +15,7 @@ import { formatDate } from "@/lib/format";
 import { taxApi, type Client } from "@/lib/tax";
 import { usePersona } from "@/lib/usePersona";
 
-type Tab = "mapping" | "records" | "statements" | "etims" | "checks" | "tax" | "memo";
+type Tab = "mapping" | "records" | "statements" | "ledger" | "etims" | "checks" | "tax" | "memo";
 
 export function ClientWorkspace({ id }: { id: string }) {
   const persona = usePersona();
@@ -95,6 +96,9 @@ export function ClientWorkspace({ id }: { id: string }) {
             <button role="tab" aria-selected={tab === "statements"} onClick={() => setTab("statements")}>
               Statements
             </button>
+            <button role="tab" aria-selected={tab === "ledger"} onClick={() => setTab("ledger")}>
+              Ledger
+            </button>
             <button role="tab" aria-selected={tab === "etims"} onClick={() => setTab("etims")}>
               eTIMS
             </button>
@@ -114,6 +118,8 @@ export function ClientWorkspace({ id }: { id: string }) {
             <MemoTab key={`${yearEnd}-${version}`} clientId={id} yearEnd={yearEnd} />
           ) : tab === "statements" ? (
             <StatementsTab key={yearEnd} clientId={id} yearEnd={yearEnd} />
+          ) : tab === "ledger" ? (
+            <LedgerTab key={yearEnd} clientId={id} yearEnd={yearEnd} />
           ) : tab === "checks" ? (
             <ChecksTab key={yearEnd} clientId={id} yearEnd={yearEnd} />
           ) : tab === "etims" ? (

@@ -116,6 +116,11 @@ Board tax memo (ADR 0008): `GET .../memo` renders the memo from the live computa
 `PUT .../memo` saves the text, with `{{field}}` placeholders and `{{table:...}}` blocks (empty text restores the
 standard memo). Amounts typed by hand are flagged.
 
+General ledger (ADR 0009): `POST .../ledger` (CSV, optional `approval_limit`) loads the year's ledger into
+Parquet; `GET .../ledger` runs the journal entry tests over the whole population with DuckDB and reconciles profit
+or loss accounts to the trial balance; `PUT .../ledger/exceptions` clears (a reviewer who did not upload it) or
+escalates a flagged entry; `GET .../ledger/entries/{id}` returns its lines.
+
 Suggestions are never final: the computation refuses (409) until every account with a balance has a
 confirmed mapping, and confirmed mappings carry forward to the next year by account code. Linked leases
 replace IFRS 16 depreciation and interest with rentals paid. Working papers for a tax professional, not

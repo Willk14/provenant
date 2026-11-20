@@ -452,3 +452,70 @@ export const memoApi = {
   save: (id: string, yearEnd: string, body: string) =>
     api.raw<Memo>(`/clients/${id}/years/${yearEnd}/memo`, json("PUT", { body })),
 };
+
+// --- General ledger and journal entry tests ----------------------------------------------------------------
+
+export interface JournalDecision {
+  status: "cleared" | "escalated";
+  reason: string;
+  decided_by: string;
+  decided_at: string;
+}
+
+export interface JournalTest {
+  key: string;
+  title: string;
+  description: string;
+  applies: boolean;
+  count: number;
+  value: string;
+  open: number;
+  sample: { entry_id: string; value: string; detail: string; decision: JournalDecision | null }[];
+}
+
+export interface Ledger {
+  uploaded: boolean;
+  filename: string | null;
+  uploaded_by: string | null;
+  test_version: string;
+  approval_limit: string | null;
+  lines: number;
+  entries: number;
+  debits: string;
+  first_date: string | null;
+  last_date: string | null;
+  tests: JournalTest[];
+  benford: { lines: number; observed: number[]; expected: number[]; mad: number; conformity: string } | null;
+  reconciliation: { account_code: string; ledger: string; trial_balance: string; difference: string }[];
+  risk: { entry_id: string; value: string; tests: string[]; cleared: number }[];
+}
+
+export interface JournalLine {
+  entry_id: string;
+  row: number;
+  date: string;
+  posted_at: string | null;
+  account_code: string;
+  description: string;
+  user: string | null;
+  source: string;
+  amount: string;
+}
+
+const ledgerBase = (id: string, yearEnd: string) => `/clients/${id}/years/${yearEnd}/ledger`;
+
+export const ledgerApi = {
+  get: (id: string, yearEnd: string) => api.raw<Ledger>(ledgerBase(id, yearEnd)),
+  upload: (id: string, yearEnd: string, file: File, approvalLimit: string) => {
+    const form = new FormData();
+    form.append("file", file);
+    form.append("approval_limit", approvalLimit);
+    return api.raw<Ledger>(ledgerBase(id, yearEnd), { method: "POST", body: form });
+  },
+  setLimit: (id: string, yearEnd: string, approvalLimit: string | null) =>
+    api.raw<Ledger>(`${ledgerBase(id, yearEnd)}/settings`, json("PUT", { approval_limit: approvalLimit })),
+  decide: (id: string, yearEnd: string, body: { entry_id: string; test: string; status: "cleared" | "escalated" | "open"; reason?: string }) =>
+    api.raw<Ledger>(`${ledgerBase(id, yearEnd)}/exceptions`, json("PUT", body)),
+  entry: (id: string, yearEnd: string, entryId: string) =>
+    api.raw<JournalLine[]>(`${ledgerBase(id, yearEnd)}/entries/${encodeURIComponent(entryId)}`),
+};

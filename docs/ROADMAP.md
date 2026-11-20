@@ -61,7 +61,9 @@ Built as thin vertical slices. Each milestone ships something a user can run end
 - [x] Covenants tab: results by quarter, workings with the trial balances used, clause highlighted on the PDF
 - [ ] Frozen-GAAP / IFRS 16 adjustments using Provenant's own lease schedules; EBITDA add-backs
 - [ ] Baskets, DSCR and other covenant types; year-to-date trial balances; Claude extraction of covenant terms
-- [ ] GL import → Parquet → DuckDB: Benford, duplicates, weekend/round-sum JE tests
+- [x] GL import → Parquet → DuckDB (ADR 0009): nine versioned JE tests and Benford over the whole
+      population, reconciliation to the trial balance, exceptions cleared under maker-checker
+- [ ] Excel and ERP ledger extracts; fuzzy near-duplicates; ledger exceptions in the board memo
 
 ## Tax consultancy and financial mapping (ADR 0006)
 - [x] Clients as first-class records; documents (leases) linked to a client
