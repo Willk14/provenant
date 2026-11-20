@@ -145,3 +145,17 @@ def test_statements_are_tenant_isolated(client, app, database_url):
     with tenant_session(factory, "firm-b") as s:
         for table in ("statements", "statement_categories"):
             assert s.scalar(text(f"select count(*) from {table}")) == 0
+
+
+def test_memo_drafts_are_tenant_isolated(client, app, database_url):
+    from tests.test_etims_api import setup
+
+    _, year = setup(client)
+    r = client.put(f"{year}/memo", headers={"X-Tenant-Id": "firm-a", "X-User": "pat@firm-a", "X-Roles": "preparer"},
+                   json={"body": "Tax payable: {{tax_payable}}"})
+    assert r.status_code == 200, r.text
+    factory = make_sessionmaker(make_engine(database_url))
+    with tenant_session(factory, "firm-a") as s:
+        assert s.scalar(text("select count(*) from memo_drafts")) == 1
+    with tenant_session(factory, "firm-b") as s:
+        assert s.scalar(text("select count(*) from memo_drafts")) == 0

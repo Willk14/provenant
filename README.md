@@ -112,6 +112,10 @@ Statements (ADR 0007): upload M-Pesa or bank statement CSVs (`POST .../statement
 `GET .../statements` returns balance breaks, duplicates, own-account transfers and categorised movements;
 categories are confirmed with `PUT .../statements/categories` or `POST .../statements/confirm-suggestions`.
 
+Board tax memo (ADR 0008): `GET .../memo` renders the memo from the live computation, checks and approval;
+`PUT .../memo` saves the text, with `{{field}}` placeholders and `{{table:...}}` blocks (empty text restores the
+standard memo). Amounts typed by hand are flagged.
+
 Suggestions are never final: the computation refuses (409) until every account with a balance has a
 confirmed mapping, and confirmed mappings carry forward to the next year by account code. Linked leases
 replace IFRS 16 depreciation and interest with rentals paid. Working papers for a tax professional, not

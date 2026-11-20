@@ -16,6 +16,11 @@ from provenant.tax import variance
 
 READERS = {"vat": variance.read_vat, "paye": variance.read_paye, "wht": variance.read_wht}
 CHECK_FOR = {"vat": "vat_turnover", "paye": "paye", "wht": "wht"}
+CHECK_TITLES = {
+    "vat_turnover": "VAT turnover against revenue",
+    "paye": "PAYE gross pay against staff costs",
+    "wht": "Withholding tax certificates against supplier payments",
+}
 
 
 def _return(s: Session, tenant_id: str, client_id: str, year_end: date, kind: str) -> ComplianceReturnRow | None:

@@ -425,3 +425,30 @@ export const statementsApi = {
   confirmSuggestions: (id: string, yearEnd: string) =>
     api.raw<StatementsView>(`${statementsBase(id, yearEnd)}/confirm-suggestions`, { method: "POST" }),
 };
+
+// --- Board tax memo ----------------------------------------------------------------------------------------
+
+export interface MemoBlock {
+  kind: "heading1" | "heading2" | "paragraph" | "bullet" | "table";
+  segments: { text: string; field: string | null }[];
+  table: string | null;
+  rows: [string, string, boolean][];
+}
+
+export interface Memo {
+  body: string;
+  is_default: boolean;
+  updated_by: string | null;
+  updated_at: string | null;
+  blocked: string | null;
+  blocks: MemoBlock[];
+  warnings: string[];
+  fields: { key: string; label: string; text: string; source: string }[];
+  tables: string[];
+}
+
+export const memoApi = {
+  get: (id: string, yearEnd: string) => api.raw<Memo>(`/clients/${id}/years/${yearEnd}/memo`),
+  save: (id: string, yearEnd: string, body: string) =>
+    api.raw<Memo>(`/clients/${id}/years/${yearEnd}/memo`, json("PUT", { body })),
+};

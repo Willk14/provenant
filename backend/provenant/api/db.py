@@ -386,6 +386,21 @@ class StatementCategoryRow(Base):
     decided_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
 
 
+class MemoDraftRow(Base):
+    """The board tax memo's text for a client-year: prose with fields bound to the computation (ADR 0008)."""
+
+    __tablename__ = "memo_drafts"
+    __table_args__ = (UniqueConstraint("client_id", "year_end"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(String(64), index=True)
+    client_id: Mapped[str] = mapped_column(ForeignKey("clients.id"), index=True)
+    year_end: Mapped[date] = mapped_column(Date)
+    body: Mapped[str] = mapped_column(Text)
+    updated_by: Mapped[str] = mapped_column(String(200))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
 class TrialBalanceRow(Base):
     """A borrower's quarterly trial balance, attached to the credit agreement it is tested against."""
 

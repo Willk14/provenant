@@ -81,7 +81,7 @@ Built as thin vertical slices. Each milestone ships something a user can run end
 - [x] eTIMS purchase reconciliation (ADR 0007): ledger vs eTIMS invoices, decisions with reasons, applied add-back
 - [x] Variance checks: VAT turnover vs revenue, PAYE vs staff costs, WHT certificates vs payments
 - [x] M-Pesa and bank statement parsers: balance breaks, duplicates, own-account transfers, categories
-- [ ] Board tax memo with every figure bound to the computation
+- [x] Board tax memo with every figure bound to the computation (ADR 0008)
 - [ ] Minimum tax and interest limits
 - [ ] Export the computation and lead schedules to Excel; iTax return figures
 - [x] Suggestions learned from the firm's confirmed mappings at other clients (two-thirds agreement, no ties)
