@@ -128,3 +128,20 @@ def test_variance_records_are_tenant_isolated(client, app, database_url):
     with tenant_session(factory, "firm-b") as s:
         for table in ("compliance_returns", "variance_explanations"):
             assert s.scalar(text(f"select count(*) from {table}")) == 0
+
+
+def test_statements_are_tenant_isolated(client, app, database_url):
+    from tests.test_etims_api import setup
+    from tests.test_statements import MPESA
+    from tests.test_statements_api import post
+
+    _, year = setup(client)
+    assert post(client, year, MPESA, "mpesa", "M-Pesa Till 123456").status_code == 201
+    client.post(f"{year}/statements/confirm-suggestions", headers={"X-Tenant-Id": "firm-a", "X-User": "pat@firm-a",
+                "X-Roles": "preparer"})
+    factory = make_sessionmaker(make_engine(database_url))
+    with tenant_session(factory, "firm-a") as s:
+        assert s.scalar(text("select count(*) from statement_categories")) == 4
+    with tenant_session(factory, "firm-b") as s:
+        for table in ("statements", "statement_categories"):
+            assert s.scalar(text(f"select count(*) from {table}")) == 0

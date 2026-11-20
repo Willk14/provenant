@@ -80,8 +80,8 @@ push only when the owner asks.
    now require a matching register and reviewer-approved computation. The current fixed-asset-register path
    uses per-asset opening residual values and disposal outcomes; class-only
    inputs remain available when no matching register is supplied. Each new rule needs a hand-worked test.
-6a. **Compliance checks (ADR 0007), in progress:** eTIMS purchase reconciliation and variance checks are done;
-   next are M-Pesa and bank statement parsers, and a board tax memo with figures bound to the computation.
+6a. **Compliance checks (ADR 0007), in progress:** eTIMS purchase reconciliation, variance checks and M-Pesa/bank
+   statement parsers are done; next is a board tax memo with figures bound to the computation.
 6. **Schema fixes from real documents (ADR 0005):** (discount rate input, amendment dates and expansions: done)
    springing covenants and business-day cure periods.
 7. ~~Mapping suggestions learned from the firm's confirmed mappings~~: done (`learn` / `suggest_for_firm` in

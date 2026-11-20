@@ -235,6 +235,37 @@ def main(base: str) -> None:
     seed_tax_records(base, cid)
     seed_etims(base, cid)
     seed_returns(base, cid)
+    seed_statements(base, cid)
+
+
+# A slice of Kilima's December 2026 M-Pesa Till statement (portal export, newest first) and Equity Bank
+# statement. The 20 December sweep of 3,000,000 lands in the bank on 21 December; the bank's last row has a
+# balance 1,000 out (a missing row), for the balance check to find.
+MPESA_STATEMENT = b"""Organization Name: KILIMA ANALYTICS LTD
+Till Number: 123456
+Receipt No.,Completion Time,Details,Transaction Status,Paid In,Withdrawn,Balance,Other Party Info
+TLK9QX8,2026-12-28 17:20:05,Pay merchant Charge,Completed,,55.00,1749945.00,
+TLK9QX7,2026-12-28 17:20:05,Business Payment to Java House,Completed,,12000.00,1750000.00,Java House
+TLK8MM2,2026-12-20 09:00:00,Transfer to Bank Account - Equity,Completed,,3000000.00,1762000.00,
+TLK7AB1,2026-12-15 11:30:00,Customer Payment to Small Business,Completed,2400000.00,,4762000.00,ACME LTD
+TLK6ZZ0,2026-12-02 14:10:00,Customer Payment to Small Business,Completed,1850000.00,,2362000.00,BAOBAB SACCO
+"""
+BANK_STATEMENT = b"""Date,Description,Reference,Debit,Credit,Balance
+2026-12-01,Balance brought forward,,,,"39,700,000.00"
+2026-12-09,KRA DOMESTIC TAX PRN 2026-11 INSTALMENT,FT26343KRA,13500000.00,,26200000.00
+2026-12-21,MPESA SETTLEMENT TILL 123456,FT26355MPS,,3000000.00,29200000.00
+2026-12-24,SALARY DECEMBER 2026,FT26358SAL,35916663.00,,-6716663.00
+2026-12-31,LEDGER FEE,CHG1231,850.00,,-6718513.00
+"""
+
+
+def seed_statements(base: str, cid: str) -> None:
+    url = f"{base}/clients/{cid}/years/2026-12-31/statements"
+    for kind, label, name, data in (("mpesa", "M-Pesa Till 123456", "mpesa-till-dec-2026.csv", MPESA_STATEMENT),
+                                    ("bank", "Equity Bank current account", "equity-dec-2026.csv", BANK_STATEMENT)):
+        r = httpx.post(url, headers=PAT, data={"kind": kind, "label": label}, files={"file": (name, data, "text/csv")})
+        r.raise_for_status()
+    print(f"{r.status_code} statements: M-Pesa Till and Equity Bank (December)")
 
 
 # Kilima's FY2026 VAT and PAYE returns, for the Checks tab. VAT declares 1,148m against 1,160m revenue (a

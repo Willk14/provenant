@@ -108,6 +108,10 @@ Compliance checks (ADR 0007): upload VAT returns, PAYE returns and WHT certifica
 (`POST .../checks/returns/{vat|paye|wht}`); `GET .../checks` compares each with the books, and variances above
 tolerance take an explanation (`PUT .../checks/{key}/explanation`).
 
+Statements (ADR 0007): upload M-Pesa or bank statement CSVs (`POST .../statements`, with `kind` and `label`);
+`GET .../statements` returns balance breaks, duplicates, own-account transfers and categorised movements;
+categories are confirmed with `PUT .../statements/categories` or `POST .../statements/confirm-suggestions`.
+
 Suggestions are never final: the computation refuses (409) until every account with a balance has a
 confirmed mapping, and confirmed mappings carry forward to the next year by account code. Linked leases
 replace IFRS 16 depreciation and interest with rentals paid. Working papers for a tax professional, not

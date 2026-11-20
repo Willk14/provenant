@@ -367,3 +367,61 @@ export const checksApi = {
   explain: (id: string, yearEnd: string, key: VarianceCheck["key"], text: string) =>
     api.raw<VarianceCheck[]>(`${checksBase(id, yearEnd)}/${key}/explanation`, json("PUT", { text })),
 };
+
+// --- M-Pesa and bank statements ----------------------------------------------------------------------------
+
+export interface StatementTxn {
+  key: string;
+  source: string;
+  row: number;
+  date: string;
+  reference: string;
+  description: string;
+  counterparty: string;
+  amount: string;
+  category: string | null;
+  status: "suggested" | "confirmed" | "unassigned";
+  rule: string;
+}
+
+export interface StatementsView {
+  statements: {
+    id: string;
+    kind: "mpesa" | "bank";
+    label: string;
+    filename: string;
+    uploaded_by: string;
+    movements: number;
+    money_in: string;
+    money_out: string;
+    first_date: string | null;
+    last_date: string | null;
+  }[];
+  categories: Record<string, string>;
+  transactions: StatementTxn[];
+  totals: Record<string, [string, string]>;
+  duplicates: number;
+  transfers: number;
+  breaks: { source: string; row: number; expected: string; stated: string; gap: string }[];
+  revenue: string | null;
+  confirmed_sales_receipts: string;
+}
+
+const statementsBase = (id: string, yearEnd: string) => `/clients/${id}/years/${yearEnd}/statements`;
+
+export const statementsApi = {
+  get: (id: string, yearEnd: string) => api.raw<StatementsView>(statementsBase(id, yearEnd)),
+  upload: (id: string, yearEnd: string, kind: "mpesa" | "bank", label: string, file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    form.append("kind", kind);
+    form.append("label", label);
+    return api.raw<StatementsView>(statementsBase(id, yearEnd), { method: "POST", body: form });
+  },
+  remove: (id: string, yearEnd: string, statementId: string) =>
+    api.raw<StatementsView>(`${statementsBase(id, yearEnd)}/${statementId}`, { method: "DELETE" }),
+  categorise: (id: string, yearEnd: string, keys: string[], category: string | null) =>
+    api.raw<StatementsView>(`${statementsBase(id, yearEnd)}/categories`, json("PUT", { keys, category })),
+  confirmSuggestions: (id: string, yearEnd: string) =>
+    api.raw<StatementsView>(`${statementsBase(id, yearEnd)}/confirm-suggestions`, { method: "POST" }),
+};

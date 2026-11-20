@@ -351,6 +351,41 @@ class VarianceExplanationRow(Base):
     explained_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
 
 
+class StatementRow(Base):
+    """An M-Pesa or bank statement for a client-year, as uploaded (the validated CSV text is kept)."""
+
+    __tablename__ = "statements"
+    __table_args__ = (UniqueConstraint("client_id", "year_end", "sha256"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(String(64), index=True)
+    client_id: Mapped[str] = mapped_column(ForeignKey("clients.id"), index=True)
+    year_end: Mapped[date] = mapped_column(Date)
+    kind: Mapped[str] = mapped_column(String(16))  # mpesa | bank
+    label: Mapped[str] = mapped_column(String(120))  # e.g. "M-Pesa Till 123456", "Equity Bank 0123"
+    filename: Mapped[str] = mapped_column(String(255))
+    sha256: Mapped[str] = mapped_column(String(64))
+    content: Mapped[str] = mapped_column(Text)
+    uploaded_by: Mapped[str] = mapped_column(String(200))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class StatementCategoryRow(Base):
+    """A person's confirmed category for one statement movement, keyed so it survives re-uploads."""
+
+    __tablename__ = "statement_categories"
+    __table_args__ = (UniqueConstraint("client_id", "year_end", "txn_key"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(String(64), index=True)
+    client_id: Mapped[str] = mapped_column(ForeignKey("clients.id"), index=True)
+    year_end: Mapped[date] = mapped_column(Date)
+    txn_key: Mapped[str] = mapped_column(String(200))
+    category: Mapped[str] = mapped_column(String(32))
+    decided_by: Mapped[str] = mapped_column(String(200))
+    decided_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
 class TrialBalanceRow(Base):
     """A borrower's quarterly trial balance, attached to the credit agreement it is tested against."""
 

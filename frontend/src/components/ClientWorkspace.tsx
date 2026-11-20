@@ -7,12 +7,13 @@ import { ChecksTab } from "@/components/ChecksTab";
 import { EtimsTab } from "@/components/EtimsTab";
 import { MappingTab } from "@/components/MappingTab";
 import { RecordsTab } from "@/components/RecordsTab";
+import { StatementsTab } from "@/components/StatementsTab";
 import { TaxTab } from "@/components/TaxTab";
 import { formatDate } from "@/lib/format";
 import { taxApi, type Client } from "@/lib/tax";
 import { usePersona } from "@/lib/usePersona";
 
-type Tab = "mapping" | "records" | "etims" | "checks" | "tax";
+type Tab = "mapping" | "records" | "statements" | "etims" | "checks" | "tax";
 
 export function ClientWorkspace({ id }: { id: string }) {
   const persona = usePersona();
@@ -90,6 +91,9 @@ export function ClientWorkspace({ id }: { id: string }) {
             <button role="tab" aria-selected={tab === "records"} onClick={() => setTab("records")}>
               Records &amp; inputs
             </button>
+            <button role="tab" aria-selected={tab === "statements"} onClick={() => setTab("statements")}>
+              Statements
+            </button>
             <button role="tab" aria-selected={tab === "etims"} onClick={() => setTab("etims")}>
               eTIMS
             </button>
@@ -102,6 +106,8 @@ export function ClientWorkspace({ id }: { id: string }) {
           </div>
           {tab === "mapping" ? (
             <MappingTab clientId={id} yearEnd={yearEnd} onChanged={() => setVersion((v) => v + 1)} />
+          ) : tab === "statements" ? (
+            <StatementsTab key={yearEnd} clientId={id} yearEnd={yearEnd} />
           ) : tab === "checks" ? (
             <ChecksTab key={yearEnd} clientId={id} yearEnd={yearEnd} />
           ) : tab === "etims" ? (

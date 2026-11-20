@@ -41,6 +41,20 @@ to an eTIMS invoice or explained, and the rest quantified. Done by hand, it take
   reported. A variance is information for the reviewer, never an automatic adjustment.
 - The uploaded CSV text is kept (validated), so a check always re-runs from what was uploaded.
 
+## Addendum: M-Pesa and bank statements
+- **Parsers** (`provenant/tax/statements.py`) for the M-Pesa business portal's CSV export (summary lines above
+  the table are skipped; failed or reversed attempts are dropped) and for bank CSVs with amount, or debit and
+  credit, columns. Several statements per client-year; the validated text is kept.
+- **Mechanical checks first:** each statement's running balance must follow row to row, in whichever order the
+  statement lists them (a break means a missing or altered row); movements repeated across uploads are dropped
+  by M-Pesa receipt or bank reference; an outflow from one of the client's statements and an equal inflow to
+  another within three days is paired as an own-account transfer, so a sweep is not counted as income.
+- **Categories are suggested, then confirmed:** a person's confirmation wins, then transfer pairs, then keyword
+  rules (charges, KRA payments, statutory deductions, salaries, loans, owner, sales receipts, supplier
+  payments); anything else stays unassigned. Confirmed sales receipts are shown beside revenue in the trial
+  balance as information, not an adjustment.
+
 ## Not in this slice
+- PDF statements (CSV exports only) and direct bank or M-Pesa API feeds.
 - Sales-side eTIMS and VAT return reconciliation (output VAT), and input VAT claims against eTIMS.
 - Reading eTIMS or iTax directly (files only); ERP connectors.
