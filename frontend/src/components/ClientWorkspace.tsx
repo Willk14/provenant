@@ -182,7 +182,7 @@ function UploadTrialBalance({ clientId, onUploaded }: { clientId: string; onUplo
       <div style={{ flex: 1 }}>
         <strong>Upload a year&apos;s trial balance</strong>
         <div className="muted" style={{ fontSize: 13 }}>
-          CSV with <span className="mono">code, name, balance</span> (debit positive) or{" "}
+          CSV or Excel with <span className="mono">code, name, balance</span> (debit positive) or{" "}
           <span className="mono">debit, credit</span>. It must balance to the cent. Accounts seen before keep their
           confirmed mapping.
         </div>
@@ -195,7 +195,7 @@ function UploadTrialBalance({ clientId, onUploaded }: { clientId: string; onUplo
         onChange={(e) => setYearEnd(e.target.value)}
         aria-label="Financial year end"
       />
-      <input ref={input} type="file" accept=".csv,text/csv" aria-label="Trial balance CSV" style={{ fontSize: 12 }} />
+      <input ref={input} type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" aria-label="Trial balance CSV" style={{ fontSize: 12 }} />
       <button className="btn" disabled={busy}>
         {busy ? "Uploading…" : "Upload"}
       </button>

@@ -427,12 +427,12 @@ function RegisterCard({ clientId, yearEnd, register, inputs, onInputsChange, onU
     <div className="card record-card">
       <h3>Fixed asset register</h3>
       <p className="term-note">
-        CSV with <span className="mono">asset_code, description, class, acquired, cost</span> and optionally{" "}
+        CSV or Excel with <span className="mono">asset_code, description, class, acquired, cost</span> and optionally{" "}
         <span className="mono">disposed, proceeds</span>. Dates as YYYY-MM-DD. Uploading again replaces it.
       </p>
       <p className="term-note">For each asset held at the start of this year, enter its opening tax residual value from the prior-year approved schedule. New assets start at zero. Save these with the preparer inputs.</p>
       <div className="term-actions">
-        <input ref={file} type="file" accept=".csv,text/csv" aria-label="Fixed asset register CSV" />
+        <input ref={file} type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" aria-label="Fixed asset register CSV" />
         <button className="btn btn-sm" type="button" disabled={busy} onClick={upload}>
           {busy ? "Uploading…" : register ? "Replace" : "Upload"}
         </button>

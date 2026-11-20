@@ -205,7 +205,7 @@ function UploadForm({ busy, onUpload }: {
       </select>
       <input className="input" value={name} aria-label="Account name" onChange={(e) => setName(e.target.value)}
         placeholder={kind === "mpesa" ? "e.g. M-Pesa Till 123456" : "e.g. Equity Bank 0123…"} />
-      <input ref={file} type="file" accept=".csv,text/csv" aria-label="Statement CSV" />
+      <input ref={file} type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" aria-label="Statement CSV" />
       <button className="btn btn-sm" disabled={busy || name.trim().length < 3}>Upload</button>
     </form>
   );

@@ -18,7 +18,7 @@ from provenant.api.db import (
     PurchaseLedgerRow,
     PurchaseLineRow,
 )
-from provenant.api.services import Conflict, Invalid, require
+from provenant.api.services import Conflict, Invalid, as_csv, require
 from provenant.api.tax import ANY_ROLE, CENT, get_client, get_trial_balance, mapped_accounts
 from provenant.tax import etims
 from provenant.tax.mapping import TaxTreatment
@@ -50,7 +50,7 @@ def upload_ledger(s: Session, p: Principal, client_id: str, year_end: date, file
     require(p, *ANY_ROLE)
     get_trial_balance(s, p.tenant_id, client_id, year_end)
     try:
-        lines = etims.read_ledger(data)
+        lines = etims.read_ledger(as_csv(data, filename))
     except ValueError as exc:
         raise Invalid(str(exc)) from exc
     ledger = _replace(s, PurchaseLedgerRow, PurchaseLineRow, "ledger_id", p, client_id, year_end, filename, data)
@@ -67,7 +67,7 @@ def upload_invoices(s: Session, p: Principal, client_id: str, year_end: date, fi
     require(p, *ANY_ROLE)
     get_trial_balance(s, p.tenant_id, client_id, year_end)
     try:
-        invoices = etims.read_etims(data)
+        invoices = etims.read_etims(as_csv(data, filename))
     except ValueError as exc:
         raise Invalid(str(exc)) from exc
     export = _replace(s, EtimsExportRow, EtimsInvoiceRow, "export_id", p, client_id, year_end, filename, data)

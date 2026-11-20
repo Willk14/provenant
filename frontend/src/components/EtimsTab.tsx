@@ -184,10 +184,10 @@ function Upload({ title, hint, current, onUpload, busy }: {
   return (
     <div className="field">
       <span>{title}</span>
-      <div className="faint" style={{ fontSize: 11 }}>CSV: {hint}</div>
+      <div className="faint" style={{ fontSize: 11 }}>CSV or Excel: {hint}</div>
       {current && <div style={{ fontSize: 12 }}>{current.filename} · {current.uploaded_by}</div>}
       <div className="term-actions" style={{ marginTop: 4 }}>
-        <input ref={input} type="file" accept=".csv,text/csv" aria-label={`${title} CSV`} />
+        <input ref={input} type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" aria-label={`${title} CSV`} />
         <button className="btn btn-sm" type="button" disabled={busy}
           onClick={() => {
             const file = input.current?.files?.[0];

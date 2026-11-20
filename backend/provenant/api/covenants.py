@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from provenant.api.auth import PARTNER, PREPARER, REVIEWER, Principal
 from provenant.api.db import Document, FieldRow, TrialBalanceLineRow, TrialBalanceRow
-from provenant.api.services import Conflict, Forbidden, Invalid, NotFound, get_document, list_fields, require
+from provenant.api.services import Conflict, Forbidden, Invalid, NotFound, as_csv, get_document, list_fields, require
 from provenant.core import tb_csv
 from provenant.covenants import Category, TBLine, Terms, TestDate, TrialBalance, run
 from provenant.covenants.engine import month_end
@@ -54,7 +54,7 @@ def upload_trial_balance(
 ) -> TrialBalanceRow:
     require(p, PREPARER, REVIEWER, PARTNER)
     doc = _credit_agreement(s, p.tenant_id, document_id)
-    tb = parse_trial_balance(data, period_end)
+    tb = parse_trial_balance(as_csv(data, filename), period_end)
     row = TrialBalanceRow(
         tenant_id=p.tenant_id,
         document_id=doc.id,

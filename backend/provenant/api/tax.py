@@ -24,7 +24,7 @@ from provenant.api.db import (
     TaxInputsRow,
     TaxApprovalRow,
 )
-from provenant.api.services import MAX_UPLOAD_BYTES, Conflict, Invalid, NotFound, get_document, lease_schedule, require
+from provenant.api.services import MAX_UPLOAD_BYTES, Conflict, Invalid, NotFound, as_csv, get_document, lease_schedule, require
 from provenant.api.storage import BlobStore
 from provenant.core import tb_csv
 from provenant.core.money import ZERO, to_decimal
@@ -101,7 +101,7 @@ def upload_trial_balance(
     if year_end != month_end(year_end.year, year_end.month):
         raise Invalid("the financial year end must be a month-end")
     try:
-        rows = tb_csv.read(data)
+        rows = tb_csv.read(as_csv(data, filename))
     except ValueError as exc:
         raise Invalid(str(exc)) from exc
     tb = ClientTrialBalanceRow(
@@ -600,7 +600,7 @@ def upload_register(
     require(p, *ANY_ROLE)
     get_trial_balance(s, p.tenant_id, client_id, year_end)
     try:
-        assets = fa_register.read(data)
+        assets = fa_register.read(as_csv(data, filename))
         fa_register.summarise(assets, year_start(year_end), year_end)
     except ValueError as exc:
         raise Invalid(str(exc)) from exc

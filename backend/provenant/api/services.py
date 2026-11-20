@@ -7,6 +7,7 @@ from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
+from provenant.core import spreadsheet
 from provenant.api.auth import PARTNER, PREPARER, REVIEWER, Principal
 from provenant.api.db import Document, FieldRow, Job, ReviewEventRow, tenant_session
 from provenant.api.storage import BlobStore
@@ -66,6 +67,14 @@ class Invalid(Exception):
 
 class Forbidden(Exception):
     pass
+
+
+def as_csv(data: bytes, filename: str) -> bytes:
+    """An uploaded table as CSV: an Excel workbook's first sheet is converted, CSV passes through (ADR 0010)."""
+    try:
+        return spreadsheet.to_csv(data, filename)
+    except spreadsheet.SpreadsheetError as exc:
+        raise Invalid(str(exc)) from exc
 
 
 def require(p: Principal, *roles: str) -> None:

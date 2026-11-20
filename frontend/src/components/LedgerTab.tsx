@@ -45,7 +45,7 @@ export function LedgerTab({ clientId, yearEnd }: { clientId: string; yearEnd: st
       <div className="card record-card">
         <h3>General ledger: journal entry tests</h3>
         <p className="term-note">
-          Upload the year&apos;s general ledger (CSV: entry_id, date, account_code, and amount or debit and credit;
+          Upload the year&apos;s general ledger (CSV or Excel: entry_id, date, account_code, and amount or debit and credit;
           optional posted_at, description, user, source). Every test runs over the whole population, not a sample. A
           flag selects an entry for review; it does not say the entry is wrong.
         </p>
@@ -170,7 +170,7 @@ function UploadForm({ busy, onUpload }: { busy: boolean; onUpload: (file: File, 
       const f = file.current?.files?.[0];
       if (f) void onUpload(f, limit).then(() => { if (file.current) file.current.value = ""; });
     }}>
-      <input ref={file} type="file" accept=".csv,text/csv" aria-label="General ledger CSV" />
+      <input ref={file} type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" aria-label="General ledger CSV" />
       <input className="input" value={limit} onChange={(e) => setLimit(e.target.value)} style={{ width: 170 }}
         placeholder="Approval limit (optional)" aria-label="Approval limit" />
       <button className="btn btn-sm" disabled={busy}>{busy ? "Working…" : "Upload and test"}</button>

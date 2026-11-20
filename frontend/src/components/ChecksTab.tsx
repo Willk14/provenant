@@ -118,8 +118,8 @@ function CheckCard({ check, onUpload, onExplain }: {
         {pill && <span className={`pill ${pill.cls}`}>{pill.label}</span>}
       </div>
       <div className="term-actions">
-        <span className="faint" style={{ fontSize: 11 }}>CSV: {meta.columns}</span>
-        <input ref={file} type="file" accept=".csv,text/csv" aria-label={`${meta.title} CSV`} />
+        <span className="faint" style={{ fontSize: 11 }}>CSV or Excel: {meta.columns}</span>
+        <input ref={file} type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" aria-label={`${meta.title} CSV`} />
         <button
           className="btn btn-sm"
           type="button"

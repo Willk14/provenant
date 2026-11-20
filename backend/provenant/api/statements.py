@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from provenant.api.auth import Principal
 from provenant.api.db import StatementCategoryRow, StatementRow
-from provenant.api.services import Conflict, Invalid, NotFound, require
+from provenant.api.services import Conflict, Invalid, NotFound, as_csv, require
 from provenant.api.tax import ANY_ROLE, get_client, lead_schedule, mapped_accounts
 from provenant.tax import statements as st
 
@@ -34,13 +34,14 @@ def upload(s: Session, p: Principal, client_id: str, year_end: date, kind: str, 
     label = " ".join(label.split())[:120]
     if len(label) < 3:
         raise Invalid("name the account, e.g. 'M-Pesa Till 123456' or 'Equity Bank 0123'")
+    table = as_csv(data, filename)
     try:
-        READERS[kind](data, label)
+        READERS[kind](table, label)
     except ValueError as exc:
         raise Invalid(str(exc)) from exc
     row = StatementRow(tenant_id=p.tenant_id, client_id=client_id, year_end=year_end, kind=kind, label=label,
                        filename=filename[:255] or f"{kind}.csv", sha256=hashlib.sha256(data).hexdigest(),
-                       content=data.decode("utf-8-sig"), uploaded_by=p.user)
+                       content=table.decode("utf-8-sig"), uploaded_by=p.user)
     s.add(row)
     try:
         s.commit()

@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from provenant.api.auth import Principal
 from provenant.api.db import ComplianceReturnRow, PurchaseLedgerRow, PurchaseLineRow, VarianceExplanationRow
-from provenant.api.services import Invalid, require
+from provenant.api.services import Invalid, as_csv, require
 from provenant.api.tax import ANY_ROLE, CENT, get_client, get_trial_balance, lead_schedule, mapped_accounts, year_start
 from provenant.tax import variance
 
@@ -34,8 +34,9 @@ def upload(s: Session, p: Principal, client_id: str, year_end: date, kind: str, 
     if kind not in READERS:
         raise Invalid(f"kind must be one of {', '.join(READERS)}")
     get_trial_balance(s, p.tenant_id, client_id, year_end)
+    table = as_csv(data, filename)
     try:
-        READERS[kind](data)
+        READERS[kind](table)
     except ValueError as exc:
         raise Invalid(str(exc)) from exc
     row = _return(s, p.tenant_id, client_id, year_end, kind)
@@ -43,7 +44,7 @@ def upload(s: Session, p: Principal, client_id: str, year_end: date, kind: str, 
         row = ComplianceReturnRow(tenant_id=p.tenant_id, client_id=client_id, year_end=year_end, kind=kind)
         s.add(row)
     row.filename, row.sha256 = filename[:255] or f"{kind}.csv", hashlib.sha256(data).hexdigest()
-    row.content, row.uploaded_by = data.decode("utf-8-sig"), p.user
+    row.content, row.uploaded_by = table.decode("utf-8-sig"), p.user
     s.commit()
     return row
 

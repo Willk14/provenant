@@ -81,7 +81,7 @@ push only when the owner asks.
    now require a matching register and reviewer-approved computation. The current fixed-asset-register path
    uses per-asset opening residual values and disposal outcomes; class-only
    inputs remain available when no matching register is supplied. Each new rule needs a hand-worked test.
-6b. **General ledger analytics (ADR 0009), first slice done:** next are Excel/ERP extracts, fuzzy duplicates and
+6b. **General ledger analytics (ADR 0009), first slice done** (Excel uploads everywhere: ADR 0010): next are ERP extracts, fuzzy duplicates and
    ledger exceptions in the board memo; DuckDB-WASM in the browser only after the server path is proven.
 6a. **Compliance checks (ADR 0007), in progress:** eTIMS purchase reconciliation, variance checks, M-Pesa/bank
    statement parsers and the board tax memo (ADR 0008) are done.

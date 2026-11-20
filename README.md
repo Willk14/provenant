@@ -121,6 +121,8 @@ Parquet; `GET .../ledger` runs the journal entry tests over the whole population
 or loss accounts to the trial balance; `PUT .../ledger/exceptions` clears (a reviewer who did not upload it) or
 escalates a flagged entry; `GET .../ledger/entries/{id}` returns its lines.
 
+Every upload that takes a CSV also takes the same table as an Excel workbook (.xlsx, first sheet; ADR 0010).
+
 Suggestions are never final: the computation refuses (409) until every account with a balance has a
 confirmed mapping, and confirmed mappings carry forward to the next year by account code. Linked leases
 replace IFRS 16 depreciation and interest with rentals paid. Working papers for a tax professional, not

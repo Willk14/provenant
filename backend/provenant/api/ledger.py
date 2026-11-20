@@ -17,6 +17,7 @@ from provenant.api.db import GeneralLedgerRow, JournalExceptionRow
 from provenant.api.services import Forbidden, Invalid, NotFound, require
 from provenant.api.storage import BlobStore
 from provenant.api.tax import ANY_ROLE, CENT, get_client, get_trial_balance, mapped_accounts, year_start
+from provenant.core import spreadsheet
 from provenant.core.money import to_decimal
 from provenant.tax.mapping import FS_LINES, Statement
 
@@ -58,8 +59,16 @@ def upload(s: Session, p: Principal, store: BlobStore, client_id: str, year_end:
                     raise Invalid(f"the general ledger exceeds {MAX_BYTES // (1024 * 1024)} MB")
                 digest.update(chunk)
                 out.write(chunk)
+        table_path = csv_path
+        with csv_path.open("rb") as head:
+            if spreadsheet.is_xlsx(head.read(4)):  # an Excel workbook: stream its first sheet to CSV
+                table_path = Path(tmp) / "gl-table.csv"
+                try:
+                    spreadsheet.file_to_csv(csv_path, table_path)
+                except spreadsheet.SpreadsheetError as exc:
+                    raise Invalid(str(exc)) from exc
         try:
-            lines = journal.load(csv_path, parquet_path)
+            lines = journal.load(table_path, parquet_path)
         except journal.LedgerError as exc:
             raise Invalid(str(exc)) from exc
         parquet_sha = hashlib.sha256(parquet_path.read_bytes()).hexdigest()  # compressed: small even for big ledgers

@@ -348,13 +348,13 @@ function TrialBalances({
           onChange={(e) => setPeriodEnd(e.target.value)}
           aria-label="Quarter-end date"
         />
-        <input ref={input} type="file" accept=".csv,text/csv" aria-label="Trial balance CSV" />
+        <input ref={input} type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" aria-label="Trial balance CSV" />
         <button className="btn btn-sm" disabled={busy}>
           {busy ? "Uploading…" : "Upload trial balance"}
         </button>
       </form>
       <div className="term-note">
-        CSV with <span className="mono">code, name, category, balance</span> (debit positive) or{" "}
+        CSV or Excel with <span className="mono">code, name, category, balance</span> (debit positive) or{" "}
         <span className="mono">debit, credit</span>. Categories: cash, borrowings, lease_liabilities, revenue,
         operating_expenses, depreciation_amortisation, interest_expense, other. It must balance to the cent. Each
         quarter holds that quarter&apos;s P&amp;L only.
