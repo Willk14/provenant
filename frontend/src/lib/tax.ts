@@ -331,3 +331,39 @@ export const etimsApi = {
   apply: (id: string, yearEnd: string, on: boolean) =>
     api.raw<EtimsReconciliation>(`${etimsBase(id, yearEnd)}/apply`, json("POST", { apply: on })),
 };
+
+// --- Variance checks ---------------------------------------------------------------------------------------
+
+export interface VarianceCheck {
+  key: "vat_turnover" | "paye" | "wht";
+  kind: "vat" | "paye" | "wht";
+  filename: string | null;
+  uploaded_by: string | null;
+  title: string | null;
+  book_label: string | null;
+  declared_label: string | null;
+  book: string | null;
+  declared: string | null;
+  variance: string | null;
+  tolerance: string | null;
+  needs_explanation: boolean;
+  rows: { label: string; book: string; declared: string; variance: string }[];
+  notes: string[];
+  book_accounts: string[];
+  explanation: string | null;
+  explained_by: string | null;
+  explained_at: string | null;
+}
+
+const checksBase = (id: string, yearEnd: string) => `/clients/${id}/years/${yearEnd}/checks`;
+
+export const checksApi = {
+  list: (id: string, yearEnd: string) => api.raw<VarianceCheck[]>(checksBase(id, yearEnd)),
+  upload: (id: string, yearEnd: string, kind: VarianceCheck["kind"], file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return api.raw<VarianceCheck[]>(`${checksBase(id, yearEnd)}/returns/${kind}`, { method: "POST", body: form });
+  },
+  explain: (id: string, yearEnd: string, key: VarianceCheck["key"], text: string) =>
+    api.raw<VarianceCheck[]>(`${checksBase(id, yearEnd)}/${key}/explanation`, json("PUT", { text })),
+};

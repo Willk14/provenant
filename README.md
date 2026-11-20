@@ -104,6 +104,10 @@ eTIMS reconciliation (ADR 0007): upload the purchase ledger and the eTIMS purcha
 (`POST .../etims/ledger`, `POST .../etims/invoices`), review matches (`GET .../etims`), decide exemptions or
 matches (`PUT .../etims/decisions`) and apply the unsupported total to the computation (`POST .../etims/apply`).
 
+Compliance checks (ADR 0007): upload VAT returns, PAYE returns and WHT certificates
+(`POST .../checks/returns/{vat|paye|wht}`); `GET .../checks` compares each with the books, and variances above
+tolerance take an explanation (`PUT .../checks/{key}/explanation`).
+
 Suggestions are never final: the computation refuses (409) until every account with a balance has a
 confirmed mapping, and confirmed mappings carry forward to the next year by account code. Linked leases
 replace IFRS 16 depreciation and interest with rentals paid. Working papers for a tax professional, not

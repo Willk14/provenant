@@ -318,6 +318,39 @@ class EtimsDecisionRow(Base):
     decided_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
 
 
+class ComplianceReturnRow(Base):
+    """A return the client filed, as a CSV (VAT returns, PAYE returns, WHT certificates), per client-year.
+    The validated text is kept, so a check can always be re-run from what was uploaded."""
+
+    __tablename__ = "compliance_returns"
+    __table_args__ = (UniqueConstraint("client_id", "year_end", "kind"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(String(64), index=True)
+    client_id: Mapped[str] = mapped_column(ForeignKey("clients.id"), index=True)
+    year_end: Mapped[date] = mapped_column(Date)
+    kind: Mapped[str] = mapped_column(String(32))  # vat | paye | wht
+    filename: Mapped[str] = mapped_column(String(255))
+    sha256: Mapped[str] = mapped_column(String(64))
+    content: Mapped[str] = mapped_column(Text)
+    uploaded_by: Mapped[str] = mapped_column(String(200))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class VarianceExplanationRow(Base):
+    __tablename__ = "variance_explanations"
+    __table_args__ = (UniqueConstraint("client_id", "year_end", "check_key"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(String(64), index=True)
+    client_id: Mapped[str] = mapped_column(ForeignKey("clients.id"), index=True)
+    year_end: Mapped[date] = mapped_column(Date)
+    check_key: Mapped[str] = mapped_column(String(32))
+    text: Mapped[str] = mapped_column(Text)
+    explained_by: Mapped[str] = mapped_column(String(200))
+    explained_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
 class TrialBalanceRow(Base):
     """A borrower's quarterly trial balance, attached to the credit agreement it is tested against."""
 

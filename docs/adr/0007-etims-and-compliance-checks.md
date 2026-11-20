@@ -30,8 +30,17 @@ to an eTIMS invoice or explained, and the rest quantified. Done by hand, it take
 - **Invoices in eTIMS but not in the ledger** are listed: unrecorded purchases, or invoices issued to the client
   in error.
 
+## Addendum: cross-return variance checks
+- **Three checks** (`provenant/tax/variance.py`), each book against declared: VAT turnover (monthly VAT
+  returns: standard-rated, zero-rated and exempt sales) against revenue in the mapped trial balance; PAYE gross
+  pay (monthly P10) against employee costs; and the gross on withholding tax certificates the client issued,
+  per supplier PIN, against that supplier's payments in the purchase ledger. Suppliers without certificates are
+  not listed: whether a payment attracts withholding depends on its nature, which the ledger does not record.
+- **Tolerance** is the larger of 1,000 and 0.5% of the book figure (per supplier for WHT). Anything above it
+  needs a person's explanation, recorded with who wrote it; missing months and returns outside the year are
+  reported. A variance is information for the reviewer, never an automatic adjustment.
+- The uploaded CSV text is kept (validated), so a check always re-runs from what was uploaded.
+
 ## Not in this slice
 - Sales-side eTIMS and VAT return reconciliation (output VAT), and input VAT claims against eTIMS.
 - Reading eTIMS or iTax directly (files only); ERP connectors.
-- Cross-return variance checks (VAT turnover vs revenue, PAYE vs staff costs, WHT certificates vs payments):
-  next.

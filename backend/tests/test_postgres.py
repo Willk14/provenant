@@ -112,3 +112,19 @@ def test_etims_records_are_tenant_isolated(client, app, database_url):
     with tenant_session(factory, "firm-b") as s:
         for table in ("purchase_ledgers", "purchase_lines", "etims_exports", "etims_invoices", "etims_decisions"):
             assert s.scalar(text(f"select count(*) from {table}")) == 0
+
+
+def test_variance_records_are_tenant_isolated(client, app, database_url):
+    from tests.test_etims_api import setup, upload
+    from tests.test_variance_api import VAT
+
+    _, year = setup(client)
+    assert upload(client, f"{year}/checks/returns/vat", VAT.encode(), "vat.csv").status_code == 201
+    client.put(f"{year}/checks/vat_turnover/explanation", headers={"X-Tenant-Id": "firm-a", "X-User": "pat@firm-a",
+               "X-Roles": "preparer"}, json={"text": "timing difference on the December invoice"})
+    factory = make_sessionmaker(make_engine(database_url))
+    with tenant_session(factory, "firm-a") as s:
+        assert s.scalar(text("select count(*) from compliance_returns")) == 1
+    with tenant_session(factory, "firm-b") as s:
+        for table in ("compliance_returns", "variance_explanations"):
+            assert s.scalar(text(f"select count(*) from {table}")) == 0

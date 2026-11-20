@@ -234,6 +234,24 @@ def main(base: str) -> None:
     print(f"{r.status_code} confirmed {r.json()['confirmed']} suggested mappings (Sundry 7 is left for a person)")
     seed_tax_records(base, cid)
     seed_etims(base, cid)
+    seed_returns(base, cid)
+
+
+# Kilima's FY2026 VAT and PAYE returns, for the Checks tab. VAT declares 1,148m against 1,160m revenue (a
+# December invoice declared in January); PAYE gross pay 431m against 449.6m staff costs (employer NSSF/SHIF).
+VAT_RETURNS = ("period,standard_rated_sales,zero_rated_sales,exempt_sales\n" + "".join(
+    f"2026-{m:02d},{94_666_667 if m < 12 else 94_666_663},1000000,0\n" for m in range(1, 13))).encode()
+PAYE_RETURNS = ("period,gross_pay,paye\n" + "".join(
+    f"2026-{m:02d},{35_916_667 if m < 12 else 35_916_663},9850000\n" for m in range(1, 13))).encode()
+
+
+def seed_returns(base: str, cid: str) -> None:
+    year = f"{base}/clients/{cid}/years/2026-12-31/checks/returns"
+    for kind, name, data in (("vat", "kilima-vat-returns-fy2026.csv", VAT_RETURNS),
+                             ("paye", "kilima-p10-fy2026.csv", PAYE_RETURNS)):
+        r = httpx.post(f"{year}/{kind}", headers=PAT, files={"file": (name, data, "text/csv")})
+        r.raise_for_status()
+    print(f"{r.status_code} returns: VAT and PAYE for the compliance checks")
 
 
 FIXED_ASSET_REGISTER = b"""asset_code,description,class,acquired,cost,disposed,proceeds
