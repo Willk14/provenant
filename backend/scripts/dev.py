@@ -27,13 +27,30 @@ os.environ["PROVENANT_DEV_AUTH"] = "1"
 os.environ["PROVENANT_INLINE_WORKER"] = "1"
 
 
+def start_postgres(pgserver, attempts: int = 36):
+    """Start or attach to the embedded server. After the machine sleeps or restarts, Postgres replays its log
+    before accepting connections, which can outlast pgserver's 10-second start timeout: keep trying for up to
+    three minutes instead of failing (the server keeps recovering in the background meanwhile)."""
+    import subprocess
+    import time
+
+    for attempt in range(1, attempts + 1):
+        try:
+            return pgserver.get_server(str(PG_DIR), cleanup_mode=None)  # attaches if it is already running
+        except (subprocess.TimeoutExpired, subprocess.CalledProcessError) as exc:
+            if attempt == attempts:
+                raise RuntimeError(f"embedded Postgres did not start; see {PG_DIR / 'log'}") from exc
+            print(f"Postgres is still starting (recovering after a restart?); retrying ({attempt}/{attempts})")
+            time.sleep(5)
+
+
 def postgres(reset: bool) -> tuple[str, str]:
     """(owner URL for migrations, app-role URL for the API), creating the role and database if needed."""
     import pgserver
     import psycopg
     from sqlalchemy.engine import make_url
 
-    server = pgserver.get_server(str(PG_DIR), cleanup_mode=None)  # attaches if it is already running
+    server = start_postgres(pgserver)
     admin = make_url(server.get_uri())
     with psycopg.connect(admin.set(drivername="postgresql").render_as_string(hide_password=False),
                          autocommit=True) as c:
