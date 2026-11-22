@@ -1620,3 +1620,23 @@ button.chip {
     grid-template-columns: 1fr;
   }
 }
+
+/* One upload box for every kind of document (Documents page) */
+.upload-box {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.upload-box .dropzone {
+  margin-bottom: 0;
+  flex-wrap: wrap;
+}
+
+.upload-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 0 12px;
+  padding: 0 4px;
+}

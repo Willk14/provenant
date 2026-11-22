@@ -15,13 +15,14 @@ import { formatDate } from "@/lib/format";
 import { taxApi, type Client } from "@/lib/tax";
 import { usePersona } from "@/lib/usePersona";
 
-type Tab = "mapping" | "records" | "statements" | "ledger" | "etims" | "checks" | "tax" | "memo";
+const TABS = ["mapping", "records", "statements", "ledger", "etims", "checks", "tax", "memo"] as const;
+type Tab = (typeof TABS)[number];
 
-export function ClientWorkspace({ id }: { id: string }) {
+export function ClientWorkspace({ id, initialTab, initialYear }: { id: string; initialTab?: string; initialYear?: string }) {
   const persona = usePersona();
   const [client, setClient] = useState<Client | null>(null);
   const [yearEnd, setYearEnd] = useState<string | null>(null);
-  const [tab, setTab] = useState<Tab>("mapping");
+  const [tab, setTab] = useState<Tab>(TABS.includes(initialTab as Tab) ? (initialTab as Tab) : "mapping");
   const [error, setError] = useState<string | null>(null);
   const [version, setVersion] = useState(0); // bumps when mappings change, so the tax tab recomputes
 
@@ -29,12 +30,13 @@ export function ClientWorkspace({ id }: { id: string }) {
     try {
       const found = (await taxApi.clients()).find((c) => c.id === id) ?? null;
       setClient(found);
-      setYearEnd((current) => current ?? found?.year_ends[0] ?? null);
+      setYearEnd((current) =>
+        current ?? (initialYear && found?.year_ends.includes(initialYear) ? initialYear : found?.year_ends[0] ?? null));
       if (!found) setError("Client not found.");
     } catch (e) {
       setError((e as Error).message);
     }
-  }, [id]);
+  }, [id, initialYear]);
 
   useEffect(() => {
     if (persona) void load();

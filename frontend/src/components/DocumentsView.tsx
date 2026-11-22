@@ -1,9 +1,10 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { DocumentStatusPill } from "@/components/StatusPill";
+import { UploadBox } from "@/components/UploadBox";
 import { api } from "@/lib/api";
 import { formatBytes, formatDate } from "@/lib/format";
 import type { DocumentSummary } from "@/lib/types";
@@ -29,10 +30,6 @@ export function DocumentsView() {
   const persona = usePersona();
   const [docs, setDocs] = useState<DocumentSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const [over, setOver] = useState(false);
-  const [kind, setKind] = useState<"lease" | "credit_agreement">("lease");
-  const input = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
     try {
@@ -55,79 +52,22 @@ export function DocumentsView() {
     return () => clearInterval(timer);
   }, [busy, load]);
 
-  async function upload(files: FileList | null) {
-    const pdfs = Array.from(files ?? []).filter((f) => f.type === "application/pdf" || f.name.endsWith(".pdf"));
-    if (!pdfs.length) {
-      setError("Choose a PDF file.");
-      return;
-    }
-    setUploading(true);
-    try {
-      for (const file of pdfs) await api.upload(file, undefined, kind);
-      await load();
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setUploading(false);
-      if (input.current) input.current.value = "";
-    }
-  }
-
   return (
     <main className="page">
       <div className="page-head">
         <div>
           <h1>Documents</h1>
           <p className="muted">
-            Leases and credit agreements you upload are read automatically. Every figure keeps a link to where it came
-            from.
+            Upload contracts and client records here: leases and credit agreements are read automatically, client
+            records go to the client&apos;s year. Every figure keeps a link to where it came from.
           </p>
         </div>
       </div>
 
-      <div
-        className="dropzone"
-        data-over={over}
-        onDragOver={(e) => {
-          e.preventDefault();
-          setOver(true);
-        }}
-        onDragLeave={() => setOver(false)}
-        onDrop={(e) => {
-          e.preventDefault();
-          setOver(false);
-          void upload(e.dataTransfer.files);
-        }}
-      >
-        <div className="dropzone-icon" aria-hidden>
-          ⤒
-        </div>
-        <div style={{ flex: 1 }}>
-          <strong>Drop {kind === "lease" ? "lease" : "credit agreement"} PDFs here</strong>
-          <div className="muted" style={{ fontSize: 13 }}>
-            Uploading the same file twice opens the existing document. Max 25 MB. Amendments are uploaded from their
-            lease.
-          </div>
-        </div>
-        <div className="segmented" role="group" aria-label="Upload as">
-          {(["lease", "credit_agreement"] as const).map((k) => (
-            <button key={k} type="button" aria-pressed={kind === k} onClick={() => setKind(k)}>
-              {k === "lease" ? "Lease" : "Credit agreement"}
-            </button>
-          ))}
-        </div>
-        <input
-          ref={input}
-          type="file"
-          accept="application/pdf"
-          multiple
-          hidden
-          onChange={(e) => void upload(e.target.files)}
-        />
-        <button className="btn btn-primary" disabled={uploading} onClick={() => input.current?.click()}>
-          {uploading ? "Uploading…" : "Choose files"}
-        </button>
-      </div>
+      <UploadBox
+        agreements={(docs ?? []).filter((d) => d.kind === "credit_agreement")}
+        onContractsChanged={load}
+      />
 
       {error && <div className="error-banner">{error}</div>}
 
