@@ -62,12 +62,14 @@ jobs:
         run: |
           docker compose up --detach --build 2>&1 | tee compose-up.log
           test "${PIPESTATUS[0]}" -eq 0
-          # The migration runs once and exits, so wait on the API rather than on every container.
+          # The migration runs once and exits, so wait on what serves: the API, then the web app (which compose
+          # starts only once the API is healthy).
           for i in $(seq 1 60); do
-            curl --fail --silent http://localhost:8000/health > /dev/null && exit 0
+            curl --fail --silent http://localhost:8000/health > /dev/null \
+              && curl --fail --silent http://localhost:3100/ > /dev/null && exit 0
             sleep 5
           done
-          echo "the API did not become healthy within 5 minutes"; exit 1
+          echo "the API and web app were not both up within 5 minutes"; exit 1
       - name: Smoke test the API (dev auth, as compose runs it)
         env:
           SMOKE_DEV_AUTH: "1"
