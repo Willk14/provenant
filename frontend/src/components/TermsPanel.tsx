@@ -46,12 +46,17 @@ const PLACEHOLDERS: Record<FieldName, string> = {
   first_test_date: "YYYY-MM-DD (a quarter-end)",
   reporting_days: "Days, e.g. 45",
   cure_period_days: "Days, e.g. 20",
+  cure_day_basis: "calendar or business",
+  cure_runs_from: "due date or delivery",
+  springing_usage_percent: "Percentage, e.g. 35%",
+  revolver_commitment: "Amount, e.g. 100,000,000",
 };
 
 export function displayValue(field: Pick<Field, "name" | "value">): string {
   switch (field.name) {
     case "monthly_payment":
     case "min_liquidity":
+    case "revolver_commitment":
       return /^[\d,]+(\.\d+)?$/.test(field.value) ? formatAmount(field.value.replace(/,/g, "")) : field.value;
     case "rent_steps":
       return field.value
@@ -429,6 +434,10 @@ const INPUT_NOTES: Partial<Record<FieldName, string>> = {
   expansion_treatment:
     "If this amendment adds space, decide under IFRS 16.44: a separate lease when the added rent is commensurate with " +
     "its stand-alone price, otherwise a modification. Its monthly payment is then the added space's own rent.",
+  cure_day_basis: "Whether the agreement counts the equity cure window in calendar or business days.",
+  cure_runs_from: "Whether the cure window runs from the certificate's due date or from its delivery.",
+  springing_usage_percent: "If leverage is tested only when the revolver is drawn above a share of the commitment, enter that share.",
+  revolver_commitment: "The total revolving commitment the springing percentage is measured against.",
 };
 
 /** A term the contract does not state (e.g. the incremental borrowing rate): value plus how it was set. */

@@ -15,7 +15,11 @@ export type FieldName =
   | "min_liquidity"
   | "first_test_date"
   | "reporting_days"
-  | "cure_period_days";
+  | "cure_period_days"
+  | "cure_day_basis"
+  | "cure_runs_from"
+  | "springing_usage_percent"
+  | "revolver_commitment";
 
 export type FieldStatus = "proposed" | "auto_accepted" | "needs_review" | "approved" | "corrected" | "rejected";
 
@@ -41,7 +45,10 @@ export interface Field {
 }
 
 /** Terms a preparer may enter with a basis instead of a location: contracts rarely state them (ADR 0005). */
-export const INPUT_FIELDS: ReadonlySet<FieldName> = new Set<FieldName>(["annual_discount_rate", "expansion_treatment"]);
+export const INPUT_FIELDS: ReadonlySet<FieldName> = new Set<FieldName>([
+  "annual_discount_rate", "expansion_treatment", "cure_day_basis", "cure_runs_from", "springing_usage_percent",
+  "revolver_commitment",
+]);
 /** Judgements no contract states: entered as inputs only, never marked on the PDF. */
 export const INPUT_ONLY_FIELDS: ReadonlySet<FieldName> = new Set<FieldName>(["expansion_treatment"]);
 
@@ -173,9 +180,16 @@ export const KINDS: Record<DocumentKind, KindSpec> = {
       "first_test_date",
       "reporting_days",
       "cure_period_days",
+      "cure_day_basis",
+      "cure_runs_from",
+      "springing_usage_percent",
+      "revolver_commitment",
     ],
     required: new Set(["first_test_date", "reporting_days"]),
-    judgement: new Set(["max_leverage_ratio", "min_interest_cover", "min_liquidity", "cure_period_days"]),
+    judgement: new Set([
+      "max_leverage_ratio", "min_interest_cover", "min_liquidity", "cure_period_days", "cure_day_basis",
+      "cure_runs_from", "springing_usage_percent", "revolver_commitment",
+    ]),
     labels: {},
   },
 };
@@ -198,6 +212,10 @@ export const FIELD_LABELS: Record<FieldName, string> = {
   first_test_date: "First test date",
   reporting_days: "Compliance certificate due (days after quarter-end)",
   cure_period_days: "Equity cure window (days)",
+  cure_day_basis: "Cure days counted as",
+  cure_runs_from: "Cure window runs from",
+  springing_usage_percent: "Leverage tested above revolver usage of",
+  revolver_commitment: "Revolver commitment",
 };
 
 export type CovenantKind = "leverage" | "interest_cover" | "min_liquidity";
@@ -227,7 +245,7 @@ export interface CovenantResult {
   kind: CovenantKind;
   field_id: string;
   threshold: string;
-  status: "pass" | "warning" | "breach";
+  status: "pass" | "warning" | "breach" | "not_tested" | "undetermined";
   value: string | null;
   headroom: string | null;
   workings: { label: string; amount: string }[];
@@ -238,6 +256,7 @@ export interface CovenantTestDate {
   period_end: string;
   certificate_due: string;
   cure_deadline: string | null;
+  cure_pending: boolean;
   status: "tested" | "awaiting" | "overdue";
   missing: string | null;
   trial_balance_ids: string[];
@@ -252,10 +271,30 @@ export interface CovenantAlert {
 
 export interface CovenantRun {
   as_of: string;
-  terms: { first_test_date: string; reporting_days: number; cure_days: number | null; warning_headroom: string };
+  terms: {
+    first_test_date: string;
+    reporting_days: number;
+    cure_days: number | null;
+    warning_headroom: string;
+    cure_day_basis: "calendar" | "business";
+    cure_runs_from: "due date" | "delivery";
+    springing_usage: string | null;
+    revolver_commitment: string | null;
+  };
   test_dates: CovenantTestDate[];
   alerts: CovenantAlert[];
   inputs: Field[];
+  period_inputs: CovenantPeriodInput[];
+}
+
+/** Facts of a test date no trial balance holds; they count only once a second person confirms them. */
+export interface CovenantPeriodInput {
+  period_end: string;
+  revolver_drawn: string | null;
+  delivered_on: string | null;
+  basis: string;
+  entered_by: string;
+  confirmed_by: string | null;
 }
 
 export function fieldLabel(name: FieldName, kind: DocumentKind = "lease"): string {

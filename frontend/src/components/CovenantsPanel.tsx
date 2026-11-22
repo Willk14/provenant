@@ -8,6 +8,7 @@ import {
   COVENANT_FIELD,
   COVENANT_LABELS,
   type CovenantKind,
+  type CovenantPeriodInput,
   type CovenantResult,
   type CovenantRun,
   type CovenantTestDate,
@@ -17,7 +18,8 @@ import {
 } from "@/lib/types";
 
 const KINDS: CovenantKind[] = ["leverage", "interest_cover", "min_liquidity"];
-const STATUS_PILL = { pass: "pill-ok", warning: "pill-warn", breach: "pill-bad" } as const;
+const STATUS_PILL = { pass: "pill-ok", warning: "pill-warn", breach: "pill-bad", not_tested: "", undetermined: "pill-warn" } as const;
+const STATUS_WORDS: Partial<Record<CovenantResult["status"], string>> = { not_tested: "Not tested", undetermined: "Needs usage" };
 const ALERT_CLASS = { breach: "callout-bad", overdue: "callout-bad", warning: "callout-warn", due: "" } as const;
 
 function today(): string {
@@ -134,6 +136,10 @@ export function CovenantsPanel({ doc, onTrace }: Props) {
               </tbody>
             </table>
 
+            {(run.terms.springing_usage !== null || run.terms.cure_runs_from === "delivery") && (
+              <PeriodInputs doc={doc} run={run} onChanged={load} />
+            )}
+
             {selectedResult && selectedDate ? (
               <Workings
                 result={selectedResult}
@@ -171,6 +177,7 @@ function TestRow({
     <td className="num" style={{ padding: "5px 6px", whiteSpace: "nowrap" }}>
       {formatDate(t.certificate_due)}
       {t.cure_deadline && <div className="faint">cure by {formatDate(t.cure_deadline)}</div>}
+      {t.cure_pending && <div className="faint">cure: needs delivery date</div>}
     </td>
   );
   if (!t.results.length) {
@@ -205,7 +212,7 @@ function TestRow({
               onClick={() => onPick(t.period_end, k)}
               title={`${COVENANT_LABELS[k]}: ${r.status}`}
             >
-              <span className={`pill ${STATUS_PILL[r.status]}`}>{r.value === null ? "n/m" : shown(k, r.value)}</span>
+              <span className={`pill ${STATUS_PILL[r.status]}`}>{STATUS_WORDS[r.status] ?? (r.value === null ? "n/m" : shown(k, r.value))}</span>
             </button>
           </td>
         );
@@ -233,10 +240,10 @@ function Workings({
         <span className="term-label">
           {COVENANT_LABELS[result.kind]} at {formatDate(testDate.period_end)}
         </span>
-        <span className={`pill ${STATUS_PILL[result.status]}`}>{result.status}</span>
+        <span className={`pill ${STATUS_PILL[result.status]}`}>{STATUS_WORDS[result.status] ?? result.status}</span>
       </div>
       <div className="workings-value">
-        {result.value === null ? "Not meaningful" : shown(result.kind, result.value)}
+        {STATUS_WORDS[result.status] ?? (result.value === null ? "Not meaningful" : shown(result.kind, result.value))}
         <span className="muted">
           {" "}
           against {limit} {shown(result.kind, result.threshold)}
@@ -254,7 +261,7 @@ function Workings({
         </tbody>
       </table>
       <div className="term-meta" style={{ marginTop: 8 }}>
-        <span>{headroomSentence(result)}</span>
+        {!STATUS_WORDS[result.status] && <span>{headroomSentence(result)}</span>}
       </div>
       <div className="chips" style={{ marginTop: 10 }}>
         <button className="chip" onClick={onShowClause}>
@@ -267,6 +274,85 @@ function Workings({
           </span>
         ))}
       </div>
+    </div>
+  );
+}
+
+/** The revolver drawn and certificate delivery date of each test date: entered, then confirmed by someone else. */
+function PeriodInputs({ doc, run, onChanged }: { doc: DocumentSummary; run: CovenantRun; onChanged: () => void }) {
+  const springing = run.terms.springing_usage !== null;
+  const delivery = run.terms.cure_runs_from === "delivery";
+  const [period, setPeriod] = useState(run.test_dates[0]?.period_end ?? "");
+  const [drawn, setDrawn] = useState("");
+  const [delivered, setDelivered] = useState("");
+  const [basis, setBasis] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function act(action: () => Promise<unknown>) {
+    setBusy(true);
+    setError(null);
+    try {
+      await action();
+      setDrawn("");
+      setDelivered("");
+      setBasis("");
+      onChanged();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const describe = (x: CovenantPeriodInput) =>
+    [x.revolver_drawn !== null && `drawn ${formatAmount(x.revolver_drawn)}`,
+     x.delivered_on && `delivered ${formatDate(x.delivered_on)}`].filter(Boolean).join(" · ");
+
+  return (
+    <div className="term" style={{ cursor: "default", marginTop: 14 }}>
+      <div className="term-head">
+        <span className="term-label">Test date facts</span>
+        <span className="faint" style={{ fontSize: 12 }}>used once a second person confirms</span>
+      </div>
+      {run.period_inputs.length > 0 && (
+        <ul className="chain">
+          {run.period_inputs.map((x) => (
+            <li key={x.period_end}>
+              <span>
+                <b className="num">{formatDate(x.period_end)}</b> {describe(x)}{" "}
+                <span className="faint">
+                  {x.basis} · by {x.entered_by}{x.confirmed_by ? ` · confirmed by ${x.confirmed_by}` : ""}
+                </span>
+              </span>
+              {!x.confirmed_by && (
+                <button className="btn btn-sm" disabled={busy}
+                  onClick={() => void act(() => api.confirmPeriodInput(doc.id, x.period_end))}>
+                  Confirm
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      <form className="term-actions" onSubmit={(e) => {
+        e.preventDefault();
+        void act(() => api.savePeriodInput(doc.id, period, {
+          revolver_drawn: drawn.trim() || null, delivered_on: delivered || null, basis,
+        }));
+      }}>
+        <select className="input" value={period} onChange={(e) => setPeriod(e.target.value)} aria-label="Test date">
+          {run.test_dates.map((t) => <option key={t.period_end} value={t.period_end}>{formatDate(t.period_end)}</option>)}
+        </select>
+        {springing && <input className="input" value={drawn} onChange={(e) => setDrawn(e.target.value)}
+          placeholder="Revolver drawn" aria-label="Revolver drawn" />}
+        {delivery && <input className="input" type="date" value={delivered} onChange={(e) => setDelivered(e.target.value)}
+          aria-label="Certificate delivered on" />}
+        <input className="input" value={basis} onChange={(e) => setBasis(e.target.value)}
+          placeholder="Basis, e.g. agent's statement" aria-label="Basis" />
+        <button className="btn btn-sm" disabled={busy || basis.trim().length < 10 || (!drawn.trim() && !delivered)}>Save</button>
+      </form>
+      {error && <div className="error-banner">{error}</div>}
     </div>
   );
 }

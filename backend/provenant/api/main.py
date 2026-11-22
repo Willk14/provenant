@@ -205,6 +205,7 @@ class TestDateOut(BaseModel):
     period_end: date
     certificate_due: date
     cure_deadline: date | None
+    cure_pending: bool
     status: Literal["tested", "awaiting", "overdue"]
     missing: str | None
     trial_balance_ids: list[str]
@@ -222,6 +223,31 @@ class CovenantTermsOut(BaseModel):
     reporting_days: int
     cure_days: int | None
     warning_headroom: Decimal
+    cure_day_basis: Literal["calendar", "business"]
+    cure_runs_from: Literal["due date", "delivery"]
+    springing_usage: Decimal | None
+    revolver_commitment: Decimal | None
+
+
+class PeriodInputIn(BaseModel):
+    revolver_drawn: str | None = Field(default=None, max_length=32)
+    delivered_on: date | None = None
+    basis: str = Field(max_length=1000)
+
+
+class PeriodInputOut(BaseModel):
+    period_end: date
+    revolver_drawn: Decimal | None
+    delivered_on: date | None
+    basis: str
+    entered_by: str
+    confirmed_by: str | None
+
+    @classmethod
+    def of(cls, r) -> "PeriodInputOut":
+        drawn = None if r.revolver_drawn_cents is None else Decimal(r.revolver_drawn_cents) * covenants.CENT
+        return cls(period_end=r.period_end, revolver_drawn=drawn, delivered_on=r.delivered_on, basis=r.basis,
+                   entered_by=r.entered_by, confirmed_by=r.confirmed_by)
 
 
 class CovenantsOut(BaseModel):
@@ -230,6 +256,7 @@ class CovenantsOut(BaseModel):
     test_dates: list[TestDateOut]
     alerts: list[AlertOut]
     inputs: list[FieldOut]
+    period_inputs: list[PeriodInputOut]
 
 
 # ---- app -------------------------------------------------------------------------------------
@@ -458,12 +485,16 @@ def create_app(
             terms=CovenantTermsOut(
                 first_test_date=r.terms.first_test_date, reporting_days=r.terms.reporting_days,
                 cure_days=r.terms.cure_days, warning_headroom=r.terms.warning_headroom,
+                cure_day_basis="business" if r.terms.cure_business_days else "calendar",
+                cure_runs_from="delivery" if r.terms.cure_from_delivery else "due date",
+                springing_usage=r.terms.springing_usage, revolver_commitment=r.terms.revolver_commitment,
             ),
             test_dates=[
                 TestDateOut(
                     period_end=t.period_end,
                     certificate_due=t.certificate_due,
                     cure_deadline=t.cure_deadline,
+                    cure_pending=t.cure_pending,
                     status=covenants.status_of(t, as_of),
                     missing=t.missing,
                     trial_balance_ids=periods_used(t.period_end),
@@ -485,7 +516,17 @@ def create_app(
             ],
             alerts=[AlertOut(severity=a.severity, on=a.on, message=a.message) for a in covenants.alerts(r.test_dates, as_of)],
             inputs=[FieldOut.of(f) for f in r.fields],
+            period_inputs=[PeriodInputOut.of(x) for x in r.period_inputs],
         )
+
+    @app.put("/documents/{document_id}/covenants/periods/{period_end}", response_model=PeriodInputOut)
+    def save_period_input(document_id: str, period_end: date, body: PeriodInputIn, p: Auth, s: Db) -> PeriodInputOut:
+        return PeriodInputOut.of(covenants.save_period_input(
+            s, p, document_id, period_end, body.revolver_drawn, body.delivered_on, body.basis))
+
+    @app.post("/documents/{document_id}/covenants/periods/{period_end}/confirm", response_model=PeriodInputOut)
+    def confirm_period_input(document_id: str, period_end: date, p: Auth, s: Db) -> PeriodInputOut:
+        return PeriodInputOut.of(covenants.confirm_period_input(s, p, document_id, period_end))
 
     tax_routes.add_routes(app, Auth, Db, store)
     etims.add_routes(app, Auth, Db)

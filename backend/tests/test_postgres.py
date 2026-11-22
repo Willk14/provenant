@@ -177,3 +177,17 @@ def test_ledgers_and_journal_exceptions_are_tenant_isolated(client, app, databas
     with tenant_session(factory, "firm-b") as s:
         for table in ("general_ledgers", "journal_exceptions"):
             assert s.scalar(text(f"select count(*) from {table}")) == 0
+
+
+def test_covenant_period_inputs_are_tenant_isolated(client, app, database_url):
+    from tests.test_api import PREPARER
+    from tests.test_covenants_api import upload_agreement
+
+    doc_id = upload_agreement(client, app)
+    assert client.put(f"/documents/{doc_id}/covenants/periods/2026-12-31", headers=PREPARER, json={
+        "revolver_drawn": "1000", "basis": "Agent's statement of 31 December"}).status_code == 200
+    factory = make_sessionmaker(make_engine(database_url))
+    with tenant_session(factory, "firm-a") as s:
+        assert s.scalar(text("select count(*) from covenant_period_inputs")) == 1
+    with tenant_session(factory, "firm-b") as s:
+        assert s.scalar(text("select count(*) from covenant_period_inputs")) == 0

@@ -1,5 +1,5 @@
 import { identityHeaders } from "./identity";
-import type { BBox, CovenantRun, DocumentSummary, Field, FieldName, Schedule, TrialBalanceSummary } from "./types";
+import type { BBox, CovenantPeriodInput, CovenantRun, DocumentSummary, Field, FieldName, Schedule, TrialBalanceSummary } from "./types";
 
 export class ApiError extends Error {
   constructor(
@@ -71,5 +71,9 @@ export const api = {
   deleteTrialBalance: (tbId: string) => call<ArrayBuffer>(`/trial-balances/${tbId}`, { method: "DELETE" }),
   covenants: (id: string, asOf?: string) =>
     call<CovenantRun>(`/documents/${id}/covenants${asOf ? `?as_of=${asOf}` : ""}`),
+  savePeriodInput: (id: string, periodEnd: string, body: { revolver_drawn: string | null; delivered_on: string | null; basis: string }) =>
+    call<CovenantPeriodInput>(`/documents/${id}/covenants/periods/${periodEnd}`, { ...json(body), method: "PUT" }),
+  confirmPeriodInput: (id: string, periodEnd: string) =>
+    call<CovenantPeriodInput>(`/documents/${id}/covenants/periods/${periodEnd}/confirm`, { method: "POST" }),
   verifyLog: () => call<{ intact: boolean; events: number }>("/review-log/verify"),
 };

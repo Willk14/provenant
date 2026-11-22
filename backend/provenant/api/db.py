@@ -455,6 +455,25 @@ class TrialBalanceRow(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
+class CovenantPeriodInputRow(Base):
+    """Facts of one test date that no trial balance holds. Used only once someone other than the enterer confirms."""
+
+    __tablename__ = "covenant_period_inputs"
+    __table_args__ = (UniqueConstraint("document_id", "period_end"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(String(64), index=True)
+    document_id: Mapped[str] = mapped_column(ForeignKey("documents.id"), index=True)
+    period_end: Mapped[date] = mapped_column(Date)
+    revolver_drawn_cents: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    delivered_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    basis: Mapped[str] = mapped_column(String(1000))
+    entered_by: Mapped[str] = mapped_column(String(200))
+    entered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    confirmed_by: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class TrialBalanceLineRow(Base):
     __tablename__ = "trial_balance_lines"
 

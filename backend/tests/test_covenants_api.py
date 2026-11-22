@@ -157,3 +157,47 @@ def test_rejecting_a_proposed_covenant_drops_it(client, app):
     assert r.status_code == 200
     kinds = {x["kind"] for t in r.json()["test_dates"] for x in t["results"]}
     assert "min_liquidity" not in kinds
+
+
+def test_springing_and_delivery_inputs_are_confirmed_before_they_count(client, app):
+    doc_id = upload_agreement(client, app)
+    for name, value in (("springing_usage_percent", "35%"), ("revolver_commitment", "100,000,000"),
+                        ("cure_day_basis", "business"), ("cure_runs_from", "delivery")):
+        r = client.post(f"/documents/{doc_id}/inputs", headers=PREPARER,
+                        json={"name": name, "value": value, "basis": "Facility agreement, clause 22.3 as read"})
+        assert r.status_code == 201, r.text
+    verify_all(client, doc_id)
+    for q in QUARTERS:
+        upload_tb(client, doc_id, q, tb_csv(**STEADY))
+    upload_tb(client, doc_id, "2027-03-31", tb_csv(**WEAK))
+    url = f"/documents/{doc_id}/covenants"
+    period = f"{url}/periods/2027-03-31"
+
+    def march():
+        run = client.get(url, headers=PREPARER, params={"as_of": "2027-05-20"}).json()
+        return run, next(t for t in run["test_dates"] if t["period_end"] == "2027-03-31")
+
+    _, q = march()
+    assert next(x for x in q["results"] if x["kind"] == "leverage")["status"] == "undetermined"
+
+    body = {"revolver_drawn": "60,000,000", "delivered_on": "2027-05-12", "basis": "Agent's statement of 31 March"}
+    assert client.put(period, headers=PREPARER, json={**body, "basis": "short"}).status_code == 422
+    assert client.put(period, headers=PREPARER, json={**body, "delivered_on": "2027-03-01"}).status_code == 422
+    assert client.put(period, headers=OTHER_FIRM, json=body).status_code == 404
+    assert client.put(period, headers=PREPARER, json=body).status_code == 200
+    _, q = march()  # entered but unconfirmed: still not used
+    assert next(x for x in q["results"] if x["kind"] == "leverage")["status"] == "undetermined"
+    assert client.post(f"{period}/confirm", headers=PREPARER).status_code == 403
+    assert client.post(f"{period}/confirm", headers=REVIEWER).status_code == 200
+
+    run, q = march()
+    assert next(x for x in q["results"] if x["kind"] == "leverage")["status"] == "breach"
+    # 20 business days from Wednesday 12 May 2027: 13-14 (2), then three full weeks to 4 June (17),
+    # 7-9 June (20), so Wednesday 9 June.
+    assert q["cure_deadline"] == "2027-06-09" and q["cure_pending"] is False
+    assert run["terms"]["cure_day_basis"] == "business" and run["period_inputs"][0]["confirmed_by"]
+
+    # Changing a confirmed figure needs confirming again.
+    assert client.put(period, headers=PREPARER, json={**body, "revolver_drawn": "10,000,000"}).status_code == 200
+    _, q = march()
+    assert next(x for x in q["results"] if x["kind"] == "leverage")["status"] == "undetermined"

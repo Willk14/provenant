@@ -41,7 +41,8 @@ class Kind:
 COVENANT_GATE = ConfidenceGate(
     "covenant-v1",
     threshold=0.95,
-    always_review=frozenset({"max_leverage_ratio", "min_interest_cover", "min_liquidity", "cure_period_days"}),
+    always_review=frozenset({"max_leverage_ratio", "min_interest_cover", "min_liquidity", "cure_period_days",
+                             "cure_day_basis", "cure_runs_from", "springing_usage_percent", "revolver_commitment"}),
 )
 
 KINDS = {
@@ -337,7 +338,8 @@ def enter_field(
 REPLACED_COLUMNS = ("value", "confidence", "page", "x0", "top", "x1", "bottom", "char_start", "char_end",
                     "extractor", "entered_by", "status", "gate_version", "basis")
 # Terms that contracts rarely state because they are the preparer's own estimate (ADR 0005 finding 1).
-INPUT_FIELDS = frozenset({"annual_discount_rate", "expansion_treatment"})
+INPUT_FIELDS = frozenset({"annual_discount_rate", "expansion_treatment", "cure_day_basis", "cure_runs_from",
+                          "springing_usage_percent", "revolver_commitment"})
 # Judgements no contract states, so they are never marked on the PDF (the IFRS 16.44 separate-lease test).
 INPUT_ONLY_FIELDS = frozenset({"expansion_treatment"})
 

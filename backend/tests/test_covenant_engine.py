@@ -3,8 +3,8 @@ from decimal import Decimal
 
 import pytest
 
-from provenant.covenants import Category, Covenant, Kind, TBLine, Terms, TrialBalance, evaluate, figures, run
-from provenant.covenants.engine import quarters_back
+from provenant.covenants import Category, Covenant, Kind, PeriodInput, TBLine, Terms, TrialBalance, evaluate, figures, run
+from provenant.covenants.engine import add_business_days, quarters_back
 from provenant.provenance import ConfidenceGate, ReviewLog, Status
 
 M = Decimal("1000000")
@@ -111,3 +111,53 @@ def test_terms_from_fields_need_verification_and_a_covenant(make_field):
     )
     with pytest.raises(ValueError, match="at least one financial covenant"):
         Terms.from_fields(rejected)
+
+
+def springing_terms(**kw):
+    return Terms((Covenant(Kind.LEVERAGE, Decimal("2.00")), Covenant(Kind.MIN_LIQUIDITY, Decimal("50") * M)),
+                 date(2026, 12, 31), 45, cure_days=10, springing_usage=Decimal("0.35"),
+                 revolver_commitment=100 * M, **kw)
+
+
+def leverage_at(terms, drawn=None, delivered=None):
+    inputs = {date(2026, 12, 31): PeriodInput(drawn, delivered)}
+    test = run(terms, STEADY, date(2026, 12, 31), inputs)[0]
+    return test, next(r for r in test.results if r.covenant.kind is Kind.LEVERAGE)
+
+
+def test_springing_leverage_is_tested_only_above_the_usage_trigger():
+    # Trigger: 35% x 100,000,000 = 35,000,000. Net debt 840m / EBITDA 300m = 2.80x, above the 2.00x limit.
+    terms = springing_terms()
+    _, unknown = leverage_at(terms)
+    assert unknown.status == "undetermined" and unknown.value is None  # never assumed "not triggered"
+    test, at_trigger = leverage_at(terms, 35 * M)  # "exceeds": exactly 35% is not tested
+    assert at_trigger.status == "not_tested" and "35.00%" in at_trigger.note and test.cure_deadline is None
+    test, above = leverage_at(terms, 35 * M + Decimal("0.01"))
+    assert above.status == "breach" and above.value == Decimal("2.8")
+    assert [w.label for w in above.workings[:3]] == ["Revolver drawn", "Revolver commitment", "Test trigger"]
+    # The liquidity covenant does not spring: cash 120m against 50m is tested throughout.
+    assert next(r for r in test.results if r.covenant.kind is Kind.MIN_LIQUIDITY).status == "pass"
+
+
+def test_cure_window_in_business_days_from_due_date_or_delivery():
+    assert add_business_days(date(2027, 2, 12), 1) == date(2027, 2, 15)  # Friday to Monday
+    # Due Sunday 14 Feb 2027. Ten weekdays: 15-19 Feb (5), 22-26 Feb (10), so Friday 26 Feb.
+    test, _ = leverage_at(springing_terms(cure_business_days=True), 90 * M)
+    assert test.certificate_due == date(2027, 2, 14) and test.cure_deadline == date(2027, 2, 26)
+    # From delivery on Wednesday 10 Feb: 11-12 (2), 15-19 (7), 22-24 (10), so Wednesday 24 Feb.
+    from_delivery = springing_terms(cure_business_days=True, cure_from_delivery=True)
+    test, _ = leverage_at(from_delivery, 90 * M, date(2027, 2, 10))
+    assert test.cure_deadline == date(2027, 2, 24) and not test.cure_pending
+    # Delivery not known: no deadline is invented, and the breach says so.
+    test, _ = leverage_at(from_delivery, 90 * M)
+    assert test.cure_deadline is None and test.cure_pending
+
+
+def test_springing_terms_must_be_complete():
+    with pytest.raises(ValueError, match="both"):
+        Terms(COVENANTS, date(2026, 12, 31), 45, springing_usage=Decimal("0.35"))
+    with pytest.raises(ValueError, match="no?ne|leverage"):
+        Terms((Covenant(Kind.MIN_LIQUIDITY, M),), date(2026, 12, 31), 45, springing_usage=Decimal("0.35"),
+              revolver_commitment=M)
+    with pytest.raises(ValueError, match="cure period"):
+        Terms(COVENANTS, date(2026, 12, 31), 45, cure_business_days=True)

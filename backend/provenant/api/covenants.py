@@ -1,7 +1,7 @@
 """Credit agreement use cases: trial balance upload and covenant runs."""
 import hashlib
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
 from sqlalchemy import delete, func, select
@@ -9,14 +9,16 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from provenant.api.auth import PARTNER, PREPARER, REVIEWER, Principal
-from provenant.api.db import Document, FieldRow, TrialBalanceLineRow, TrialBalanceRow
+from provenant.api.db import CovenantPeriodInputRow, Document, FieldRow, TrialBalanceLineRow, TrialBalanceRow
 from provenant.api.services import Conflict, Forbidden, Invalid, NotFound, as_csv, get_document, list_fields, require
 from provenant.core import tb_csv
-from provenant.covenants import Category, TBLine, Terms, TestDate, TrialBalance, run
+from provenant.core.money import to_decimal
+from provenant.covenants import Category, PeriodInput, TBLine, Terms, TestDate, TrialBalance, run
 from provenant.covenants.engine import month_end
 
 MAX_TB_BYTES = tb_csv.MAX_BYTES
 CENT = Decimal("0.01")
+MAX_DRAWN = Decimal(10) ** 15
 
 
 def _credit_agreement(s: Session, tenant_id: str, document_id: str) -> Document:
@@ -153,11 +155,18 @@ def alerts(test_dates: list[TestDate], as_of: date) -> list[Alert]:
             names = ", ".join(KIND_LABELS[r.covenant.kind] for r in breached)
             if t.cure_deadline:
                 out.append(Alert("breach", t.cure_deadline, f"{names} breached at {quarter}; cure window closes {t.cure_deadline}"))
+            elif t.cure_pending:
+                out.append(Alert("breach", t.certificate_due, f"{names} breached at {quarter}; the cure window runs "
+                                                              "from delivery: enter and confirm the delivery date"))
             else:
                 out.append(Alert("breach", t.certificate_due, f"{names} breached at {quarter}; no cure right in the agreement"))
         for r in t.results:
             if r.status == "warning":
                 out.append(Alert("warning", t.period_end, f"{KIND_LABELS[r.covenant.kind]} within the warning headroom at {quarter}"))
+            elif r.status == "undetermined":
+                severity = "overdue" if t.certificate_due < as_of else "warning"
+                out.append(Alert(severity, t.certificate_due, f"{KIND_LABELS[r.covenant.kind]} at {quarter} cannot be "
+                                                              "determined: enter and confirm the revolver drawn"))
         status = status_of(t, as_of)
         if status == "overdue":
             out.append(Alert("overdue", t.certificate_due, f"Certificate for {quarter} was due {t.certificate_due}: {t.missing}"))
@@ -174,6 +183,7 @@ class CovenantRun:
     test_dates: list[TestDate]
     trial_balances: dict[date, TrialBalanceRow]
     as_of: date
+    period_inputs: list[CovenantPeriodInputRow]
 
 
 def covenant_run(s: Session, tenant_id: str, document_id: str, as_of: date) -> CovenantRun:
@@ -199,10 +209,82 @@ def covenant_run(s: Session, tenant_id: str, document_id: str, as_of: date) -> C
         for r in tb_rows
     ]
     horizon = max([as_of + timedelta(days=365), *[r.period_end for r in tb_rows]])
+    input_rows = _period_inputs(s, tenant_id, doc.id)
+    confirmed = {
+        r.period_end: PeriodInput(
+            None if r.revolver_drawn_cents is None else Decimal(r.revolver_drawn_cents) * CENT, r.delivered_on)
+        for r in input_rows if r.confirmed_by
+    }
     return CovenantRun(
         terms=terms,
         fields=rows,
-        test_dates=run(terms, trial_balances, horizon),
+        test_dates=run(terms, trial_balances, horizon, confirmed),
         trial_balances={r.period_end: r for r in tb_rows},
         as_of=as_of,
+        period_inputs=input_rows,
     )
+
+
+def _period_inputs(s: Session, tenant_id: str, document_id: str) -> list[CovenantPeriodInputRow]:
+    return list(s.scalars(
+        select(CovenantPeriodInputRow)
+        .where(CovenantPeriodInputRow.tenant_id == tenant_id, CovenantPeriodInputRow.document_id == document_id)
+        .order_by(CovenantPeriodInputRow.period_end)
+    ))
+
+
+def _period_input(s: Session, tenant_id: str, document_id: str, period_end: date) -> CovenantPeriodInputRow | None:
+    return s.scalar(select(CovenantPeriodInputRow).where(
+        CovenantPeriodInputRow.tenant_id == tenant_id, CovenantPeriodInputRow.document_id == document_id,
+        CovenantPeriodInputRow.period_end == period_end))
+
+
+def save_period_input(s: Session, p: Principal, document_id: str, period_end: date, revolver_drawn: str | None,
+                      delivered_on: date | None, basis: str) -> CovenantPeriodInputRow:
+    """Enter or replace a test date's facts. A change always needs confirming again."""
+    require(p, PREPARER, REVIEWER, PARTNER)
+    doc = _credit_agreement(s, p.tenant_id, document_id)
+    if period_end != month_end(period_end.year, period_end.month):
+        raise Invalid("the period end must be a month-end")
+    basis = " ".join(basis.split())
+    if len(basis) < 10:
+        raise Invalid("state the basis (e.g. the facility statement or the lender's acknowledgement)")
+    drawn_text = (revolver_drawn or "").strip()
+    if not drawn_text and delivered_on is None:
+        raise Invalid("enter the revolver drawn, the delivery date, or both")
+    cents = None
+    if drawn_text:
+        try:
+            drawn = to_decimal(drawn_text)
+            exact = 0 <= drawn < MAX_DRAWN and drawn == drawn.quantize(CENT)
+        except (ValueError, ArithmeticError) as exc:
+            raise Invalid(f"revolver drawn: {exc}") from exc
+        if not exact:
+            raise Invalid("revolver drawn must be a positive amount to the cent")
+        cents = int(drawn / CENT)
+    if delivered_on is not None and delivered_on < period_end:
+        raise Invalid("a certificate cannot be delivered before its quarter ends")
+    row = _period_input(s, p.tenant_id, doc.id, period_end)
+    if row is None:
+        row = CovenantPeriodInputRow(tenant_id=p.tenant_id, document_id=doc.id, period_end=period_end)
+        s.add(row)
+    row.revolver_drawn_cents, row.delivered_on, row.basis = cents, delivered_on, basis[:1000]
+    row.entered_by, row.entered_at = p.user, datetime.now(timezone.utc)
+    row.confirmed_by, row.confirmed_at = None, None
+    s.commit()
+    return row
+
+
+def confirm_period_input(s: Session, p: Principal, document_id: str, period_end: date) -> CovenantPeriodInputRow:
+    require(p, REVIEWER, PARTNER)
+    doc = _credit_agreement(s, p.tenant_id, document_id)
+    row = _period_input(s, p.tenant_id, doc.id, period_end)
+    if row is None:
+        raise NotFound("nothing entered for that test date")
+    if p.user in (row.entered_by, doc.uploaded_by):
+        raise Forbidden("someone other than the person who entered it, or uploaded the agreement, must confirm it")
+    if row.confirmed_by:
+        raise Conflict(f"already confirmed by {row.confirmed_by}")
+    row.confirmed_by, row.confirmed_at = p.user, datetime.now(timezone.utc)
+    s.commit()
+    return row

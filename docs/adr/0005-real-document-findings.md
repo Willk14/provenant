@@ -66,9 +66,16 @@ lease (Recursion 2022) and four lease amendments (Kura, Tenaya, NeuroOne extensi
 7. **Covenants are frequently springing.** Both Ceridian and Dayforce have a single first-lien leverage
    test (7.25x) that applies only when revolver usage exceeds 35%. The engine tests total net leverage
    unconditionally.
+   *Done (2026-11-22):* the springing percentage and revolver commitment are partner-reviewed terms, and the
+   revolver drawn is entered per test date and confirmed by a second person. Leverage is tested only when usage
+   exceeds the percentage (exactly at it is not tested); an unknown usage shows "undetermined", never a pass. Not
+   yet: springing on covenants other than leverage, or first-lien debt as its own measure.
 8. **Cure periods are business days, measured from delivery or due date.** IMXI: 15 business days after
    delivery. Dayforce: 15 business days after the due date. Ceridian: 20 calendar days. The engine assumes
    calendar days after the due date.
+   *Done (2026-11-22):* the cure window can count business days and run from the due date or from the confirmed
+   delivery date. Weekends are skipped; public holidays are not, so the date shown is never later than the true
+   one. With delivery unknown, no deadline is shown and the breach alert asks for it.
 9. **Test start dates are often relative** ("the first full fiscal quarter ending after the Effective
    Date"). Step-ups (IMXI: 3.75x during an acquisition period) need a schedule of thresholds.
 10. **Most EDGAR "lease" exhibits are amendments.** Seven of the ten picked by search were amendments.

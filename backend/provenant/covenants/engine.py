@@ -11,7 +11,7 @@ Conventions
 """
 import calendar
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, timedelta
 from decimal import Decimal
 from enum import StrEnum
@@ -101,7 +101,7 @@ class Working:
 @dataclass(frozen=True)
 class Result:
     covenant: Covenant
-    status: str  # pass | warning | breach
+    status: str  # pass | warning | breach | not_tested (springing, not triggered) | undetermined (usage unknown)
     value: Decimal | None  # the ratio or amount tested; None when it is not meaningful
     headroom: Decimal | None  # how far EBITDA (or cash) could fall before a breach, as a fraction
     workings: tuple[Working, ...]
@@ -115,6 +115,15 @@ class TestDate:
     results: tuple[Result, ...]  # empty when the test could not run yet
     cure_deadline: date | None  # set when something is in breach and the agreement has a cure period
     missing: str | None = None  # why the test could not run (e.g. trial balances missing)
+    cure_pending: bool = False  # in breach, and the cure window runs from a delivery date not yet confirmed
+
+
+@dataclass(frozen=True)
+class PeriodInput:
+    """Facts of a test date that no trial balance holds, confirmed by a second person before they are used."""
+
+    revolver_drawn: Decimal | None = None
+    delivered_on: date | None = None
 
 
 def month_end(year: int, month: int) -> date:
@@ -129,6 +138,16 @@ def add_quarters(period_end: date, quarters: int) -> date:
 def quarters_back(period_end: date, count: int) -> list[date]:
     """`count` quarter-ends ending at `period_end`, oldest first."""
     return [add_quarters(period_end, -i) for i in reversed(range(count))]
+
+
+def add_business_days(start: date, days: int) -> date:
+    """The date `days` weekdays after `start`. Public holidays are not removed: they vary by agreement and
+    jurisdiction, and leaving them in counts them as days used, so the date is never later than the true one."""
+    current = start
+    while days:
+        current += timedelta(days=1)
+        days -= current.weekday() < 5
+    return current
 
 
 def figures(trial_balances: Mapping[date, TrialBalance], test_date: date) -> Figures:
@@ -196,9 +215,14 @@ class Terms:
     reporting_days: int  # compliance certificate due this many days after each quarter-end
     cure_days: int | None = None  # equity cure window after the certificate is due
     warning_headroom: Decimal = Decimal("0.10")
+    cure_business_days: bool = False  # count the cure window in business days rather than calendar days
+    cure_from_delivery: bool = False  # the window runs from the certificate's delivery rather than its due date
+    springing_usage: Decimal | None = None  # leverage is tested only when usage exceeds this fraction
+    revolver_commitment: Decimal | None = None
 
     FIELDS = ("max_leverage_ratio", "min_interest_cover", "min_liquidity", "first_test_date", "reporting_days",
-              "cure_period_days")
+              "cure_period_days", "cure_day_basis", "cure_runs_from", "springing_usage_percent",
+              "revolver_commitment")
     REQUIRED = ("first_test_date", "reporting_days")
     COVENANT_FIELDS = {
         "max_leverage_ratio": Kind.LEVERAGE,
@@ -231,6 +255,12 @@ class Terms:
             first_test_date=date.fromisoformat(value("first_test_date")),
             reporting_days=int(value("reporting_days")),
             cure_days=int(value("cure_period_days")) if "cure_period_days" in present else None,
+            cure_business_days="cure_day_basis" in present and value("cure_day_basis").lower() == "business",
+            cure_from_delivery="cure_runs_from" in present and value("cure_runs_from").lower() == "delivery",
+            springing_usage=(to_decimal(value("springing_usage_percent").rstrip("%")) / 100
+                             if "springing_usage_percent" in present else None),
+            revolver_commitment=(to_decimal(value("revolver_commitment"))
+                                 if "revolver_commitment" in present else None),
         )
 
     def field_for(self, kind: Kind) -> str:
@@ -243,11 +273,55 @@ class Terms:
             raise ValueError("the first test date must be a month-end")
         if not 0 < self.reporting_days <= 365:
             raise ValueError("reporting days must be between 1 and 365")
+        if (self.cure_business_days or self.cure_from_delivery) and self.cure_days is None:
+            raise ValueError("the cure day basis and start need a cure period")
+        if (self.springing_usage is None) != (self.revolver_commitment is None):
+            raise ValueError("a springing covenant needs both the usage percentage and the revolver commitment")
+        if self.springing_usage is not None:
+            if not 0 < self.springing_usage <= 1:
+                raise ValueError("the springing usage percentage must be above 0% and at most 100%")
+            if self.revolver_commitment <= 0:
+                raise ValueError("the revolver commitment must be more than zero")
+            if not any(c.kind is Kind.LEVERAGE for c in self.covenants):
+                raise ValueError("a springing test applies to the leverage covenant, and there is none")
+
+    def cure_deadline(self, due: date, delivered_on: date | None) -> date | None:
+        """When the cure window closes; None if there is no cure right or its start is not known yet."""
+        start = delivered_on if self.cure_from_delivery else due
+        if not self.cure_days or start is None:
+            return None
+        if self.cure_business_days:
+            return add_business_days(start, self.cure_days)
+        return start + timedelta(days=self.cure_days)
 
 
-def run(terms: Terms, trial_balances: Sequence[TrialBalance], horizon: date) -> list[TestDate]:
+def apply_covenant(covenant: Covenant, f: Figures, terms: Terms, drawn: Decimal | None) -> Result:
+    """`evaluate`, unless the leverage covenant is springing: then only when usage exceeds the trigger. An unknown
+    usage is never read as "not triggered"."""
+    if covenant.kind is not Kind.LEVERAGE or terms.springing_usage is None:
+        return evaluate(covenant, f, terms.warning_headroom)
+    trigger = terms.springing_usage * terms.revolver_commitment
+    percent = f"{(terms.springing_usage * 100).normalize():f}"
+    if drawn is None:
+        return Result(covenant, "undetermined", None, None,
+                      (Working("Revolver commitment", terms.revolver_commitment), Working("Test trigger", trigger)),
+                      f"Tested only above {percent}% usage: needs the confirmed revolver drawn at the test date")
+    lines = (Working("Revolver drawn", drawn), Working("Revolver commitment", terms.revolver_commitment),
+             Working("Test trigger", trigger))
+    usage = f"{drawn / terms.revolver_commitment * 100:.2f}%"
+    if drawn <= trigger:  # the test applies when usage exceeds the trigger, so exactly at it is not tested
+        return Result(covenant, "not_tested", None, None, lines,
+                      f"Not tested: revolver usage {usage} does not exceed {percent}%")
+    result = evaluate(covenant, f, terms.warning_headroom)
+    note = f"Tested: revolver usage {usage} exceeds {percent}%"
+    return replace(result, workings=(*lines, *result.workings), note=f"{note}. {result.note}" if result.note else note)
+
+
+def run(terms: Terms, trial_balances: Sequence[TrialBalance], horizon: date,
+        period_inputs: Mapping[date, PeriodInput] | None = None) -> list[TestDate]:
     """Every quarterly test date from the first test date up to `horizon`: tested where the trial balances
-    allow, otherwise listed with its deadline and what is missing."""
+    allow, otherwise listed with its deadline and what is missing. `period_inputs` holds confirmed facts only."""
+    period_inputs = period_inputs or {}
     by_date = {tb.period_end: tb for tb in trial_balances}
     if len(by_date) != len(trial_balances):
         raise ValueError("two trial balances for the same period")
@@ -260,9 +334,11 @@ def run(terms: Terms, trial_balances: Sequence[TrialBalance], horizon: date) -> 
         except LookupError as exc:
             out.append(TestDate(test_date, due, (), None, str(exc)))
         else:
-            results = tuple(evaluate(c, f, terms.warning_headroom) for c in terms.covenants)
+            facts = period_inputs.get(test_date, PeriodInput())
+            results = tuple(apply_covenant(c, f, terms, facts.revolver_drawn) for c in terms.covenants)
             breached = any(r.status == "breach" for r in results)
-            cure = due + timedelta(days=terms.cure_days) if breached and terms.cure_days else None
-            out.append(TestDate(test_date, due, results, cure))
+            cure = terms.cure_deadline(due, facts.delivered_on) if breached else None
+            pending = breached and bool(terms.cure_days) and cure is None
+            out.append(TestDate(test_date, due, results, cure, cure_pending=pending))
         test_date = add_quarters(test_date, 1)
     return out

@@ -28,7 +28,7 @@ The Postgres suite needs a superuser URL (it creates a database per run and test
 | `backend/provenant/analytics/` | `journal.py`: general ledger to Parquet and journal entry tests in DuckDB (ADR 0009) |
 | `backend/provenant/tax/` | Pure tax code: `mapping.py` (FS lines, treatments, keyword suggestions), `engine.py` (computation, credits, deferred tax), `register.py` (fixed asset register CSV) |
 | `backend/provenant/api/` | FastAPI app (`main.py`), models (`db.py`), use cases (`services.py`, `tax.py`), tax HTTP routes (`tax_routes.py`) |
-| `backend/provenant/migrations/versions/` | Alembic `0001`–`0006`; tests build the schema through migrations |
+| `backend/provenant/migrations/versions/` | Alembic `0001`–`0014`; tests build the schema through migrations |
 | `frontend/src/lib/tax.ts` | Tax API client and types |
 | `frontend/src/components/` | `ClientWorkspace`, `MappingTab`, `RecordsTab`, `TaxTab`, plus lease and covenant views |
 
@@ -72,9 +72,7 @@ push only when the owner asks.
    row; a part that cannot be produced yet is listed on the Index with the reason. Possible follow-up: iTax
    return figures.
 3. ~~Frontend checks in CI~~: done (`frontend` job; component tests for `RecordsTab` and `TaxTab`).
-4. **Demo data fix:** in `scripts/seed_demo.py` the client trial balance's balancing figure, retained earnings
-   brought forward (3100), comes out as a 182.9M debit. Rebalance the balance-sheet lines so retained
-   earnings is a credit; recheck the figures quoted in README if they change.
+4. ~~Demo data fix~~: done (retained earnings brought forward is a 120M credit, and the seed refuses otherwise).
 5. **Tax rules still missing** (ADR 0006 "Not in this slice"): minimum tax, interest restriction / thin
    capitalisation and instalment penalties. Instalment planning and due dates are implemented with a
    preparer-entered prior-year assessment, current-year estimate, agriculture income ratio and dated receipts.
@@ -86,8 +84,8 @@ push only when the owner asks.
    ledger exceptions in the board memo; DuckDB-WASM in the browser only after the server path is proven.
 6a. **Compliance checks (ADR 0007), in progress:** eTIMS purchase reconciliation, variance checks, M-Pesa/bank
    statement parsers and the board tax memo (ADR 0008) are done.
-6. **Schema fixes from real documents (ADR 0005):** (discount rate input, amendment dates and expansions: done)
-   springing covenants and business-day cure periods.
+6. **Schema fixes from real documents (ADR 0005):** (discount rate input, amendment dates, expansions, springing
+   leverage and business-day cure periods: done) relative first test dates and threshold step-ups.
 7. ~~Mapping suggestions learned from the firm's confirmed mappings~~: done (`learn` / `suggest_for_firm` in
    `tax/mapping.py`). Possible follow-up: a "refresh suggestions" action for accounts still unconfirmed.
 

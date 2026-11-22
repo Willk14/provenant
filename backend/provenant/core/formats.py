@@ -37,6 +37,11 @@ FORMATS: dict[str, tuple[str, str]] = {
     "first_test_date": _DATE,
     "reporting_days": _DAYS,
     "cure_period_days": _DAYS,
+    "cure_day_basis": (r"(?i)calendar|business", "calendar or business"),
+    "cure_runs_from": (r"(?i)due date|delivery", "due date or delivery"),
+    # A springing covenant: leverage is tested only when revolver usage exceeds this share of the commitment.
+    "springing_usage_percent": (r"\d{1,3}(\.\d+)?%", "a percentage like 35%"),
+    "revolver_commitment": _AMOUNT,
 }
 
 
