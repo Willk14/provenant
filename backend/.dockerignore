@@ -1,0 +1,11 @@
+.venv
+.dev
+storage
+**/__pycache__
+.pytest_cache
+.pytest-tmp
+.pytest-pg-tmp
+*.egg-info
+golden/real/cache
+tests
+*.db

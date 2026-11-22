@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from provenant.api.db import Job, make_engine, make_sessionmaker
 from provenant.api.services import extract_document
-from provenant.api.storage import BlobStore
+from provenant.api.storage import BlobStore, make_store
 from provenant.extraction import Extractor
 
 log = logging.getLogger("provenant.worker")
@@ -98,7 +98,7 @@ def main() -> None:
 
     logging.basicConfig(level=logging.INFO)
     factory = make_sessionmaker(make_engine(os.environ.get("DATABASE_URL", "sqlite:///./provenant.db")))
-    store = BlobStore(Path(os.environ.get("PROVENANT_STORAGE_DIR", "./storage")))
+    store = make_store()
     extractor = extractor_from_env()
     log.info("worker started with extractor %s", extractor.name)
     stop = Event()

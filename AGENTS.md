@@ -11,7 +11,7 @@ and the ADRs in `docs/adr/` before changing behaviour; ADR 0006 covers the tax w
 cd backend && .venv/Scripts/python -m pytest -q -p no:warnings                 # SQLite
 cd backend && TEST_DATABASE_URL="postgresql://postgres:<pw>@127.0.0.1:<port>/postgres" .venv/Scripts/python -m pytest -q -p no:warnings
 cd frontend && npx tsc --noEmit && npx vitest run
-cd backend && .venv/Scripts/python scripts/dev.py --reset                       # API on :8000 (migrates, dev auth, inline worker)
+cd backend && .venv/Scripts/python scripts/dev.py --reset                       # API on :8000 on embedded Postgres (app role, RLS on), migrated, dev auth, inline worker; --sqlite for the old file database
 cd backend && .venv/Scripts/python scripts/seed_demo.py                          # demo leases, facility, client Kilima Analytics Ltd
 cd frontend && npm run dev                                                       # web app on http://localhost:3100 (proxies /api)
 ```
@@ -31,6 +31,9 @@ The Postgres suite needs a superuser URL (it creates a database per run and test
 | `backend/provenant/migrations/versions/` | Alembic `0001`–`0006`; tests build the schema through migrations |
 | `frontend/src/lib/tax.ts` | Tax API client and types |
 | `frontend/src/components/` | `ClientWorkspace`, `MappingTab`, `RecordsTab`, `TaxTab`, plus lease and covenant views |
+
+Deployment: `backend/Dockerfile` (API, worker, migrations), `frontend/Dockerfile`, root `docker-compose.yml`, `deploy/`,
+`docs/DEPLOYMENT.md`; the CI `stack` job builds and smoke-tests the whole stack.
 
 ## Rules that hold the design together
 

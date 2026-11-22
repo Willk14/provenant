@@ -50,3 +50,34 @@ jobs:
       - name: Baseline extractor on the golden set
         if: matrix.database == 'sqlite'
         run: python scripts/evaluate_extractor.py labels
+
+  # The deployable stack: build both images, start Postgres, migrations, API, worker and web as they deploy,
+  # and smoke-test it. Images are built, not pushed: publishing waits for a chosen host (docs/DEPLOYMENT.md).
+  stack:
+    runs-on: ubuntu-latest
+    needs: [frontend, test]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and start the stack
+        run: |
+          docker compose up --detach --build
+          # The migration runs once and exits, so wait on the API rather than on every container.
+          for i in $(seq 1 60); do
+            curl --fail --silent http://localhost:8000/health > /dev/null && exit 0
+            sleep 5
+          done
+          echo "the API did not become healthy within 5 minutes"; exit 1
+      - name: Smoke test the API (dev auth, as compose runs it)
+        env:
+          SMOKE_DEV_AUTH: "1"
+        run: python3 backend/scripts/smoke.py http://localhost:8000
+      - name: The web app serves and forwards /api
+        run: |
+          curl --fail --silent --show-error http://localhost:3100/ > /dev/null
+          curl --fail --silent --show-error http://localhost:3100/api/health | grep -q '"ok"'
+      - name: Logs on failure
+        if: failure()
+        run: docker compose logs --no-color --tail 200
+      - name: Stop
+        if: always()
+        run: docker compose down --volumes

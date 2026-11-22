@@ -38,7 +38,7 @@ human-verified facts to a deterministic accounting engine.
 ## Try the workspace (two terminals)
 
 ```bash
-cd backend && .venv/Scripts/python scripts/dev.py --reset      # API on :8000, migrated, in-process worker, dev auth
+cd backend && .venv/Scripts/python scripts/dev.py --reset      # API on :8000 on embedded Postgres (no Docker), migrated, in-process worker, dev auth
 cd backend && .venv/Scripts/python scripts/seed_demo.py         # two sample leases, uploaded as Pat
 cd frontend && npm install && npm run dev                        # web app on http://localhost:3100
 ```
@@ -52,6 +52,9 @@ schedule tab, click any figure to see which contract terms produced it.
 | `frontend/src/components/PdfViewer.tsx` | pdf.js pages with term boxes, zoom, and drag-to-mark |
 | `frontend/src/components/Workspace.tsx` | Document page: viewer + terms + schedule, polling while extraction runs |
 | `frontend/src/lib/trace.ts` | Which contract terms each schedule figure depends on |
+
+Deploying: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) (container images, `docker compose up --build` for the whole
+stack, staging and production, S3-compatible file storage).
 
 ## Getting started
 

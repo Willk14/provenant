@@ -1,0 +1,75 @@
+# The whole Provenant stack, as it deploys: Postgres, a one-off migration, the API, the worker and the web app.
+#   docker compose up --build        then open http://localhost:3100
+#   cd backend && .venv/Scripts/python scripts/seed_demo.py http://localhost:8000  (demo data, from the host)
+#   docker compose run --rm api python scripts/smoke.py http://api:8000         (smoke test)
+# Local credentials only. Dev auth (identity from request headers) is on here, as for local development;
+# staging and production use OIDC instead (see docs/DEPLOYMENT.md and deploy/staging.env.example).
+x-backend: &backend
+  build: ./backend
+  environment: &backend-env
+    DATABASE_URL: postgresql+psycopg://provenant_app:provenant_app_dev@postgres:5432/provenant
+    PROVENANT_DEV_AUTH: "1"
+    PROVENANT_STORAGE: local  # or s3, with PROVENANT_S3_BUCKET and AWS_* credentials
+    PROVENANT_STORAGE_DIR: /data/storage
+  volumes:
+    - blobs:/data/storage
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: provenant
+      POSTGRES_PASSWORD: provenant_dev
+      POSTGRES_DB: provenant
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./deploy/postgres-init.sql:/docker-entrypoint-initdb.d/10-app-role.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U provenant -d provenant"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  migrate:
+    <<: *backend
+    command: ["python", "-m", "provenant.api.migrate"]
+    environment:
+      <<: *backend-env
+      DATABASE_URL: postgresql+psycopg://provenant:provenant_dev@postgres:5432/provenant  # the table owner
+      PROVENANT_APP_ROLE: provenant_app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    <<: *backend
+    ports:
+      - "8000:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  worker:
+    <<: *backend
+    command: ["python", "-m", "provenant.worker"]
+    healthcheck:
+      disable: true
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  web:
+    build:
+      context: ./frontend
+      args:
+        PROVENANT_API_URL: http://api:8000
+    ports:
+      - "3100:3100"
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  blobs:

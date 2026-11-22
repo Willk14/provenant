@@ -19,7 +19,7 @@ from provenant.covenants.engine import quarters_back
 from provenant.api.auth import AuthError, Authenticator, Principal, authenticator_from_env, principal_from
 from provenant.api.db import Document, FieldRow, make_engine, make_sessionmaker, tenant_session
 from provenant.api.export import schedule_workbook
-from provenant.api.storage import BlobStore
+from provenant.api.storage import BlobStore, make_store
 from provenant.extraction import Extractor, extractor_from_env
 from provenant.provenance import Status
 from provenant.worker import run_forever
@@ -245,7 +245,7 @@ def create_app(
 ) -> FastAPI:
     """Schema is managed by migrations (python -m provenant.api.migrate); this never creates tables."""
     database_url = database_url or os.environ.get("DATABASE_URL", "sqlite:///./provenant.db")
-    store = BlobStore(storage_dir or Path(os.environ.get("PROVENANT_STORAGE_DIR", "./storage")))
+    store = make_store(storage_dir)  # local disk, or an S3-compatible bucket when PROVENANT_STORAGE=s3
     extractor = extractor or extractor_from_env()
     authenticator = authenticator or authenticator_from_env()
     dev_auth = os.environ.get("PROVENANT_DEV_AUTH") == "1" if dev_auth is None else dev_auth
