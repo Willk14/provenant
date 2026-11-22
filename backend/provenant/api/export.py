@@ -69,8 +69,15 @@ def tax_workbook(computation: dict, lead_schedule: list[tuple[str, object, list[
                  profit_sources: list[str]) -> bytes:
     """Export a tax computation and its supporting lead, allowance and credit schedules."""
     wb = Workbook()
-    report = wb.active
-    report.title = "Analysis"
+    wb.remove(wb.active)
+    add_tax_sheets(wb, computation, lead_schedule, profit_sources)
+    return finish(wb)
+
+
+def add_tax_sheets(wb: Workbook, computation: dict, lead_schedule: list[tuple[str, object, list[str]]],
+                   profit_sources: list[str]) -> None:
+    """The computation, lead schedule, capital allowances, asset detail and credits, as sheets of `wb`."""
+    report = wb.create_sheet("Analysis")
     report.append(["Tax analysis", "Amount / finding", "Basis", "Sources"])
     due = Decimal(str(computation["tax_due"]))
     position = "tax refundable" if due < 0 else "tax due"
@@ -156,6 +163,14 @@ def tax_workbook(computation: dict, lead_schedule: list[tuple[str, object, list[
             credits.append([item["description"], item["amount"], item["reference"],
                             item.get("evidence_filename") or item.get("evidence") or "", source])
 
+    for row in ws.iter_rows(min_row=1):
+        if row[0].value == "Tax rate":
+            row[1].number_format = "0.0%"
+
+
+def finish(wb: Workbook) -> bytes:
+    """Header row frozen and filtered, columns sized, money formatted, and text that a spreadsheet would read as
+    a formula (=, +, -, @) stored as text: names and descriptions come from uploaded files."""
     for sheet in wb.worksheets:
         sheet.freeze_panes = "A2"
         sheet.auto_filter.ref = sheet.dimensions
@@ -164,13 +179,14 @@ def tax_workbook(computation: dict, lead_schedule: list[tuple[str, object, list[
             sheet.column_dimensions[letter].width = min(55, max(12, max(len(str(c.value or "")) for c in column) + 2))
         for row in sheet.iter_rows():
             for cell in row:
-                if isinstance(cell.value, (int, float)) or hasattr(cell.value, "as_tuple"):
+                if cell.number_format != "General" or isinstance(cell.value, bool):
+                    continue  # a format chosen by the sheet (a rate as a percentage) stays
+                if isinstance(cell.value, int):
+                    cell.number_format = "#,##0"  # counts and row numbers
+                elif isinstance(cell.value, (float, Decimal)):
                     cell.number_format = MONEY
                 elif isinstance(cell.value, str) and cell.value[:1] in ("=", "+", "-", "@"):
                     cell.value = "'" + cell.value
-    for row in ws.iter_rows(min_row=1):
-        if row[0].value == "Tax rate":
-            row[1].number_format = "0.0%"
     buffer = io.BytesIO()
     wb.save(buffer)
     return buffer.getvalue()

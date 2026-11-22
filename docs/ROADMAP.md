@@ -73,7 +73,7 @@ Built as thin vertical slices. Each milestone ships something a user can run end
 - [x] Kenya corporation tax: add-backs, exempt income, capital deductions (preparer rates with a basis),
       losses brought forward, IFRS 16 lease crossover from verified schedules, deferred tax (IAS 12)
 - [x] Clients and tax UI: mapping table, computation with every line traced to accounts, inputs or leases
-- [ ] Reviewer sign-off on mappings and computations (maker-checker, as for extracted terms)
+- [x] Reviewer sign-off on computations (maker-checker, as for extracted terms)
 - [x] Records & inputs: prior-year return and roll forward, fixed asset register (additions, disposals,
       balancing charges), instalment / withholding / overpayment credits to tax due, supporting documents
       as evidence
@@ -86,7 +86,8 @@ Built as thin vertical slices. Each milestone ships something a user can run end
 - [x] M-Pesa and bank statement parsers: balance breaks, duplicates, own-account transfers, categories
 - [x] Board tax memo with every figure bound to the computation (ADR 0008)
 - [ ] Minimum tax and interest limits
-- [ ] Export the computation and lead schedules to Excel; iTax return figures
+- [x] Export the computation and lead schedules to Excel, and the year's working-papers pack
+- [ ] iTax return figures
 - [x] Suggestions learned from the firm's confirmed mappings at other clients (two-thirds agreement, no ties)
 
 ## M4 — Due diligence and ERP

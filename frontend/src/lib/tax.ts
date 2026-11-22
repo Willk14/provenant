@@ -242,6 +242,9 @@ export const taxApi = {
     api.raw<{ reviewer: string; approved_at: string }>(`${base(id, yearEnd)}/tax/approval`, { method: "POST" }),
   exportComputation: (id: string, yearEnd: string) =>
     api.raw<ArrayBuffer>(`${base(id, yearEnd)}/tax.xlsx`),
+  /** Every result for the year in one workbook; parts not ready yet are listed on its Index sheet. */
+  exportPapers: (id: string, yearEnd: string) =>
+    api.raw<ArrayBuffer>(`${base(id, yearEnd)}/papers.xlsx`),
   rollForward: (id: string, yearEnd: string) =>
     api.raw<Inputs>(`${base(id, yearEnd)}/inputs/roll-forward`, { method: "POST" }),
   meta: () => api.raw<RecordsMeta>("/tax-records/meta"),

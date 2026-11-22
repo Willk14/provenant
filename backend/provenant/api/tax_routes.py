@@ -8,7 +8,7 @@ from urllib.parse import quote
 from fastapi import FastAPI, File, Form, Response, UploadFile
 from pydantic import BaseModel, Field
 
-from provenant.api import tax
+from provenant.api import papers, tax
 from provenant.api import export as workbook_export
 from provenant.api.services import MAX_UPLOAD_BYTES
 from provenant.api.storage import BlobStore
@@ -445,19 +445,33 @@ def add_routes(app: FastAPI, Auth, Db, store: BlobStore) -> None:  # noqa: N803 
         return {"reviewer": row.reviewer, "approved_at": row.approved_at.isoformat(),
                 "fingerprint": row.fingerprint}
 
-    @app.get("/clients/{client_id}/years/{year_end}/tax.xlsx")
-    def tax_export(client_id: str, year_end: date, p: Auth, s: Db) -> Response:
-        result = computation(client_id, year_end, p, s)
+    def tax_sheets_args(client_id: str, year_end: date, p, s) -> tuple:
         accounts = tax.mapped_accounts(s, p.tenant_id, client_id, year_end)
         profit_sources = [str(a.line.id) for a in accounts
                           if FS_LINES[a.mapping.fs_line].statement.value == "profit_or_loss"
                           and a.mapping.tax_treatment != "tax_charge"]
-        content = workbook_export.tax_workbook(result.model_dump(mode="python"), tax.lead_schedule(accounts),
-                                                profit_sources)
-        filename = f"tax-computation-{year_end.isoformat()}.xlsx"
-        return Response(content=content,
-                        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+        return tax.lead_schedule(accounts), profit_sources
+
+    @app.get("/clients/{client_id}/years/{year_end}/tax.xlsx")
+    def tax_export(client_id: str, year_end: date, p: Auth, s: Db) -> Response:
+        result = computation(client_id, year_end, p, s)
+        content = workbook_export.tax_workbook(result.model_dump(mode="python"),
+                                                *tax_sheets_args(client_id, year_end, p, s))
+        return _xlsx(content, f"tax-computation-{year_end.isoformat()}.xlsx")
+
+    @app.get("/clients/{client_id}/years/{year_end}/papers.xlsx")
+    def papers_export(client_id: str, year_end: date, p: Auth, s: Db) -> Response:
+        """Every result for the year in one workbook; parts not ready yet are listed with the reason."""
+        content = papers.workbook(
+            s, p, store, client_id, year_end,
+            tax_view=lambda: computation(client_id, year_end, p, s).model_dump(mode="python"),
+            tax_sheets_args=lambda: tax_sheets_args(client_id, year_end, p, s))
+        return _xlsx(content, f"working-papers-{year_end.isoformat()}.xlsx")
+
+
+def _xlsx(content: bytes, filename: str) -> Response:
+    return Response(content=content, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": f'attachment; filename="{filename}"'})
 
 
 def _register_out(s, tenant_id: str, reg) -> RegisterOut:

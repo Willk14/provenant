@@ -126,6 +126,12 @@ escalates a flagged entry; `GET .../ledger/entries/{id}` returns its lines.
 
 Every upload that takes a CSV also takes the same table as an Excel workbook (.xlsx, first sheet; ADR 0010).
 
+Working papers: `GET .../papers.xlsx` returns one workbook for the client year: an Index (who, when, rules and
+test versions, and the state of each part), the tax computation and its schedules, eTIMS, compliance checks,
+statements, journal entry tests and the board memo, each row with its source. Parts that cannot be produced yet
+(nothing uploaded, or the computation waiting on the mapping) are listed on the Index with the reason. The
+button is beside the financial year on a client's page.
+
 Suggestions are never final: the computation refuses (409) until every account with a balance has a
 confirmed mapping, and confirmed mappings carry forward to the next year by account code. Linked leases
 replace IFRS 16 depreciation and interest with rentals paid. Working papers for a tax professional, not

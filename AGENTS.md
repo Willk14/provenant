@@ -65,15 +65,13 @@ push only when the owner asks.
 
 ## Next steps, in priority order
 
-1. **Reviewer sign-off on the tax computation.** A reviewer or partner (not the preparer who saved the inputs)
-   approves a year's computation; store a snapshot (inputs JSON, mapping version, result, rules version,
-   who and when) in an append-only table; show "Approved by … / changed since approval" on the Tax tab.
-   Mirror the maker-checker pattern used for extracted fields (ADR 0002).
-2. **Excel export** of the tax computation, lead schedule, capital allowance schedule and credits, with a
-   sources column. Reuse the approach in `backend/provenant/api/export.py` (lease schedule workbook).
-3. **Frontend checks in CI**: add a Node job running `npm ci`, `npx tsc --noEmit`, `npx vitest run`; then
-   component tests for `RecordsTab` (save flow, register lock on additions, evidence pill) and `TaxTab`
-   (credits to tax due / refundable).
+1. ~~Reviewer sign-off on the tax computation~~: done (approval snapshot, "changed since approval").
+2. ~~Excel export~~: done. `tax.xlsx` (computation, lead schedule, allowances, asset detail, credits) and the
+   working-papers pack `papers.xlsx` (`api/papers.py`): an Index sheet, the tax sheets, eTIMS, compliance checks,
+   statements, journal entry tests and the memo, each built from the view the app shows, with a source on every
+   row; a part that cannot be produced yet is listed on the Index with the reason. Possible follow-up: iTax
+   return figures.
+3. ~~Frontend checks in CI~~: done (`frontend` job; component tests for `RecordsTab` and `TaxTab`).
 4. **Demo data fix:** in `scripts/seed_demo.py` the client trial balance's balancing figure, retained earnings
    brought forward (3100), comes out as a 182.9M debit. Rebalance the balance-sheet lines so retained
    earnings is a credit; recheck the figures quoted in README if they change.

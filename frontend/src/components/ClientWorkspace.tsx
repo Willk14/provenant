@@ -38,6 +38,24 @@ export function ClientWorkspace({ id, initialTab, initialYear }: { id: string; i
     }
   }, [id, initialYear]);
 
+  const [exporting, setExporting] = useState(false);
+  async function downloadPapers() {
+    if (!yearEnd) return;
+    setExporting(true);
+    try {
+      const data = await taxApi.exportPapers(id, yearEnd);
+      const url = URL.createObjectURL(new Blob([data], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      }));
+      Object.assign(document.createElement("a"), { href: url, download: `working-papers-${yearEnd}.xlsx` }).click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setExporting(false);
+    }
+  }
+
   useEffect(() => {
     if (persona) void load();
   }, [persona, load]);
@@ -71,6 +89,12 @@ export function ClientWorkspace({ id, initialTab, initialYear }: { id: string; i
                 </option>
               ))}
             </select>
+            {yearEnd && (
+              <button type="button" className="btn btn-sm" onClick={downloadPapers} disabled={exporting}
+                title="One Excel workbook with the tax computation, eTIMS, checks, statements, journal tests and memo">
+                {exporting ? "Preparing…" : "Working papers (Excel)"}
+              </button>
+            )}
           </div>
         )}
       </div>
