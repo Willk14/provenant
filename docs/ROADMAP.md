@@ -63,7 +63,8 @@ Built as thin vertical slices. Each milestone ships something a user can run end
 - [ ] Baskets, DSCR and other covenant types; year-to-date trial balances; Claude extraction of covenant terms
 - [x] GL import → Parquet → DuckDB (ADR 0009): nine versioned JE tests and Benford over the whole
       population, reconciliation to the trial balance, exceptions cleared under maker-checker
-- [ ] Excel and ERP ledger extracts; fuzzy near-duplicates; ledger exceptions in the board memo
+- [x] Excel uploads everywhere (ADR 0010); ledger exceptions in the board memo
+- [ ] ERP ledger extracts; fuzzy near-duplicates
 
 ## Tax consultancy and financial mapping (ADR 0006)
 - [x] Clients as first-class records; documents (leases) linked to a client

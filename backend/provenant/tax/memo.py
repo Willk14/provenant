@@ -19,7 +19,8 @@ TABLES = ("computation", "deferred", "checks")
 FIELD_NAMES = (
     "client", "year_end", "profit_before_tax", "taxable_before_losses", "losses_brought_forward", "losses_used",
     "losses_carried_forward", "taxable_profit", "rate", "tax_payable", "total_credits", "tax_due", "tax_due_sentence",
-    "etims_addback", "deferred_tax", "deferred_tax_kind", "approval_status", "open_checks", "rules_version",
+    "etims_addback", "deferred_tax", "deferred_tax_kind", "approval_status", "open_checks", "journal_entries",
+    "rules_version",
 )
 
 
@@ -36,7 +37,7 @@ def money(value: Decimal) -> str:
 
 
 def fields(c: Computation, client: str, year_end: str, currency: str = "KES",
-           approval: str = "", open_checks: int = 0) -> dict[str, Field]:
+           approval: str = "", open_checks: int = 0, journal_entries: str = "") -> dict[str, Field]:
     """The values a memo may cite, each with its source in the computation."""
     credits = -sum((x.amount for x in c.credits), Decimal(0))
     etims = next((a.amount for a in c.adjustments if "eTIMS" in a.label), Decimal(0))
@@ -70,6 +71,8 @@ def fields(c: Computation, client: str, year_end: str, currency: str = "KES",
         "approval_status": Field("Approval status", approval or "The computation has not been approved.",
                                  "tax approvals"),
         "open_checks": Field("Unexplained variances", str(open_checks), "compliance checks"),
+        "journal_entries": Field("Journal entry tests", journal_entries or "No general ledger has been tested.",
+                                 "journal entry tests"),
         "rules_version": Field("Rules version", c.rules_version, "rules"),
     }
 
@@ -186,7 +189,7 @@ Tax losses of {{losses_used}} were used this year; {{losses_carried_forward}} ca
 The deferred tax {{deferred_tax_kind}} is {{deferred_tax}} at {{rate}}.
 
 ## Compliance
-Expenses without an eTIMS invoice added back: {{etims_addback}}.
+Expenses without an eTIMS invoice added back: {{etims_addback}}. {{journal_entries}}
 {{table:checks}}
 
 ## Status

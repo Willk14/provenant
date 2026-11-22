@@ -50,3 +50,21 @@ def test_memo_waits_for_the_mapping(client, app):
     cid = client_with_tb(client)  # suggestions not confirmed
     m = client.get(f"/clients/{cid}/years/2026-12-31/memo", headers=PREPARER).json()
     assert m["blocks"] == [] and "need a confirmed mapping" in m["blocked"]
+
+
+def test_memo_reports_journal_entry_tests(client, app):
+    from tests.test_api import REVIEWER
+    from tests.test_journal import GL
+    from tests.test_ledger_api import upload as upload_ledger
+
+    _, year = setup(client)
+    assert upload_ledger(client, year, GL.encode()).status_code == 201
+    client.put(f"{year}/ledger/exceptions", headers=REVIEWER, json={
+        "entry_id": "E5", "test": "unbalanced", "status": "cleared", "reason": "Rounding on a supplier credit note"})
+    m = client.get(f"{year}/memo", headers=PREPARER).json()
+    # No approval limit, so 8 tests run: 1 + 2 + 1 + 2 + 1 + 1 + 2 + 2 = 12 flagged items; E5's is cleared
+    rows = next(b for b in m["blocks"] if b["table"] == "checks")["rows"]
+    assert ["Journal entry tests", "12 flagged: 1 cleared, 0 escalated, 11 open", False] in rows
+    compliance = next(b for b in m["blocks"] if any(s["field"] == "journal_entries" for s in b["segments"]))
+    assert ("Journal entry tests (24 lines in 12 entries, tests je-2026.1) flagged 12 items: 1 cleared by a "
+            "reviewer, 0 escalated, 11 open.") in text(compliance)

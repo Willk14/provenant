@@ -19,6 +19,8 @@ touched. A figure typed by hand is the one that goes stale, and reviewers cannot
 - **The memo reports state, it does not change it:** compliance rows come from the eTIMS reconciliation and the
   variance checks (with explanations quoted), and the status line says whether the computation is approved and
   whether it changed since.
+- **Journal entry tests** appear as the `{{journal_entries}}` sentence and a compliance row: items flagged across
+  the tests that ran, and how many a reviewer cleared, were escalated, or remain open (ADR 0009).
 - **A standard memo** is provided; a firm's edited text is stored per client-year, and clearing it returns to the
   standard. Printing uses the browser (print or save as PDF), showing only the memo.
 

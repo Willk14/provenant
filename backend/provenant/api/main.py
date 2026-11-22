@@ -491,7 +491,7 @@ def create_app(
     etims.add_routes(app, Auth, Db)
     variance.add_routes(app, Auth, Db)
     statements.add_routes(app, Auth, Db)
-    memo.add_routes(app, Auth, Db)
+    memo.add_routes(app, Auth, Db, store)
     ledger.add_routes(app, Auth, Db, store)
 
     app.state.session_factory, app.state.store, app.state.extractor = factory, store, extractor

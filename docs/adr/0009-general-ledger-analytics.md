@@ -30,5 +30,5 @@ run to millions of lines, and the machines the work runs on are ordinary laptops
   the balance.
 
 ## Not in this slice
-- Excel uploads and ERP extracts (CSV only); fuzzy near-duplicates; per-user or per-account baselines across
-  years; feeding exceptions into the memo's compliance table.
+- ERP extracts; fuzzy near-duplicates; per-user or per-account baselines across years. (Excel uploads: ADR 0010.
+  The board memo reports flagged, cleared, escalated and open items: ADR 0008.)

@@ -6,7 +6,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from provenant.api import etims, tax
+from provenant.analytics import journal
+from provenant.api import etims, ledger, tax
 from provenant.api import variance as checks_api
 from provenant.api.auth import Principal
 from provenant.api.db import MemoDraftRow
@@ -21,7 +22,7 @@ def _draft(s: Session, tenant_id: str, client_id: str, year_end: date) -> MemoDr
                                                MemoDraftRow.year_end == year_end))
 
 
-def _context(s: Session, tenant_id: str, client_id: str, year_end: date):
+def _context(s: Session, tenant_id: str, client_id: str, year_end: date, store=None):
     """Fields and tables from the live computation, compliance checks and approval."""
     client = tax.get_client(s, tenant_id, client_id)
     run = tax.tax_computation(s, tenant_id, client_id, year_end)
@@ -46,23 +47,39 @@ def _context(s: Session, tenant_id: str, client_id: str, year_end: date):
             rows.append((result.title, f"Variance {memo.money(result.variance)}: {check['explanation'].text}"))
         else:
             rows.append((result.title, "Agrees within tolerance"))
+    journal_text = ""
+    if store is not None:
+        gl, result, decisions = ledger.analysis(s, store, tenant_id, client_id, year_end)
+        if result is not None:
+            flags = sum(t.count for t in result.tests if t.applies)
+            cleared = sum(1 for d in decisions.values() if d.status == "cleared")
+            escalated = sum(1 for d in decisions.values() if d.status == "escalated")
+            still_open = max(flags - cleared - escalated, 0)
+            journal_text = (f"Journal entry tests ({gl.lines:,} lines in {result.entries:,} entries, tests "
+                            f"{journal.TEST_VERSION}) flagged {flags} items: {cleared} cleared by a reviewer, "
+                            f"{escalated} escalated, {still_open} open.")
+            rows.append(("Journal entry tests", f"{flags} flagged: {cleared} cleared, {escalated} escalated, "
+                                                f"{still_open} open"))
+        else:
+            rows.append(("Journal entry tests", "Not uploaded"))
     rec = etims.run(s, tenant_id, client_id, year_end)
     if rec.reconciliation is None:
         rows.insert(0, ("eTIMS reconciliation", "Not uploaded"))
     else:
         state = f"applied by {rec.ledger.applied_by}" if rec.ledger.applied_by else "not applied to the computation"
         rows.insert(0, ("eTIMS reconciliation", f"Add-back {memo.money(sum((a for _, a in rec.addback), 0))}, {state}"))
-    values = memo.fields(c, client.name, f"{year_end:%d %b %Y}", approval=approval, open_checks=open_checks)
+    values = memo.fields(c, client.name, f"{year_end:%d %b %Y}", approval=approval, open_checks=open_checks,
+                         journal_entries=journal_text)
     return values, memo.tables(c, rows)
 
 
-def view(s: Session, tenant_id: str, client_id: str, year_end: date) -> dict:
+def view(s: Session, tenant_id: str, client_id: str, year_end: date, store=None) -> dict:
     draft = _draft(s, tenant_id, client_id, year_end)
     body = draft.body if draft else memo.DEFAULT
     out = {"body": body, "is_default": draft is None, "updated_by": draft.updated_by if draft else None,
            "updated_at": draft.updated_at if draft else None, "blocked": None, "rendered": None, "fields": {}}
     try:
-        values, table_rows = _context(s, tenant_id, client_id, year_end)
+        values, table_rows = _context(s, tenant_id, client_id, year_end, store)
     except Conflict as exc:  # the computation is waiting on the mapping or a lease
         out["blocked"] = str(exc)
         return out
@@ -146,15 +163,15 @@ def _out(v: dict) -> MemoOut:
     )
 
 
-def add_routes(app: FastAPI, Auth, Db) -> None:  # noqa: N803 - the app's Annotated dependency types
+def add_routes(app: FastAPI, Auth, Db, store=None) -> None:  # noqa: N803 - the app's Annotated dependency types
     path = "/clients/{client_id}/years/{year_end}/memo"
 
     @app.get(path, response_model=MemoOut)
     def get_memo(client_id: str, year_end: date, p: Auth, s: Db) -> MemoOut:
         tax.get_client(s, p.tenant_id, client_id)
-        return _out(view(s, p.tenant_id, client_id, year_end))
+        return _out(view(s, p.tenant_id, client_id, year_end, store))
 
     @app.put(path, response_model=MemoOut)
     def put_memo(client_id: str, year_end: date, body: MemoIn, p: Auth, s: Db) -> MemoOut:
         save(s, p, client_id, year_end, body.body)
-        return _out(view(s, p.tenant_id, client_id, year_end))
+        return _out(view(s, p.tenant_id, client_id, year_end, store))
