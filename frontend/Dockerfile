@@ -13,7 +13,8 @@ ARG PROVENANT_API_URL=http://api:8000
 ENV PROVENANT_API_URL=$PROVENANT_API_URL NEXT_TELEMETRY_DISABLED=1
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-RUN npm run build
+# public/pdf.worker.min.mjs is generated (git-ignored), so a fresh checkout has no public/ folder: make it here.
+RUN node scripts/copy-pdf-worker.mjs && npm run build
 
 FROM node:20-alpine AS run
 WORKDIR /app
