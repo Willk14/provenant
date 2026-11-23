@@ -90,6 +90,19 @@ describe("LegalReviewPanel", () => {
     expect(await screen.findByText(/does not prove the contract is silent/)).toBeTruthy();
   });
 
+  it("shows the words an answer relies on, and links them to the PDF", async () => {
+    const onCite = vi.fn();
+    const citation = { ...finding.citation, quote: "Liquidity shall not be less than KES 50,000,000" };
+    vi.mocked(api.legalReview).mockResolvedValue({ ...review, findings: [], questions: [{
+      id: "q1", question: "What is the minimum liquidity?", status: "done", answer: "KES 50,000,000.", not_stated: false,
+      citations: [citation], error: null, asked_by: "pat", created_at: "2026-11-23T10:06:00Z",
+    }] });
+    render(<LegalReviewPanel doc={doc} onCite={onCite} />);
+    expect(await screen.findByText(citation.quote)).toBeTruthy();
+    fireEvent.click(screen.getByTitle("Show on the PDF"));
+    expect(onCite).toHaveBeenCalledWith("q1-0", citation);
+  });
+
   it("says plainly when the review used only the keyword scan", async () => {
     vi.mocked(api.legalReview).mockResolvedValue({ ...review, agent: "baseline-keywords-v1" });
     render(<LegalReviewPanel doc={doc} onCite={vi.fn()} />);

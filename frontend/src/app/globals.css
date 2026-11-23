@@ -582,6 +582,10 @@ select {
   flex-wrap: wrap;
 }
 
+.table-scroll {
+  overflow-x: auto;
+}
+
 .map-table td {
   vertical-align: top;
   padding: 10px 12px;
@@ -670,9 +674,18 @@ select {
 }
 
 @media (max-width: 1000px) {
-  .mapping-layout,
   .tax-layout {
     grid-template-columns: 1fr;
+  }
+}
+
+/* The mapping table needs the full width for its two selects and Confirm button. */
+@media (max-width: 1200px) {
+  .mapping-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .lead {
+    position: static;
   }
 }
 
@@ -1639,4 +1652,98 @@ button.chip {
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   gap: 0 12px;
   padding: 0 4px;
+}
+
+/* ---- phones -------------------------------------------------------------------------------- */
+
+@media (max-width: 640px) {
+  .topbar {
+    flex-wrap: wrap;
+    height: auto;
+    gap: 6px 12px;
+    padding: 8px 12px;
+  }
+  .nav {
+    order: 3;
+    width: 100%;
+    overflow-x: auto;
+  }
+  .nav a {
+    flex: none;
+    white-space: nowrap;
+  }
+  .persona {
+    gap: 6px;
+  }
+  .persona-label {
+    display: none;
+  }
+  .page {
+    padding: 20px 16px 48px;
+  }
+  .page-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .year-picker {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+  }
+  .year-picker select {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+  .dropzone {
+    flex-wrap: wrap;
+    padding: 14px;
+  }
+  .dropzone > * {
+    min-width: 0;
+    max-width: 100%;
+  }
+  .dropzone input {
+    max-width: 100%;
+  }
+  .tabs {
+    overflow-x: auto;
+  }
+  .tabs button {
+    flex: none;
+    white-space: nowrap;
+  }
+  .workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .ws-head {
+    flex-wrap: wrap;
+  }
+  .segmented {
+    max-width: 100%;
+    overflow-x: auto;
+  }
+  .segmented button {
+    flex: none;
+  }
+  .map-table select.input {
+    min-width: 130px;
+  }
+  .table.register-table {
+    display: block;
+    overflow-x: auto;
+  }
+  .card:has(> .table) {
+    overflow-x: auto;
+  }
+  .record-grid {
+    grid-template-columns: minmax(0, 1fr) !important; /* some grids set two columns inline */
+  }
+  .term-actions {
+    flex-wrap: wrap;
+  }
+  .term-actions > * {
+    min-width: 0;
+    max-width: 100%;
+  }
 }

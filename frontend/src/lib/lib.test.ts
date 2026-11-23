@@ -18,6 +18,15 @@ describe("formatAmount", () => {
 describe("formatDate", () => {
   it("formats ISO dates without timezone drift", () => {
     expect(formatDate("2026-01-31")).toBe("31 Jan 2026");
+    expect(formatDate("2026-01-31", "Pacific/Honolulu")).toBe("31 Jan 2026"); // a calendar date never moves
+  });
+
+  it("shows a timestamp on the reader's own date", () => {
+    // 21:46 UTC on 23 Nov is 00:46 on 24 Nov in Nairobi (UTC+3).
+    expect(formatDate("2026-11-23T21:46:00.123456Z", "Africa/Nairobi")).toBe("24 Nov 2026");
+    expect(formatDate("2026-11-23T21:46:00.123456+00:00", "Africa/Nairobi")).toBe("24 Nov 2026");
+    expect(formatDate("2026-11-23T21:46:00", "Africa/Nairobi")).toBe("24 Nov 2026"); // no offset: stored as UTC
+    expect(formatDate("2026-11-23T20:59:59Z", "Africa/Nairobi")).toBe("23 Nov 2026");
   });
 });
 

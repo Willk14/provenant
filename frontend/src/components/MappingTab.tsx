@@ -73,7 +73,7 @@ export function MappingTab({ clientId, yearEnd, onChanged }: Props) {
           </button>
         </div>
         {error && <div className="error-banner">{error}</div>}
-        <div className="card">
+        <div className="card table-scroll">
           {shown.length === 0 ? (
             <div className="empty">Every account is mapped and confirmed. The tax computation can run.</div>
           ) : (

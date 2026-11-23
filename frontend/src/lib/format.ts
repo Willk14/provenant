@@ -7,15 +7,20 @@ export function formatAmount(value: string): string {
   return `${negative ? "−" : ""}${grouped}.${cents}`;
 }
 
-export function formatDate(iso: string): string {
+/**
+ * A calendar date (a period end, a due date) is shown exactly as written. A timestamp (when something was uploaded or
+ * reviewed) is a moment, so it is shown in the reader's time zone; one stored without an offset is UTC.
+ */
+export function formatDate(iso: string, timeZone?: string): string {
+  const options = { day: "numeric", month: "short", year: "numeric" } as const;
+  if (iso.length > 10 && iso[10] === "T") {
+    const utc = /(?:Z|[+-]\d{2}(?::?\d{2})?)$/.test(iso) ? iso : `${iso}Z`;
+    const moment = new Date(utc.replace(/(\.\d{3})\d+/, "$1"));
+    if (!Number.isNaN(moment.getTime())) return moment.toLocaleDateString("en-GB", { ...options, timeZone });
+  }
   const [y, m, d] = iso.slice(0, 10).split("-").map(Number);
   if (!y || !m || !d) return iso;
-  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString("en-GB", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    timeZone: "UTC",
-  });
+  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString("en-GB", { ...options, timeZone: "UTC" });
 }
 
 export function shortHash(sha: string): string {

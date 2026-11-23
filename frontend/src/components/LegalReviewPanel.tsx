@@ -140,9 +140,14 @@ export function LegalReviewPanel({ doc, onCite }: Props) {
                 {q.status === "failed" ? <div className="error-banner">{q.error}</div>
                   : q.answer ? <div className="term-note">{q.answer}</div>
                   : <div className="term-note">Reading…</div>}
-                <div className="chips">
-                  {q.citations.map((c, i) => <CitationChip key={i} id={`${q.id}-${i}`} citation={c} doc={doc} onCite={onCite} />)}
-                </div>
+                {q.citations.map((c, i) => (
+                  <div key={i}>
+                    <blockquote style={{ margin: "8px 0", paddingLeft: 10, borderLeft: "2px solid var(--line, currentColor)" }}>
+                      {c.quote}
+                    </blockquote>
+                    <div className="chips"><CitationChip id={`${q.id}-${i}`} citation={c} doc={doc} onCite={onCite} /></div>
+                  </div>
+                ))}
               </div>
             ))}
             <form className="term-actions" onSubmit={(e) => {
