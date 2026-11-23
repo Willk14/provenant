@@ -20,6 +20,7 @@ from provenant.api import (
     covenants,
     etims,
     ledger,
+    legal_chat,
     legal_drafts,
     legal_routes,
     memo,
@@ -599,6 +600,7 @@ def create_app(
     tax_routes.add_routes(app, Auth, Db, store)
     legal_routes.add_routes(app, Auth, Db)
     legal_drafts.add_routes(app, Auth, Db)
+    legal_chat.add_routes(app, Auth, Db)
     ai_runs.add_routes(app, Auth, Db)
     ai_agents.add_routes(app, Auth, Db)
     etims.add_routes(app, Auth, Db)

@@ -26,7 +26,12 @@ import { usePersona } from "@/lib/usePersona";
 
 export type Tab = "terms" | "schedule" | "review" | "drafts";
 
-export function Workspace({ id, initialField, initialTab }: { id: string; initialField?: FieldName; initialTab?: Tab }) {
+export function Workspace({ id, initialField, initialTab, initialCitation }: {
+  id: string;
+  initialField?: FieldName;
+  initialTab?: Tab;
+  initialCitation?: { page: number; bbox: LegalCitation["bbox"] };
+}) {
   const persona = usePersona();
   const [doc, setDoc] = useState<DocumentSummary | null>(null);
   const [pdf, setPdf] = useState<ArrayBuffer | null>(null);
@@ -37,9 +42,13 @@ export function Workspace({ id, initialField, initialTab }: { id: string; initia
   const [selectedField, setSelectedField] = useState<FieldName | null>(initialField ?? null);
   const [selection, setSelection] = useState<Selection | null>(null);
   const [focus, setFocus] = useState<{ name: HighlightName; nonce: number } | null>(
-    initialField ? { name: initialField, nonce: 1 } : null,
+    initialCitation ? { name: "finding:link", nonce: 1 } : initialField ? { name: initialField, nonce: 1 } : null,
   );
-  const [cited, setCited] = useState<{ id: string; citation: LegalCitation } | null>(null);
+  const [cited, setCited] = useState<{ id: string; citation: LegalCitation } | null>(
+    initialCitation
+      ? { id: "link", citation: { document_id: id, filename: "", quote: "", ...initialCitation } }
+      : null,
+  );
   const [drawingFor, setDrawingFor] = useState<FieldName | null>(null);
   const [pendingBox, setPendingBox] = useState<PendingBox | null>(null);
 

@@ -271,6 +271,31 @@ def test_contract_drafts_are_isolated_and_their_history_is_append_only(client, a
         assert s.scalar(text("select count(*) from contract_draft_events")) == 0
 
 
+def test_contract_chats_are_isolated_and_messages_are_append_only(client, app, database_url, monkeypatch):
+    import provenant.worker as worker
+    from tests.test_api import PREPARER, run_jobs
+    from tests.test_covenants_api import upload_agreement
+    from tests.test_legal_api import LINES
+    from tests.test_legal_chat import CitingAgent
+
+    monkeypatch.setattr(worker, "agent_from_env", CitingAgent)
+    doc_id = upload_agreement(client, app, LINES)
+    assert client.post(f"/documents/{doc_id}/chats", headers=PREPARER, json={"message": "Can they cancel?"}).status_code == 202
+    run_jobs(app)
+    factory = make_sessionmaker(make_engine(database_url))
+    with tenant_session(factory, "firm-a") as s:
+        assert s.scalar(text("select count(*) from contract_chats")) == 1
+        assert s.scalar(text("select count(*) from contract_chat_messages")) == 2
+        for change in ("update contract_chat_messages set text = 'x'", "delete from contract_chat_messages"):
+            with pytest.raises(DBAPIError, match="permission denied|append-only"):
+                s.execute(text(change))
+            s.rollback()
+        assert s.scalar(text("select count(*) from pg_trigger where tgname = 'contract_chat_messages_append_only'")) == 1
+    with tenant_session(factory, "firm-b") as s:
+        assert s.scalar(text("select count(*) from contract_chats")) == 0
+        assert s.scalar(text("select count(*) from contract_chat_messages")) == 0
+
+
 def test_covenant_adjustments_are_tenant_isolated(client, app, database_url):
     from tests.test_api import PREPARER
     from tests.test_covenants_api import upload_agreement, verify_all

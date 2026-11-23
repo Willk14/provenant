@@ -624,6 +624,40 @@ class ContractDraftEventRow(Base):
     at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
+class ContractChatRow(Base):
+    """A person's chat about one contract, private to them within the firm (ADR 0016)."""
+
+    __tablename__ = "contract_chats"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(String(64), index=True)
+    document_id: Mapped[str] = mapped_column(ForeignKey("documents.id"), index=True)
+    title: Mapped[str] = mapped_column(String(200))
+    status: Mapped[str] = mapped_column(String(16), default="queued")  # idle | queued | running | failed
+    error: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    created_by: Mapped[str] = mapped_column(String(200))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
+class ContractChatMessageRow(Base):
+    """Append-only. An answer is written once, when it has passed its citation checks."""
+
+    __tablename__ = "contract_chat_messages"
+    __table_args__ = (UniqueConstraint("chat_id", "position"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(String(64), index=True)
+    chat_id: Mapped[str] = mapped_column(ForeignKey("contract_chats.id"), index=True)
+    position: Mapped[int] = mapped_column(Integer)
+    role: Mapped[str] = mapped_column(String(16))
+    text: Mapped[str] = mapped_column(Text)
+    citations: Mapped[str] = mapped_column(Text, default="[]", server_default="[]")
+    not_stated: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    author: Mapped[str] = mapped_column(String(200))
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
 class AiRunRow(Base):
     """Append-only usage of one Claude run. Holds no prompt, document text, tool input or model output (ADR 0014)."""
 

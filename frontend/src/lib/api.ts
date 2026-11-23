@@ -9,6 +9,7 @@ import type {
   FieldName,
   AiAgents,
   AiUsage,
+  ContractChat,
   ContractDraft,
   DraftKind,
   LegalFinding,
@@ -122,6 +123,10 @@ export const api = {
     call<LegalQuestion>(`/documents/${id}/reviews/${reviewId}/questions`, json({ question })),
   aiAgents: () => call<AiAgents>("/ai/agents"),
   aiUsage: () => call<AiUsage>("/ai/runs?limit=1"),
+  contractChats: (id: string) => call<ContractChat[]>(`/documents/${id}/chats`),
+  startContractChat: (id: string, message: string) => call<ContractChat>(`/documents/${id}/chats`, json({ message })),
+  sendChatMessage: (id: string, chatId: string, message: string) =>
+    call<ContractChat>(`/documents/${id}/chats/${chatId}/messages`, json({ message })),
   contractDrafts: (id: string) => call<ContractDraft[]>(`/documents/${id}/drafts`),
   startContractDraft: (id: string, kind: DraftKind, instructions: string) =>
     call<ContractDraft>(`/documents/${id}/drafts`, json({ kind, instructions })),

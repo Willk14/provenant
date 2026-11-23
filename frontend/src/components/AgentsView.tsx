@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
+import { ContractChat } from "@/components/ContractChat";
 import { api, ApiError } from "@/lib/api";
 import { formatDate } from "@/lib/format";
 import type { AiAgents, AiUsage } from "@/lib/types";
@@ -118,6 +119,11 @@ export function AgentsView() {
               {data.contracts.map((c) => <option key={c.id} value={c.id}>{c.filename}</option>)}
             </select>
           </div>
+
+          {contract && (
+            <ContractChat contractId={contract} mode={data.engine.mode}
+              filename={data.contracts.find((c) => c.id === contract)?.filename ?? ""} />
+          )}
 
           <div className="agent-grid">
             {data.agents.map((a) => (

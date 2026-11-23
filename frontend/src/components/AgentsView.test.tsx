@@ -16,7 +16,7 @@ vi.mock("@/lib/api", () => {
       super(message);
     }
   }
-  return { ApiError: MockApiError, api: { aiAgents: vi.fn(), aiUsage: vi.fn() } };
+  return { ApiError: MockApiError, api: { aiAgents: vi.fn(), aiUsage: vi.fn(), contractChats: vi.fn(async () => []) } };
 });
 
 const data: AiAgents = {

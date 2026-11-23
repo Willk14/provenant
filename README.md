@@ -175,6 +175,9 @@ Its figures must trace to the cited contract wording or the instructions, unknow
 a different reviewer or partner approves it. Provenant never sends a draft. `baseline` produces a free skeleton, and
 `claude-api` writes the wording.
 
+The **AI agents** tab shows whether Claude is on and has a contract chat (ADR 0016). Answers must quote the contract,
+and any figure must appear in the quote or the question. Chats are private to their author.
+
 The scorecard (ADR 0013) measures clauses caught, false alarms, citations, retrieval and planted instructions:
 `python scripts/evaluate_review.py` is free, `--check` is the CI regression gate, `--real` adds the draft key on real
 agreements, and `--reader claude` or `--embedder voyage` need `--allow-paid`.

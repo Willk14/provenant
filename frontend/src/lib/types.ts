@@ -387,6 +387,25 @@ export interface AiAgents {
   }[];
 }
 
+/** A person's private chat about one contract. Every answer quotes wording checked against its page. */
+export interface ContractChat {
+  id: string;
+  document_id: string;
+  title: string;
+  status: "idle" | "queued" | "running" | "failed";
+  error: string | null;
+  created_at: string;
+  messages: {
+    id: string;
+    role: "user" | "assistant";
+    text: string;
+    citations: LegalCitation[];
+    not_stated: boolean;
+    author: string;
+    at: string;
+  }[];
+}
+
 export interface AiUsage {
   total_runs: number;
   failed_runs: number;
