@@ -13,6 +13,9 @@ export type FieldName =
   | "max_leverage_ratio"
   | "min_interest_cover"
   | "min_liquidity"
+  | "max_leverage_steps"
+  | "min_interest_cover_steps"
+  | "min_liquidity_steps"
   | "first_test_date"
   | "reporting_days"
   | "cure_period_days"
@@ -177,6 +180,9 @@ export const KINDS: Record<DocumentKind, KindSpec> = {
       "max_leverage_ratio",
       "min_interest_cover",
       "min_liquidity",
+      "max_leverage_steps",
+      "min_interest_cover_steps",
+      "min_liquidity_steps",
       "first_test_date",
       "reporting_days",
       "cure_period_days",
@@ -187,8 +193,8 @@ export const KINDS: Record<DocumentKind, KindSpec> = {
     ],
     required: new Set(["first_test_date", "reporting_days"]),
     judgement: new Set([
-      "max_leverage_ratio", "min_interest_cover", "min_liquidity", "cure_period_days", "cure_day_basis",
-      "cure_runs_from", "springing_usage_percent", "revolver_commitment",
+      "max_leverage_ratio", "min_interest_cover", "min_liquidity", "max_leverage_steps", "min_interest_cover_steps",
+      "min_liquidity_steps", "cure_period_days", "cure_day_basis", "cure_runs_from", "springing_usage_percent", "revolver_commitment",
     ]),
     labels: {},
   },
@@ -209,6 +215,9 @@ export const FIELD_LABELS: Record<FieldName, string> = {
   max_leverage_ratio: "Maximum leverage (net debt / EBITDA)",
   min_interest_cover: "Minimum interest cover (EBITDA / interest)",
   min_liquidity: "Minimum liquidity (cash)",
+  max_leverage_steps: "Leverage threshold changes",
+  min_interest_cover_steps: "Interest cover threshold changes",
+  min_liquidity_steps: "Liquidity threshold changes",
   first_test_date: "First test date",
   reporting_days: "Compliance certificate due (days after quarter-end)",
   cure_period_days: "Equity cure window (days)",

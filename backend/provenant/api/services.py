@@ -41,8 +41,9 @@ class Kind:
 COVENANT_GATE = ConfidenceGate(
     "covenant-v1",
     threshold=0.95,
-    always_review=frozenset({"max_leverage_ratio", "min_interest_cover", "min_liquidity", "cure_period_days",
-                             "cure_day_basis", "cure_runs_from", "springing_usage_percent", "revolver_commitment"}),
+    always_review=frozenset({"max_leverage_ratio", "min_interest_cover", "min_liquidity", "max_leverage_steps",
+                             "min_interest_cover_steps", "min_liquidity_steps", "cure_period_days", "cure_day_basis",
+                             "cure_runs_from", "springing_usage_percent", "revolver_commitment"}),
 )
 
 KINDS = {

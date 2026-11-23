@@ -4,7 +4,8 @@ from decimal import Decimal
 import pytest
 
 from provenant.covenants import Category, Covenant, Kind, PeriodInput, TBLine, Terms, TrialBalance, evaluate, figures, run
-from provenant.covenants.engine import add_business_days, quarters_back
+from provenant.core.formats import check_value, parse_relative_test, parse_threshold_steps
+from provenant.covenants.engine import add_business_days, quarters_back, resolve_first_test
 from provenant.provenance import ConfidenceGate, ReviewLog, Status
 
 M = Decimal("1000000")
@@ -92,6 +93,77 @@ def test_run_lists_due_dates_cure_windows_and_missing_history():
     }
     assert second.certificate_due == date(2027, 5, 15) and second.cure_deadline == date(2027, 6, 4)
     assert future.results == () and "2027-06-30" in future.missing
+
+
+@pytest.mark.parametrize("full, effective, year_end, expected", [
+    # December year: quarters end Mar, Jun, Sep, Dec.
+    (True, date(2026, 2, 15), 12, date(2026, 6, 30)),  # Q1 began 1 Jan, before the date, so Q2 is the first full one
+    (False, date(2026, 2, 15), 12, date(2026, 3, 31)),  # Q1 ends after 15 Feb
+    (True, date(2026, 1, 1), 12, date(2026, 3, 31)),  # Q1 starts on the date, so all of it is covered
+    (False, date(2026, 3, 31), 12, date(2026, 6, 30)),  # "ending after": 31 Mar itself does not count
+    (True, date(2026, 12, 31), 12, date(2027, 3, 31)),  # crosses the year
+    # June year: quarters end Sep, Dec, Mar, Jun. 15 Feb is in the quarter 1 Jan-31 Mar, so the next full one ends June.
+    (True, date(2026, 2, 15), 6, date(2026, 6, 30)),
+    # February year: quarters end May, Aug, Nov, Feb; 29 Feb 2028 is a quarter-end, so the next ends 31 May.
+    (False, date(2028, 2, 29), 2, date(2028, 5, 31)),
+    # November year: quarters end Feb, May, Aug, Nov. 10 Jan falls in 1 Dec-28 Feb, so the next full one ends 31 May.
+    (True, date(2026, 1, 10), 11, date(2026, 5, 31)),
+])
+def test_relative_first_test_date(full, effective, year_end, expected):
+    assert resolve_first_test(full, effective, year_end) == expected
+
+
+def test_relative_rule_format():
+    rule = "First full quarter after 2026-02-15, year end December"
+    assert check_value("first_test_date", rule) == rule
+    assert parse_relative_test(rule) == (True, date(2026, 2, 15), 12)
+    assert parse_relative_test("first quarter after 2026-02-15, year end june") == (False, date(2026, 2, 15), 6)
+    assert parse_relative_test("2026-12-31") is None
+    for bad in ("first full quarter after 2026-02-30, year end December", "first quarter after closing",
+                "first quarter after 2026-02-15, year end Smarch"):
+        with pytest.raises(ValueError):
+            check_value("first_test_date", bad)
+
+
+def test_threshold_step_format():
+    assert parse_threshold_steps("2027-12-31: 3.50x; 2027-03-31: 3.75x", ratio=True) == [
+        (date(2027, 3, 31), Decimal("3.75")), (date(2027, 12, 31), Decimal("3.50"))]
+    assert parse_threshold_steps("2027-03-31: 60,000,000", ratio=False) == [(date(2027, 3, 31), 60 * M)]
+    for bad in ("2027-03-31: 3.75", "March: 3.75x", "2027-03-31: 3.75x; 2027-03-31: 3.50x"):
+        with pytest.raises(ValueError):
+            check_value("max_leverage_steps", bad)
+
+
+def test_threshold_steps_apply_from_their_test_date_until_the_next():
+    # Every quarter: net debt 840, LTM EBITDA 300, so leverage is 2.80x throughout.
+    quarters = [date(2026, 3, 31), date(2026, 6, 30), date(2026, 9, 30), date(2026, 12, 31),
+                date(2027, 3, 31), date(2027, 6, 30), date(2027, 9, 30)]
+    tbs = [tb(d, revenue=300, opex=225, interest=1, cash=120, borrowings=900, leases=60) for d in quarters]
+    terms = Terms((Covenant(Kind.LEVERAGE, Decimal("3.00")),), date(2026, 12, 31), 45, threshold_steps=(
+        (Kind.LEVERAGE, date(2027, 3, 31), Decimal("2.75")),  # 2.80 > 2.75: breach
+        (Kind.LEVERAGE, date(2027, 6, 30), Decimal("3.50")),  # 2.80 <= 3.50: headroom 1 - 2.8/3.5 = 20%
+    ))
+    december, march, june, september = [t.results[0] for t in run(terms, tbs, date(2027, 9, 30))]
+    assert (december.covenant.threshold, december.status, december.note) == (Decimal("3.00"), "warning", "")
+    assert (march.covenant.threshold, march.status) == (Decimal("2.75"), "breach")
+    assert march.note == "Threshold 2.75x applies from 2027-03-31"
+    assert (june.covenant.threshold, june.status, june.headroom) == (Decimal("3.50"), "pass", Decimal("0.2"))
+    assert september.covenant.threshold == Decimal("3.50")  # the last step stays in force
+    assert terms.field_at(Kind.LEVERAGE, date(2026, 12, 31)) == "max_leverage_ratio"
+    assert terms.field_at(Kind.LEVERAGE, date(2027, 3, 31)) == "max_leverage_steps"
+
+
+@pytest.mark.parametrize("kind, on, level, message", [
+    (Kind.INTEREST_COVER, date(2027, 3, 31), "4.00", "base covenant"),
+    (Kind.LEVERAGE, date(2026, 12, 31), "3.00", "after the first test date"),
+    (Kind.LEVERAGE, date(2027, 1, 31), "3.00", "not a quarterly test date"),
+    (Kind.LEVERAGE, date(2027, 3, 30), "3.00", "not a quarterly test date"),
+    (Kind.LEVERAGE, date(2027, 3, 31), "0", "more than zero"),
+])
+def test_bad_threshold_steps_are_refused(kind, on, level, message):
+    with pytest.raises(ValueError, match=message):
+        Terms((Covenant(Kind.LEVERAGE, Decimal("3.50")),), date(2026, 12, 31), 45,
+              threshold_steps=((kind, on, Decimal(level)),))
 
 
 def test_terms_from_fields_need_verification_and_a_covenant(make_field):

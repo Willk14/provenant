@@ -84,8 +84,9 @@ push only when the owner asks.
    ledger exceptions in the board memo; DuckDB-WASM in the browser only after the server path is proven.
 6a. **Compliance checks (ADR 0007), in progress:** eTIMS purchase reconciliation, variance checks, M-Pesa/bank
    statement parsers and the board tax memo (ADR 0008) are done.
-6. **Schema fixes from real documents (ADR 0005):** (discount rate input, amendment dates, expansions, springing
-   leverage and business-day cure periods: done) relative first test dates and threshold step-ups.
+6. ~~Schema fixes from real documents (ADR 0005)~~: done (discount rate input, amendment dates, expansions, springing
+   leverage, business-day cure periods, relative first test dates and threshold step-ups). Possible follow-up:
+   extracting the last two, and event-triggered step-ups.
 7. ~~Mapping suggestions learned from the firm's confirmed mappings~~: done (`learn` / `suggest_for_firm` in
    `tax/mapping.py`). Possible follow-up: a "refresh suggestions" action for accounts still unconfirmed.
 

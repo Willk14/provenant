@@ -18,11 +18,11 @@ AGREEMENT_LINES = [
 ]
 
 
-def agreement_pdf() -> bytes:
+def agreement_pdf(lines=tuple(AGREEMENT_LINES)) -> bytes:
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Helvetica", size=10)
-    for line in AGREEMENT_LINES:
+    for line in lines:
         pdf.multi_cell(0, 6, line, new_x="LMARGIN", new_y="NEXT")
     return bytes(pdf.output())
 
@@ -47,12 +47,12 @@ WEAK = dict(revenue=260, opex=235, interest=20, cash=60, borrowings=950, leases=
 QUARTERS = ["2026-03-31", "2026-06-30", "2026-09-30", "2026-12-31"]
 
 
-def upload_agreement(client, app) -> str:
+def upload_agreement(client, app, lines=tuple(AGREEMENT_LINES)) -> str:
     r = client.post(
         "/documents",
         headers=PREPARER,
         data={"kind": "credit_agreement"},
-        files={"file": ("facility.pdf", agreement_pdf(), "application/pdf")},
+        files={"file": ("facility.pdf", agreement_pdf(lines), "application/pdf")},
     )
     assert r.status_code == 201 and r.json()["kind"] == "credit_agreement"
     run_jobs(app)
@@ -157,6 +157,43 @@ def test_rejecting_a_proposed_covenant_drops_it(client, app):
     assert r.status_code == 200
     kinds = {x["kind"] for t in r.json()["test_dates"] for x in t["results"]}
     assert "min_liquidity" not in kinds
+
+
+def test_relative_first_test_date_and_threshold_step(client, app):
+    relative = "Testing begins with the first full Financial Quarter after the Closing Date (1 November 2026)."
+    doc_id = upload_agreement(client, app, [relative if x.startswith("First Test") else x for x in AGREEMENT_LINES])
+    fields = client.get(f"/documents/{doc_id}", headers=PREPARER).json()["fields"]
+    assert "first_test_date" not in {f["name"] for f in fields}  # a relative date is not read as a date
+
+    def mark(name, value):
+        return client.post(f"/documents/{doc_id}/fields", headers=PREPARER,
+                           json={"name": name, "value": value, "page": 1, "bbox": [0, 0, 600, 900]})
+
+    assert mark("first_test_date", "first full quarter after closing").status_code == 422
+    assert mark("max_leverage_steps", "2027-06-30: 3.25").status_code == 422  # a ratio must carry "x"
+    # Q4 2026 began 1 Oct, before 1 Nov, so the first full quarter is January to March 2027.
+    assert mark("first_test_date", "first full quarter after 2026-11-01, year end December").status_code == 201
+    step = mark("max_leverage_steps", "2027-06-30: 3.25x")
+    assert step.status_code == 201 and step.json()["status"] == "needs_review"
+    assert review(client, step.json()["id"], REVIEWER).status_code == 403  # a threshold is a partner's call
+    assert client.get(f"/documents/{doc_id}/covenants", headers=PREPARER).status_code == 409  # not verified yet
+    verify_all(client, doc_id)
+
+    for q in QUARTERS[1:]:
+        upload_tb(client, doc_id, q, tb_csv(**STEADY))
+    upload_tb(client, doc_id, "2027-03-31", tb_csv(**WEAK))
+    upload_tb(client, doc_id, "2027-06-30", tb_csv(**STEADY))
+    r = client.get(f"/documents/{doc_id}/covenants", headers=PREPARER, params={"as_of": "2027-07-01"}).json()
+    assert r["terms"]["first_test_date"] == "2027-03-31" and r["test_dates"][0]["period_end"] == "2027-03-31"
+
+    ids = {f["name"]: f["id"] for f in r["inputs"]}
+    march, june = (next(x for x in t["results"] if x["kind"] == "leverage") for t in r["test_dates"][:2])
+    assert Decimal(march["threshold"]) == Decimal("3.50") and march["field_id"] == ids["max_leverage_ratio"]
+    # June: net debt 900 + 60 - 120 = 840; LTM EBITDA 75 + 75 + 25 + 75 = 250; 840 / 250 = 3.36x.
+    # Within the base 3.50x, but above the 3.25x that applies from June.
+    assert Decimal(june["value"]) == Decimal("3.36") and june["status"] == "breach"
+    assert Decimal(june["threshold"]) == Decimal("3.25") and june["field_id"] == ids["max_leverage_steps"]
+    assert june["note"] == "Threshold 3.25x applies from 2027-06-30"
 
 
 def test_springing_and_delivery_inputs_are_confirmed_before_they_count(client, app):

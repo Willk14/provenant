@@ -4,6 +4,7 @@ Applied to human input (manual entry, corrections) and again before any calculat
 deliberately strict: a rate must carry "%" ("12" vs "0.12" is the ambiguity that ends up 100x wrong), and a
 covenant ratio must carry "x" ("3.5" could be a ratio, a percentage or an amount).
 """
+import calendar
 import re
 from datetime import date
 from decimal import Decimal
@@ -12,6 +13,10 @@ _DATE = (r"\d{4}-\d{2}-\d{2}", "a date as YYYY-MM-DD")
 _AMOUNT = (r"\d{1,3}(,\d{3})*(\.\d{1,2})?|\d+(\.\d{1,2})?", "an amount like 120,000 or 120000.00")
 _RATIO = (r"\d{1,2}(\.\d{1,2})?x", "a ratio like 3.50x")
 _DAYS = (r"\d{1,3}", "a whole number of days")
+_MONTHS = "|".join(calendar.month_name[1:])
+_RELATIVE_TEST = rf"(?i:first (full )?quarter after (\d{{4}}-\d{{2}}-\d{{2}}), year end ({_MONTHS}))"
+_RATIO_STEPS = (r"[^;]+(;[^;]+)*", "steps like '2027-03-31: 3.75x; 2027-12-31: 3.50x'")
+_AMOUNT_STEPS = (r"[^;]+(;[^;]+)*", "steps like '2027-03-31: 60,000,000; 2027-12-31: 50,000,000'")
 
 FORMATS: dict[str, tuple[str, str]] = {
     # leases and amendments
@@ -34,7 +39,13 @@ FORMATS: dict[str, tuple[str, str]] = {
     "max_leverage_ratio": _RATIO,
     "min_interest_cover": _RATIO,
     "min_liquidity": _AMOUNT,
-    "first_test_date": _DATE,
+    # A named quarter-end, or the agreement's relative rule with the date and financial year-end it depends on.
+    "first_test_date": (rf"\d{{4}}-\d{{2}}-\d{{2}}|{_RELATIVE_TEST}",
+                        "a date as YYYY-MM-DD, or a rule like 'first full quarter after 2026-02-15, year end December'"),
+    # Thresholds that change: each applies from that test date until the next step.
+    "max_leverage_steps": _RATIO_STEPS,
+    "min_interest_cover_steps": _RATIO_STEPS,
+    "min_liquidity_steps": _AMOUNT_STEPS,
     "reporting_days": _DAYS,
     "cure_period_days": _DAYS,
     "cure_day_basis": (r"(?i)calendar|business", "calendar or business"),
@@ -53,8 +64,15 @@ def check_value(name: str, value: str) -> str:
     value = value.strip()
     if not re.fullmatch(pattern, value):
         raise ValueError(f"{name.replace('_', ' ')} must be {expected}, got {value!r}")
-    if name.endswith("_date"):
+    if name == "first_test_date":
+        rule = parse_relative_test(value)
+        date.fromisoformat(value if rule is None else rule[1].isoformat())
+    elif name.endswith("_date"):
         date.fromisoformat(value)  # also rejects 2026-02-30
+    if name in ("max_leverage_steps", "min_interest_cover_steps"):
+        parse_threshold_steps(value, ratio=True)
+    if name == "min_liquidity_steps":
+        parse_threshold_steps(value, ratio=False)
     if name == "rent_steps":
         parse_rent_steps(value)
     if name == "free_periods":
@@ -86,6 +104,33 @@ def parse_rent_steps(text: str) -> list[tuple[int | date, Decimal]]:
     if len(set(keys)) != len(keys):
         raise ValueError("each rent step must start on a different month")
     return steps
+
+
+def parse_relative_test(text: str) -> tuple[bool, date, int] | None:
+    """'first full quarter after 2026-02-15, year end December' -> (True, date(2026, 2, 15), 12); None for a date."""
+    match = re.fullmatch(_RELATIVE_TEST, text.strip())
+    if match is None:
+        return None
+    months = [m.lower() for m in calendar.month_name]
+    return bool(match.group(1)), date.fromisoformat(match.group(2)), months.index(match.group(3).lower())
+
+
+def parse_threshold_steps(text: str, *, ratio: bool) -> list[tuple[date, Decimal]]:
+    """'2027-03-31: 3.75x; 2027-12-31: 3.50x' -> dated thresholds, oldest first."""
+    from provenant.core.money import to_decimal
+
+    shape = FORMATS["max_leverage_ratio" if ratio else "min_liquidity"][0]
+    steps = []
+    for part in text.split(";"):
+        when, sep, amount = (x.strip() for x in part.partition(":"))
+        if not sep or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", when) or not re.fullmatch(shape, amount):
+            example = "3.75x" if ratio else "60,000,000"
+            raise ValueError(f"threshold step {part.strip()!r} must look like '2027-03-31: {example}'")
+        steps.append((date.fromisoformat(when), to_decimal(amount.rstrip("x"))))
+    dates = [d for d, _ in steps]
+    if len(set(dates)) != len(dates):
+        raise ValueError("each threshold step must start on a different test date")
+    return sorted(steps)
 
 
 def parse_free_periods(text: str) -> list[int | tuple[int, int]]:

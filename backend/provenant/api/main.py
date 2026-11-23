@@ -501,7 +501,7 @@ def create_app(
                     results=[
                         CovenantResultOut(
                             kind=res.covenant.kind.value,
-                            field_id=field_ids[r.terms.field_for(res.covenant.kind)],
+                            field_id=field_ids[r.terms.field_at(res.covenant.kind, t.period_end)],
                             threshold=res.covenant.threshold,
                             status=res.status,
                             value=None if res.value is None else round(res.value, 2 if res.covenant.kind == "min_liquidity" else 4),

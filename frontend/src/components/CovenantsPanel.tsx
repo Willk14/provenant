@@ -83,7 +83,13 @@ export function CovenantsPanel({ doc, onTrace }: Props) {
 
   const pick = (period: string, kind: CovenantKind) => {
     setSelected({ period, kind });
-    onTrace(COVENANT_FIELD[kind]);
+    onTrace(thresholdField(period, kind));
+  };
+
+  /** The term that set the threshold on that date: the base clause, or the step schedule once a step applies. */
+  const thresholdField = (period: string, kind: CovenantKind): FieldName => {
+    const result = run?.test_dates.find((t) => t.period_end === period)?.results.find((r) => r.kind === kind);
+    return run?.inputs.find((f) => f.id === result?.field_id)?.name ?? COVENANT_FIELD[kind];
   };
 
   const selectedDate = run?.test_dates.find((t) => t.period_end === selected?.period);
@@ -108,6 +114,9 @@ export function CovenantsPanel({ doc, onTrace }: Props) {
               <label htmlFor="as-of">Deadlines as of</label>
               <input id="as-of" className="input" type="date" value={asOf} onChange={(e) => setAsOf(e.target.value)} />
             </div>
+            {run.inputs.some((f) => f.name === "first_test_date" && f.status !== "rejected" && !/^\d{4}-/.test(f.value)) && (
+              <p className="term-note">Testing starts {formatDate(run.terms.first_test_date)}, worked out from the agreement&apos;s rule.</p>
+            )}
             {run.alerts.length > 0 && (
               <div className="alerts">
                 {run.alerts.map((a, i) => (
@@ -145,7 +154,7 @@ export function CovenantsPanel({ doc, onTrace }: Props) {
                 result={selectedResult}
                 testDate={selectedDate}
                 tbs={selectedDate.trial_balance_ids.map((id) => tbById.get(id)).filter(Boolean) as TrialBalanceSummary[]}
-                onShowClause={() => onTrace(COVENANT_FIELD[selectedResult.kind])}
+                onShowClause={() => onTrace(thresholdField(selectedDate.period_end, selectedResult.kind))}
               />
             ) : (
               <p className="term-note">

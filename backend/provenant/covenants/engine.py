@@ -16,7 +16,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 from enum import StrEnum
 
-from provenant.core.formats import check_value
+from provenant.core.formats import check_value, parse_relative_test, parse_threshold_steps
 from provenant.core.money import ZERO, to_decimal
 from provenant.provenance import ExtractedField
 
@@ -140,6 +140,16 @@ def quarters_back(period_end: date, count: int) -> list[date]:
     return [add_quarters(period_end, -i) for i in reversed(range(count))]
 
 
+def resolve_first_test(full_quarter: bool, effective: date, year_end_month: int) -> date:
+    """The quarter-end a relative rule names, on the financial year's quarter cycle. A full quarter is one that
+    starts on or after the effective date; otherwise the quarter need only end strictly after it."""
+    index = effective.year * 12 + effective.month - 1 + (year_end_month - effective.month) % 3
+    quarter_end = month_end(index // 12, index % 12 + 1)  # the quarter the effective date falls in
+    quarter_start = add_quarters(quarter_end, -1) + timedelta(days=1)
+    qualifies = quarter_start >= effective if full_quarter else quarter_end > effective
+    return quarter_end if qualifies else add_quarters(quarter_end, 1)
+
+
 def add_business_days(start: date, days: int) -> date:
     """The date `days` weekdays after `start`. Public holidays are not removed: they vary by agreement and
     jurisdiction, and leaving them in counts them as days used, so the date is never later than the true one."""
@@ -219,8 +229,10 @@ class Terms:
     cure_from_delivery: bool = False  # the window runs from the certificate's delivery rather than its due date
     springing_usage: Decimal | None = None  # leverage is tested only when usage exceeds this fraction
     revolver_commitment: Decimal | None = None
+    threshold_steps: tuple[tuple[Kind, date, Decimal], ...] = ()  # each applies from its test date to the next
 
-    FIELDS = ("max_leverage_ratio", "min_interest_cover", "min_liquidity", "first_test_date", "reporting_days",
+    FIELDS = ("max_leverage_ratio", "min_interest_cover", "min_liquidity", "max_leverage_steps",
+              "min_interest_cover_steps", "min_liquidity_steps", "first_test_date", "reporting_days",
               "cure_period_days", "cure_day_basis", "cure_runs_from", "springing_usage_percent",
               "revolver_commitment")
     REQUIRED = ("first_test_date", "reporting_days")
@@ -228,6 +240,11 @@ class Terms:
         "max_leverage_ratio": Kind.LEVERAGE,
         "min_interest_cover": Kind.INTEREST_COVER,
         "min_liquidity": Kind.MIN_LIQUIDITY,
+    }
+    STEP_FIELDS = {
+        "max_leverage_steps": Kind.LEVERAGE,
+        "min_interest_cover_steps": Kind.INTEREST_COVER,
+        "min_liquidity_steps": Kind.MIN_LIQUIDITY,
     }
 
     @classmethod
@@ -250,9 +267,17 @@ class Terms:
             for name, kind in cls.COVENANT_FIELDS.items()
             if name in present
         )
+        rule = parse_relative_test(value("first_test_date"))
+        steps = tuple(
+            (kind, on, threshold)
+            for name, kind in cls.STEP_FIELDS.items()
+            if name in present
+            for on, threshold in parse_threshold_steps(value(name), ratio=kind is not Kind.MIN_LIQUIDITY)
+        )
         return cls(
             covenants=covenants,
-            first_test_date=date.fromisoformat(value("first_test_date")),
+            first_test_date=(resolve_first_test(*rule) if rule else date.fromisoformat(value("first_test_date"))),
+            threshold_steps=steps,
             reporting_days=int(value("reporting_days")),
             cure_days=int(value("cure_period_days")) if "cure_period_days" in present else None,
             cure_business_days="cure_day_basis" in present and value("cure_day_basis").lower() == "business",
@@ -265,6 +290,17 @@ class Terms:
 
     def field_for(self, kind: Kind) -> str:
         return next(name for name, k in self.COVENANT_FIELDS.items() if k is kind)
+
+    def step_at(self, kind: Kind, test_date: date) -> tuple[date, Decimal] | None:
+        """The latest threshold step in force at `test_date`; None while the base threshold applies."""
+        applying = [(on, threshold) for k, on, threshold in self.threshold_steps if k is kind and on <= test_date]
+        return max(applying, default=None)
+
+    def field_at(self, kind: Kind, test_date: date) -> str:
+        """The term that supplied the threshold tested at `test_date`, so a result traces to the right clause."""
+        if self.step_at(kind, test_date) is None:
+            return self.field_for(kind)
+        return next(name for name, k in self.STEP_FIELDS.items() if k is kind)
 
     def __post_init__(self) -> None:
         if not self.covenants:
@@ -284,6 +320,19 @@ class Terms:
                 raise ValueError("the revolver commitment must be more than zero")
             if not any(c.kind is Kind.LEVERAGE for c in self.covenants):
                 raise ValueError("a springing test applies to the leverage covenant, and there is none")
+        kinds = {c.kind for c in self.covenants}
+        for kind, on, threshold in self.threshold_steps:
+            label = kind.value.replace("_", " ")
+            if kind not in kinds:
+                raise ValueError(f"threshold steps for {label} need its base covenant")
+            if threshold <= 0:
+                raise ValueError(f"a {label} threshold step must be more than zero")
+            if on <= self.first_test_date:
+                raise ValueError(f"the {label} step on {on} must be after the first test date; "
+                                 "the level at the first test date is the base threshold")
+            months = (on.year - self.first_test_date.year) * 12 + on.month - self.first_test_date.month
+            if on != month_end(on.year, on.month) or months % 3:
+                raise ValueError(f"the {label} step on {on} is not a quarterly test date")
 
     def cure_deadline(self, due: date, delivered_on: date | None) -> date | None:
         """When the cure window closes; None if there is no cure right or its start is not known yet."""
@@ -317,6 +366,18 @@ def apply_covenant(covenant: Covenant, f: Figures, terms: Terms, drawn: Decimal 
     return replace(result, workings=(*lines, *result.workings), note=f"{note}. {result.note}" if result.note else note)
 
 
+def apply_at_date(covenant: Covenant, f: Figures, terms: Terms, drawn: Decimal | None) -> Result:
+    """`apply_covenant` at the threshold in force on the test date, saying so when a step set it."""
+    step = terms.step_at(covenant.kind, f.test_date)
+    if step is None:
+        return apply_covenant(covenant, f, terms, drawn)
+    on, threshold = step
+    result = apply_covenant(replace(covenant, threshold=threshold), f, terms, drawn)
+    level = f"{threshold:,.2f}" if covenant.kind is Kind.MIN_LIQUIDITY else f"{threshold:.2f}x"
+    note = f"Threshold {level} applies from {on.isoformat()}"
+    return replace(result, note=f"{note}. {result.note}" if result.note else note)
+
+
 def run(terms: Terms, trial_balances: Sequence[TrialBalance], horizon: date,
         period_inputs: Mapping[date, PeriodInput] | None = None) -> list[TestDate]:
     """Every quarterly test date from the first test date up to `horizon`: tested where the trial balances
@@ -335,7 +396,7 @@ def run(terms: Terms, trial_balances: Sequence[TrialBalance], horizon: date,
             out.append(TestDate(test_date, due, (), None, str(exc)))
         else:
             facts = period_inputs.get(test_date, PeriodInput())
-            results = tuple(apply_covenant(c, f, terms, facts.revolver_drawn) for c in terms.covenants)
+            results = tuple(apply_at_date(c, f, terms, facts.revolver_drawn) for c in terms.covenants)
             breached = any(r.status == "breach" for r in results)
             cure = terms.cure_deadline(due, facts.delivered_on) if breached else None
             pending = breached and bool(terms.cure_days) and cure is None

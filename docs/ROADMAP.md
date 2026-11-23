@@ -50,7 +50,7 @@ Built as thin vertical slices. Each milestone ships something a user can run end
 - [x] Amendments: agreed (IFRS 16 effective) date separate from the date new terms start; new expiry date
 - [x] Expansions: the IFRS 16.44 judgement as a partner-reviewed input; a separate lease gets its own schedule
 - [x] Springing leverage tests and business-day cure periods
-- [ ] Relative first test dates, threshold step-ups
+- [x] Relative first test dates, threshold step-ups
 - [ ] Run the Claude evaluation on the real set (needs an API key) and calibrate confidence per extractor
 
 ## M3 — Covenants and full-population analytics

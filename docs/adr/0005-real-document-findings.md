@@ -78,6 +78,12 @@ lease (Recursion 2022) and four lease amendments (Kura, Tenaya, NeuroOne extensi
    one. With delivery unknown, no deadline is shown and the breach alert asks for it.
 9. **Test start dates are often relative** ("the first full fiscal quarter ending after the Effective
    Date"). Step-ups (IMXI: 3.75x during an acquisition period) need a schedule of thresholds.
+   *Done (2026-11-23):* the first test date can be the agreement's rule, with the date and financial year-end it
+   depends on ("first full quarter after 2026-02-15, year end December"). A full quarter starts on or after that
+   date; otherwise the quarter need only end strictly after it. Each covenant can carry dated threshold steps,
+   marked on the PDF and signed off by a partner; a step applies from its test date until the next and must fall on
+   a later quarterly test date. Not yet: steps triggered by an event, such as an acquisition, which are entered as
+   dates once known, and extraction of either term.
 10. **Most EDGAR "lease" exhibits are amendments.** Seven of the ten picked by search were amendments.
 
 ## Decision
