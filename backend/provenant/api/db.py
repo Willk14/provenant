@@ -10,6 +10,7 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -579,6 +580,32 @@ class ContractQuestionRow(Base):
     citations: Mapped[str] = mapped_column(Text, default="[]", server_default="[]")  # JSON, each located on a page
     error: Mapped[str | None] = mapped_column(String(500), nullable=True)
     asked_by: Mapped[str] = mapped_column(String(200))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class AiRunRow(Base):
+    """Append-only usage of one Claude run. Holds no prompt, document text, tool input or model output (ADR 0014)."""
+
+    __tablename__ = "ai_runs"
+    __table_args__ = (Index("ix_ai_runs_tenant_created", "tenant_id", "created_at"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(String(64))
+    document_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    purpose: Mapped[str] = mapped_column(String(32))
+    models: Mapped[str] = mapped_column(String(128))
+    status: Mapped[str] = mapped_column(String(16))  # completed | failed | refused | deadline | budget
+    stop_reason: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    error_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    turns: Mapped[int] = mapped_column(Integer)
+    tool_calls: Mapped[int] = mapped_column(Integer)
+    input_tokens: Mapped[int] = mapped_column(BigInteger)
+    output_tokens: Mapped[int] = mapped_column(BigInteger)
+    cache_read_tokens: Mapped[int] = mapped_column(BigInteger)
+    cache_write_tokens: Mapped[int] = mapped_column(BigInteger)
+    cost_microusd: Mapped[int | None] = mapped_column(BigInteger, nullable=True)  # an estimate; None if unpriced
+    prices_version: Mapped[str] = mapped_column(String(16))
+    duration_ms: Mapped[int] = mapped_column(BigInteger)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 

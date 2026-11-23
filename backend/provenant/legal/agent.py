@@ -7,8 +7,9 @@ import time
 from collections.abc import Sequence
 from typing import Protocol
 
+from provenant.ai import Limits, run_tools
 from provenant.legal.playbook import Topic
-from provenant.legal.toolbox import ReviewToolbox
+from provenant.legal.toolbox import TOOLS, ReviewToolbox
 
 log = logging.getLogger(__name__)
 
@@ -156,13 +157,35 @@ class ManagedReviewAgent:
             log.exception("could not delete session %s", session_id)
 
 
+class ApiReviewAgent:
+    """The same prompt, tools and citation checks on Provenant's own Messages API loop: no hosted session (ADR 0014)."""
+
+    def __init__(self, client, model: str = MODEL, limits: Limits | None = None) -> None:
+        self.client, self.model, self.limits = client, model, limits
+        self.name = f"claude-api:{model}"[:64]
+
+    def review(self, topics: Sequence[Topic], toolbox: ReviewToolbox) -> None:
+        self._run("contract_review", review_prompt(topics), toolbox)
+
+    def ask(self, question: str, topics: Sequence[Topic], toolbox: ReviewToolbox) -> None:
+        self._run("contract_question", question_prompt(question), toolbox)
+
+    def _run(self, purpose: str, prompt: str, toolbox: ReviewToolbox) -> None:
+        run_tools(self.client, purpose=purpose, system=SYSTEM, prompt=prompt, tools=TOOLS, execute=toolbox.call,
+                  done=lambda: toolbox.finished, model=self.model, limits=self.limits)
+
+
 def agent_from_env() -> ReviewAgent:
-    """`PROVENANT_LEGAL_AGENT=baseline` (default) or `claude`, which needs the ids from setup_legal_agent.py."""
+    """`PROVENANT_LEGAL_AGENT=baseline` (default), `claude-api`, or `claude` with the ids from setup_legal_agent.py."""
     choice = os.environ.get("PROVENANT_LEGAL_AGENT", "baseline")
     if choice == "baseline":
         return BaselineAgent()
+    if choice == "claude-api":
+        import anthropic
+
+        return ApiReviewAgent(anthropic.Anthropic())
     if choice != "claude":
-        raise ValueError("PROVENANT_LEGAL_AGENT must be baseline or claude")
+        raise ValueError("PROVENANT_LEGAL_AGENT must be baseline, claude-api or claude")
     agent_id, environment_id = os.environ.get("PROVENANT_LEGAL_AGENT_ID"), os.environ.get("PROVENANT_LEGAL_ENVIRONMENT_ID")
     if not agent_id or not environment_id:
         raise ValueError("set PROVENANT_LEGAL_AGENT_ID and PROVENANT_LEGAL_ENVIRONMENT_ID (scripts/setup_legal_agent.py)")

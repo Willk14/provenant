@@ -1,4 +1,6 @@
 """Database-level guarantees. Run with TEST_DATABASE_URL pointing at a Postgres superuser."""
+from types import SimpleNamespace
+
 import pytest
 from sqlalchemy import select, text
 from sqlalchemy.exc import DBAPIError
@@ -231,6 +233,24 @@ def test_contract_reviews_are_tenant_isolated(client, app, database_url, monkeyp
         assert all(s.scalar(text(f"select count(*) from {t}")) >= 1 for t in tables)
     with tenant_session(factory, "firm-b") as s:
         assert all(s.scalar(text(f"select count(*) from {t}")) == 0 for t in tables)
+
+
+def test_ai_runs_are_tenant_isolated_and_append_only(client, app, database_url):
+    from provenant.ai import record_call
+    from provenant.api.ai_runs import recording
+
+    factory = make_sessionmaker(make_engine(database_url))
+    with recording(factory, "firm-a", None):
+        record_call("extraction_lease", "claude-opus-5-5", SimpleNamespace(stop_reason="end_turn"), 0.1)
+    with tenant_session(factory, "firm-a") as s:
+        assert s.scalar(text("select count(*) from ai_runs")) == 1
+        for change in ("update ai_runs set status = 'failed'", "delete from ai_runs"):  # no grant, and a trigger too
+            with pytest.raises(DBAPIError, match="permission denied|append-only"):
+                s.execute(text(change))
+            s.rollback()
+        assert s.scalar(text("select count(*) from pg_trigger where tgname = 'ai_runs_append_only'")) == 1
+    with tenant_session(factory, "firm-b") as s:
+        assert s.scalar(text("select count(*) from ai_runs")) == 0
 
 
 def test_covenant_adjustments_are_tenant_isolated(client, app, database_url):

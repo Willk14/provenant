@@ -5,6 +5,7 @@
     python scripts/evaluate_review.py --update-baseline     # accept the current free result as the new baseline
     python scripts/evaluate_review.py --real                # also the draft key on real agreements (local cache)
     python scripts/evaluate_review.py --reader claude --allow-paid     # Managed Agent: costs money, sends contract text
+    python scripts/evaluate_review.py --reader claude-api --allow-paid # Messages API harness: costs money, sends contract text
     python scripts/evaluate_review.py --embedder voyage --allow-paid   # Voyage: costs money, sends contract text
 """
 import argparse
@@ -250,7 +251,7 @@ def report(title: str, result: dict) -> None:
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--reader", choices=("baseline", "claude"), default="baseline")
+    parser.add_argument("--reader", choices=("baseline", "claude", "claude-api"), default="baseline")
     parser.add_argument("--embedder", choices=("hashing", "voyage"), default="hashing")
     parser.add_argument("--real", action="store_true", help="also score the draft key on real agreements")
     parser.add_argument("--check", action="store_true", help="fail if the free result is worse than the baseline")
@@ -259,16 +260,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--save", type=Path, help="write the full JSON report here")
     args = parser.parse_args(argv)
 
-    paid = args.reader == "claude" or args.embedder == "voyage"
+    paid = args.reader in ("claude", "claude-api") or args.embedder == "voyage"
     if paid and not args.allow_paid:
         parser.error("this costs money and sends contract text to a provider: add --allow-paid to confirm")
     if paid and (args.check or args.update_baseline):
         parser.error("the regression baseline covers the free readers only")
 
-    if args.reader == "claude":
+    if args.reader in ("claude", "claude-api"):
         import os
 
-        os.environ["PROVENANT_LEGAL_AGENT"] = "claude"
+        os.environ["PROVENANT_LEGAL_AGENT"] = args.reader
         agent = agent_from_env()
     else:
         agent = BaselineAgent()

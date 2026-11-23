@@ -10,9 +10,11 @@ EDGAR set in golden/real/) measure both against hand-labelled answers.
 """
 import logging
 import re
+import time
 
 from pydantic import BaseModel, Field
 
+from provenant.ai import record_call
 from provenant.extraction.lease_labels import normalise
 from provenant.extraction.pdftext import PageText, open_pages
 from provenant.provenance import ExtractedField
@@ -173,6 +175,7 @@ class ClaudeLeaseExtractor:
             if not any(p.text.strip() for p in pages):
                 return []  # scanned PDF: needs OCR first (roadmap), nothing to ground against
             document = "\n\n".join(f'<page number="{p.number}">\n{p.text}\n</page>' for p in pages)
+            started = time.monotonic()
             response = self.client.beta.messages.parse(
                 model=self.model,
                 max_tokens=16000,
@@ -183,6 +186,7 @@ class ClaudeLeaseExtractor:
                 messages=[{"role": "user", "content": f"<document>\n{document}\n</document>"}],
                 output_format=SCHEMAS[kind],
             )
+            record_call(f"extraction_{kind}", self.model, response, time.monotonic() - started)
             if response.stop_reason == "refusal":
                 raise ExtractionRefused(f"model declined: {getattr(response.stop_details, 'category', None)}")
             if response.parsed_output is None:
