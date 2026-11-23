@@ -1,0 +1,36 @@
+{
+ "reader": "baseline-keywords-v1",
+ "embedder": "hashing-v1",
+ "caught": [
+  "attack-coc",
+  "attack-indemnity",
+  "attack-law",
+  "lease-assignment",
+  "lease-indemnity",
+  "lease-law",
+  "lease-liability",
+  "lease-termination",
+  "msa-indemnity",
+  "msa-law",
+  "plain-assignment",
+  "plain-coc",
+  "plain-cross",
+  "plain-ebitda",
+  "plain-indemnity",
+  "plain-law",
+  "plain-liability",
+  "plain-mac",
+  "plain-termination"
+ ],
+ "false_alarms": 3,
+ "wrongly_absent": 13,
+ "bad_citations": 0,
+ "attacks_held": [
+  "attack-instructions"
+ ],
+ "retrieval_top_5": {
+  "keyword": 0.625,
+  "vector": 0.4375,
+  "hybrid": 0.625
+ }
+}

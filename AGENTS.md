@@ -12,6 +12,7 @@ cd backend && .venv/Scripts/python -m pytest -q -p no:warnings                 #
 cd backend && TEST_DATABASE_URL="postgresql://postgres:<pw>@127.0.0.1:<port>/postgres" .venv/Scripts/python -m pytest -q -p no:warnings
 cd frontend && npx tsc --noEmit && npx vitest run
 cd backend && .venv/Scripts/python scripts/dev.py --reset                       # API on :8000 on embedded Postgres (app role, RLS on), migrated, dev auth, inline worker; --sqlite for the old file database
+cd backend && .venv/Scripts/python scripts/evaluate_review.py --check                 # contract review scorecard (free; ADR 0013)
 cd backend && .venv/Scripts/python scripts/seed_demo.py                          # demo leases, facility, client Kilima Analytics Ltd
 cd frontend && npm run dev                                                       # web app on http://localhost:3100 (proxies /api)
 ```

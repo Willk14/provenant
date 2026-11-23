@@ -165,6 +165,10 @@ under Database, Extensions before migrating.
 `PROVENANT_LEGAL_DELETE_SESSIONS=1` deletes the hosted session after each run. Read the data handling section of the
 ADR before sending client contracts.
 
+The scorecard (ADR 0013) measures clauses caught, false alarms, citations, retrieval and planted instructions:
+`python scripts/evaluate_review.py` is free, `--check` is the CI regression gate, `--real` adds the draft key on real
+agreements, and `--reader claude` or `--embedder voyage` need `--allow-paid`.
+
 ### Roles
 
 | Role | Can |

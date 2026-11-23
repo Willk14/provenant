@@ -1,0 +1,38 @@
+{
+  "version": "real-clauses-v1",
+  "status": "draft: located by section headings and not yet confirmed by a qualified lawyer",
+  "complete": false,
+  "contracts": {
+    "imxi-keybank-credit": [
+      {"id": "imxi-coc-definition", "topic": "change_of_control", "page": 22, "anchor": "means an event or series of events", "critical": true},
+      {"id": "imxi-coc-default", "topic": "change_of_control", "page": 101, "anchor": "Change of Control. There occurs", "critical": true},
+      {"id": "imxi-cross-default", "topic": "cross_default", "page": 100, "anchor": "Cross-Default.", "critical": true},
+      {"id": "imxi-mae", "topic": "material_adverse_change", "page": 38, "anchor": "means (a) a material adverse change", "critical": true},
+      {"id": "imxi-ebitda", "topic": "ebitda_definition", "page": 23, "anchor": "means, at any date of determination", "critical": true},
+      {"id": "imxi-consequential", "topic": "liability_cap", "page": 120, "anchor": "Waiver of Consequential Damages"}
+    ],
+    "ceridian-2021-credit": [
+      {"id": "ceridian-coc", "topic": "change_of_control", "page": 33, "anchor": "shall mean the Permitted Investors", "critical": true},
+      {"id": "ceridian-assignment", "topic": "assignment", "page": 162, "anchor": "Section 9.04. Successors and Assigns"},
+      {"id": "ceridian-default", "topic": "termination", "page": 154, "anchor": "Section 7.01. Events of Default", "critical": true},
+      {"id": "ceridian-indemnity", "topic": "indemnity", "page": 167, "anchor": "Section 9.05. Expenses; Indemnity", "critical": true},
+      {"id": "ceridian-law", "topic": "governing_law", "page": 169, "anchor": "Section 9.07. Applicable Law"},
+      {"id": "ceridian-ebitda", "topic": "ebitda_definition", "page": 43, "anchor": "EBITDA” shall mean", "critical": true},
+      {"id": "ceridian-consequential", "topic": "liability_cap", "page": 169, "anchor": "consequential or punitive damages"}
+    ],
+    "dayforce-2024-credit": [
+      {"id": "dayforce-coc", "topic": "change_of_control", "page": 23, "anchor": "Change of Control” shall mean", "critical": true},
+      {"id": "dayforce-assignment", "topic": "assignment", "page": 155, "anchor": "Section 9.04. Successors and Assigns"},
+      {"id": "dayforce-default", "topic": "termination", "page": 145, "anchor": "Section 7.01. Events of Default", "critical": true},
+      {"id": "dayforce-indemnity", "topic": "indemnity", "page": 161, "anchor": "Section 9.05. Expenses; Indemnity", "critical": true},
+      {"id": "dayforce-law", "topic": "governing_law", "page": 162, "anchor": "Section 9.07. Applicable Law"},
+      {"id": "dayforce-ebitda", "topic": "ebitda_definition", "page": 32, "anchor": "EBITDA” shall mean", "critical": true},
+      {"id": "dayforce-consequential", "topic": "liability_cap", "page": 162, "anchor": "consequential or punitive damages"}
+    ],
+    "recursion-lease": [
+      {"id": "recursion-control", "topic": "change_of_control", "page": 12, "anchor": "A merger, acquisition, or transfer of stock", "critical": true},
+      {"id": "recursion-consequential", "topic": "liability_cap", "page": 11, "anchor": "incidental or consequential damages"},
+      {"id": "recursion-law", "topic": "governing_law", "page": 17, "anchor": "This Lease shall be governed by the laws"}
+    ]
+  }
+}

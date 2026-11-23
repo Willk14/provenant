@@ -50,6 +50,9 @@ jobs:
       - name: Baseline extractor on the golden set
         if: matrix.database == 'sqlite'
         run: python scripts/evaluate_extractor.py labels
+      - name: Contract review scorecard (free readers must not regress)
+        if: matrix.database == 'sqlite'
+        run: python scripts/evaluate_review.py --check
 
   # The deployable stack: build both images, start Postgres, migrations, API, worker and web as they deploy,
   # and smoke-test it. Images are built, not pushed: publishing waits for a chosen host (docs/DEPLOYMENT.md).

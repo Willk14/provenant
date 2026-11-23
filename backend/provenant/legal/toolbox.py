@@ -125,6 +125,7 @@ class ReviewToolbox:
         self.topics = {t.key: t for t in topics}
         self.mode = mode
         self.calls = 0
+        self.blocked_calls = 0  # attempts to use a tool that does not exist here
         self.findings: list[Finding] = []
         self.summary: str | None = None
         self.not_found: tuple[str, ...] = ()
@@ -142,6 +143,7 @@ class ReviewToolbox:
                    "find_relevant_clauses": self._find, "record_finding": self._record, "finish_review": self._finish,
                    "answer_question": self._answer}.get(name)
         if handler is None:
+            self.blocked_calls += 1
             return f"ERROR: unknown tool {name}"
         if self.finished:
             return "ERROR: this task is already finished"

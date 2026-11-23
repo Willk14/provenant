@@ -16,7 +16,7 @@ from provenant.api.storage import BlobStore
 from provenant.extraction.pdftext import open_pages
 from provenant.legal.chunks import chunk_pages
 from provenant.legal.embeddings import Embedder
-from provenant.legal.retrieval import cosine, keyword_score, reciprocal_rank_fusion
+from provenant.legal.retrieval import cosine, fuse, keyword_score
 
 log = logging.getLogger(__name__)
 INDEX_JOB = "index_document"
@@ -168,16 +168,13 @@ def search(s: Session, embedder: Embedder, tenant_id: str, query: str, document_
     vector = embedder.embed_query(query)
     rank = _postgres_rankings if _is_postgres(s) else _sqlite_rankings
     near, words, rows = rank(s, tenant_id, embedder.name, ids, query, vector)
-    similar = [(chunk, sim) for chunk, sim in near if sim >= embedder.min_similarity]
-    similarity = dict(similar)
-    scores = reciprocal_rank_fusion([[chunk for chunk, _ in similar], words])
-    keyword = set(words)
-    best = sorted(scores, key=lambda c: (-scores[c], rows[c]["document_id"], rows[c]["ordinal"]))[:limit]
+    ranked = sorted(fuse(near, words, embedder.min_similarity),
+                    key=lambda r: (-r.score, rows[r.id]["document_id"], rows[r.id]["ordinal"]))[:limit]
     return [SearchHit(
-        rows[c]["document_id"], rows[c]["filename"], rows[c]["ordinal"], rows[c]["page"],
-        (rows[c]["x0"], rows[c]["top"], rows[c]["x1"], rows[c]["bottom"]), rows[c]["text"], scores[c], similarity.get(c),
-        tuple(m for m, on in (("vector", c in similarity), ("keyword", c in keyword)) if on),
-    ) for c in best]
+        rows[r.id]["document_id"], rows[r.id]["filename"], rows[r.id]["ordinal"], rows[r.id]["page"],
+        (rows[r.id]["x0"], rows[r.id]["top"], rows[r.id]["x1"], rows[r.id]["bottom"]), rows[r.id]["text"], r.score,
+        r.similarity, r.matched,
+    ) for r in ranked]
 
 
 def index_state(s: Session, embedder: Embedder, tenant_id: str) -> dict:
