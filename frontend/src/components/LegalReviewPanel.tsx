@@ -168,7 +168,7 @@ export function LegalReviewPanel({ doc, onCite }: Props) {
   );
 }
 
-function CitationChip({ id, citation, doc, onCite }: {
+export function CitationChip({ id, citation, doc, onCite }: {
   id: string;
   citation: LegalCitation;
   doc: DocumentSummary;

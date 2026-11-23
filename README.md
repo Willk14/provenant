@@ -170,6 +170,11 @@ setup script, and hard limits on time and spend (ADR 0014). Claude runs made thr
 `claude-api` paths are logged to an append-only ledger of usage and estimated cost, never content. Partners read it at
 `GET /ai/runs`.
 
+The **Drafting** tab is a paralegal assistant for notices, amendments and letters (ADR 0015). A person asks for a draft.
+Its figures must trace to the cited contract wording or the instructions, unknown facts stay as `[[placeholders]]`, and
+a different reviewer or partner approves it. Provenant never sends a draft. `baseline` produces a free skeleton, and
+`claude-api` writes the wording.
+
 The scorecard (ADR 0013) measures clauses caught, false alarms, citations, retrieval and planted instructions:
 `python scripts/evaluate_review.py` is free, `--check` is the CI regression gate, `--real` adds the draft key on real
 agreements, and `--reader claude` or `--embedder voyage` need `--allow-paid`.

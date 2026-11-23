@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { CovenantsPanel } from "@/components/CovenantsPanel";
+import { DraftingPanel } from "@/components/DraftingPanel";
 import { LegalReviewPanel } from "@/components/LegalReviewPanel";
 import { PdfViewer, type Highlight, type HighlightName } from "@/components/PdfViewer";
 import { SchedulePanel } from "@/components/SchedulePanel";
@@ -23,7 +24,7 @@ import {
 } from "@/lib/types";
 import { usePersona } from "@/lib/usePersona";
 
-export type Tab = "terms" | "schedule" | "review";
+export type Tab = "terms" | "schedule" | "review" | "drafts";
 
 export function Workspace({ id, initialField, initialTab }: { id: string; initialField?: FieldName; initialTab?: Tab }) {
   const persona = usePersona();
@@ -88,6 +89,7 @@ export function Workspace({ id, initialField, initialTab }: { id: string; initia
   }, [busy, load]);
 
   const kind = doc?.kind ?? "lease";
+  const citing = tab === "review" || tab === "drafts"; // these tabs point at quoted wording on the PDF
   const highlights: Highlight[] = useMemo(() => {
     const terms: Highlight[] = (doc?.fields ?? []).filter((f) => f.page >= 1).map((f) => ({
       id: f.id,
@@ -98,7 +100,7 @@ export function Workspace({ id, initialField, initialTab }: { id: string; initia
       status: f.status,
       manual: f.extractor === "manual",
     }));
-    if (tab !== "review" || !cited) return terms;
+    if (!citing || !cited) return terms;
     return [...terms, {
       id: `finding-${cited.id}`,
       name: `finding:${cited.id}` as const,
@@ -108,7 +110,7 @@ export function Workspace({ id, initialField, initialTab }: { id: string; initia
       status: "needs_review",
       manual: false,
     }];
-  }, [doc, kind, tab, cited]);
+  }, [doc, kind, citing, cited]);
 
   // On the schedule tab, light up exactly the fields behind the selected figure that live in this PDF.
   const tracedHere = useMemo(
@@ -117,11 +119,11 @@ export function Workspace({ id, initialField, initialTab }: { id: string; initia
   );
   const [covenantClause, setCovenantClause] = useState<FieldName | null>(null);
   const active = useMemo<ReadonlySet<FieldName>>(() => {
-    if (tab === "review") return new Set();
+    if (citing) return new Set();
     if (tab === "schedule" && kind === "credit_agreement") return new Set(covenantClause ? [covenantClause] : []);
     if (tab === "schedule" && selection) return new Set(tracedHere.map((f) => f.name));
     return new Set(selectedField ? [selectedField] : []);
-  }, [tab, kind, covenantClause, selection, tracedHere, selectedField]);
+  }, [tab, citing, kind, covenantClause, selection, tracedHere, selectedField]);
 
   const filenames = useMemo(() => {
     const names = new Map<string, string>();
@@ -216,7 +218,7 @@ export function Workspace({ id, initialField, initialTab }: { id: string; initia
           <PdfViewer
             data={pdf}
             highlights={highlights}
-            active={tab === "review" && cited ? new Set<HighlightName>([`finding:${cited.id}`]) : active}
+            active={citing && cited ? new Set<HighlightName>([`finding:${cited.id}`]) : active}
             focus={focus}
             drawing={drawingFor !== null}
             onSelect={(name) => {
@@ -250,6 +252,11 @@ export function Workspace({ id, initialField, initialTab }: { id: string; initia
               Legal review
             </button>
           )}
+          {kind !== "amendment" && (
+            <button role="tab" aria-selected={tab === "drafts"} onClick={() => setTab("drafts")}>
+              Drafting
+            </button>
+          )}
         </div>
         <div className="panel-body">
           {!doc || !persona ? (
@@ -278,6 +285,14 @@ export function Workspace({ id, initialField, initialTab }: { id: string; initia
             />
           ) : tab === "review" && doc.kind !== "amendment" ? (
             <LegalReviewPanel
+              doc={doc}
+              onCite={(citedId, citation) => {
+                setCited({ id: citedId, citation });
+                setFocus({ name: `finding:${citedId}`, nonce: Date.now() });
+              }}
+            />
+          ) : tab === "drafts" && doc.kind !== "amendment" ? (
+            <DraftingPanel
               doc={doc}
               onCite={(citedId, citation) => {
                 setCited({ id: citedId, citation });

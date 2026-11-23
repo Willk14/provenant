@@ -583,6 +583,47 @@ class ContractQuestionRow(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
+class ContractDraftRow(Base):
+    """A paralegal draft. Its wording at every step is kept in contract_draft_events (ADR 0015)."""
+
+    __tablename__ = "contract_drafts"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(String(64), index=True)
+    document_id: Mapped[str] = mapped_column(ForeignKey("documents.id"), index=True)
+    kind: Mapped[str] = mapped_column(String(16))  # notice | amendment | letter
+    instructions: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(16), default="queued")  # queued|running|failed|ready|returned|approved
+    agent: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    title: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    body: Mapped[str] = mapped_column(Text, default="[]", server_default="[]")  # JSON paragraphs with citations
+    open_points: Mapped[str] = mapped_column(Text, default="[]", server_default="[]")
+    version: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    content_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    error: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    requested_by: Mapped[str] = mapped_column(String(200))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
+class ContractDraftEventRow(Base):
+    """Append-only: who generated, edited, returned or approved which wording."""
+
+    __tablename__ = "contract_draft_events"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(String(64), index=True)
+    draft_id: Mapped[str] = mapped_column(ForeignKey("contract_drafts.id"), index=True)
+    action: Mapped[str] = mapped_column(String(16))
+    version: Mapped[int] = mapped_column(Integer)
+    title: Mapped[str] = mapped_column(String(200))
+    body: Mapped[str] = mapped_column(Text)
+    content_sha256: Mapped[str] = mapped_column(String(64))
+    actor: Mapped[str] = mapped_column(String(200))
+    note: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
 class AiRunRow(Base):
     """Append-only usage of one Claude run. Holds no prompt, document text, tool input or model output (ADR 0014)."""
 

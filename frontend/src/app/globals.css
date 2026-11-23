@@ -1747,3 +1747,31 @@ button.chip {
     max-width: 100%;
   }
 }
+
+/* ---- drafting ------------------------------------------------------------------------------ */
+
+.draft-paper {
+  margin-top: 10px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+}
+
+.draft-paragraph + .draft-paragraph {
+  margin-top: 10px;
+}
+
+.draft-paragraph p {
+  margin: 0 0 4px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.draft-placeholder {
+  padding: 0 3px;
+  border-radius: 3px;
+  background: var(--warn-soft);
+  color: var(--warn);
+  font-weight: 600;
+}

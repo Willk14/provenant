@@ -118,8 +118,8 @@ class ReviewToolbox:
 
     def __init__(self, documents: Sequence[ContractDocument], topics: Sequence[Topic], mode: str = "review",
                  retriever: Callable[[str], Sequence[Any]] | None = None) -> None:
-        if mode not in ("review", "question"):
-            raise ValueError("mode must be review or question")
+        if mode not in ("review", "question", "draft"):
+            raise ValueError("mode must be review, question or draft")
         self.retriever = retriever
         self.documents = {f"D{i}": d for i, d in enumerate(documents, start=1)}
         self.topics = {t.key: t for t in topics}
@@ -135,13 +135,16 @@ class ReviewToolbox:
     def finished(self) -> bool:
         return self.summary is not None if self.mode == "review" else self.answer is not None
 
+    def _handlers(self) -> dict[str, Callable[[Mapping[str, Any]], str]]:
+        return {"list_documents": self._list, "read_page": self._read, "search": self._search,
+                "find_relevant_clauses": self._find, "record_finding": self._record, "finish_review": self._finish,
+                "answer_question": self._answer}
+
     def call(self, name: str, tool_input: Mapping[str, Any]) -> str:
         self.calls += 1
         if self.calls > MAX_CALLS:
             raise RuntimeError(f"the agent exceeded {MAX_CALLS} tool calls")
-        handler = {"list_documents": self._list, "read_page": self._read, "search": self._search,
-                   "find_relevant_clauses": self._find, "record_finding": self._record, "finish_review": self._finish,
-                   "answer_question": self._answer}.get(name)
+        handler = self._handlers().get(name)
         if handler is None:
             self.blocked_calls += 1
             return f"ERROR: unknown tool {name}"

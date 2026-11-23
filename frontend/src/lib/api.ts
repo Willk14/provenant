@@ -7,6 +7,8 @@ import type {
   DocumentSummary,
   Field,
   FieldName,
+  ContractDraft,
+  DraftKind,
   LegalFinding,
   LegalIndexState,
   LegalPlaybook,
@@ -116,5 +118,12 @@ export const api = {
     }),
   askLegalQuestion: (id: string, reviewId: string, question: string) =>
     call<LegalQuestion>(`/documents/${id}/reviews/${reviewId}/questions`, json({ question })),
+  contractDrafts: (id: string) => call<ContractDraft[]>(`/documents/${id}/drafts`),
+  startContractDraft: (id: string, kind: DraftKind, instructions: string) =>
+    call<ContractDraft>(`/documents/${id}/drafts`, json({ kind, instructions })),
+  editContractDraft: (id: string, draftId: string, title: string, paragraphs: string[]) =>
+    call<ContractDraft>(`/documents/${id}/drafts/${draftId}`, { ...json({ title, paragraphs }), method: "PUT" }),
+  decideContractDraft: (id: string, draftId: string, decision: "approved" | "returned", note: string) =>
+    call<ContractDraft>(`/documents/${id}/drafts/${draftId}/decision`, json({ decision, note })),
   verifyLog: () => call<{ intact: boolean; events: number }>("/review-log/verify"),
 };

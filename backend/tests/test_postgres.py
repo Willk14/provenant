@@ -253,6 +253,24 @@ def test_ai_runs_are_tenant_isolated_and_append_only(client, app, database_url):
         assert s.scalar(text("select count(*) from ai_runs")) == 0
 
 
+def test_contract_drafts_are_isolated_and_their_history_is_append_only(client, app, database_url, monkeypatch):
+    from tests.test_legal_drafting import FilledAgent, drafted
+
+    drafted(client, app, monkeypatch, FilledAgent)
+    factory = make_sessionmaker(make_engine(database_url))
+    with tenant_session(factory, "firm-a") as s:
+        assert s.scalar(text("select count(*) from contract_drafts")) == 1
+        assert s.scalar(text("select count(*) from contract_draft_events")) == 1
+        for change in ("update contract_draft_events set actor = 'x'", "delete from contract_draft_events"):
+            with pytest.raises(DBAPIError, match="permission denied|append-only"):
+                s.execute(text(change))
+            s.rollback()
+        assert s.scalar(text("select count(*) from pg_trigger where tgname = 'contract_draft_events_append_only'")) == 1
+    with tenant_session(factory, "firm-b") as s:
+        assert s.scalar(text("select count(*) from contract_drafts")) == 0
+        assert s.scalar(text("select count(*) from contract_draft_events")) == 0
+
+
 def test_covenant_adjustments_are_tenant_isolated(client, app, database_url):
     from tests.test_api import PREPARER
     from tests.test_covenants_api import upload_agreement, verify_all

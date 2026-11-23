@@ -333,6 +333,34 @@ export interface LegalSearchHit {
   matched: ("vector" | "keyword")[];
 }
 
+export type DraftKind = "notice" | "amendment" | "letter";
+
+/** A paralegal first draft. It has no effect until a different person approves it, and Provenant never sends it. */
+export interface ContractDraft {
+  id: string;
+  document_id: string;
+  kind: DraftKind;
+  instructions: string;
+  status: "queued" | "running" | "failed" | "ready" | "returned" | "approved";
+  agent: string | null;
+  title: string | null;
+  paragraphs: { text: string; citations: LegalCitation[]; edited: boolean }[];
+  open_points: string[];
+  version: number;
+  content_sha256: string | null;
+  error: string | null;
+  requested_by: string;
+  created_at: string;
+  history: {
+    action: "generated" | "edited" | "returned" | "approved";
+    version: number;
+    actor: string;
+    note: string | null;
+    content_sha256: string;
+    at: string;
+  }[];
+}
+
 export interface TrialBalanceSummary {
   id: string;
   period_end: string;
