@@ -193,6 +193,24 @@ def test_covenant_period_inputs_are_tenant_isolated(client, app, database_url):
         assert s.scalar(text("select count(*) from covenant_period_inputs")) == 0
 
 
+def test_contract_chunks_are_tenant_isolated_and_use_pgvector(client, app, database_url):
+    from tests.test_api import PREPARER, run_jobs
+    from tests.test_covenants_api import upload_agreement
+
+    upload_agreement(client, app)
+    client.post("/legal/index", headers=PREPARER)
+    run_jobs(app)
+    factory = make_sessionmaker(make_engine(database_url))
+    with tenant_session(factory, "firm-a") as s:
+        assert s.scalar(text("select count(*) from retrieval_indexes")) == 1
+        assert s.scalar(text("select count(*) from document_chunks")) >= 1
+        assert s.scalar(text("select format_type(atttypid, atttypmod) from pg_attribute where attrelid = "
+                             "'document_chunks'::regclass and attname = 'embedding'")).endswith("vector(1024)")
+    with tenant_session(factory, "firm-b") as s:
+        assert s.scalar(text("select count(*) from retrieval_indexes")) == 0
+        assert s.scalar(text("select count(*) from document_chunks")) == 0
+
+
 def test_contract_reviews_are_tenant_isolated(client, app, database_url, monkeypatch):
     import provenant.worker as worker
     from tests.test_api import PARTNER, PREPARER, run_jobs

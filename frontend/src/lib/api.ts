@@ -8,10 +8,12 @@ import type {
   Field,
   FieldName,
   LegalFinding,
+  LegalIndexState,
   LegalPlaybook,
   LegalQuestion,
   LegalReview,
   LegalReviewSummary,
+  LegalSearchHit,
   Schedule,
   TrialBalanceSummary,
 } from "./types";
@@ -101,6 +103,10 @@ export const api = {
   legalPlaybook: () => call<LegalPlaybook>("/legal/playbook"),
   saveLegalPlaybook: (positions: Record<string, string>) =>
     call<LegalPlaybook>("/legal/playbook", { ...json({ positions }), method: "PUT" }),
+  legalIndex: () => call<LegalIndexState>("/legal/index"),
+  buildLegalIndex: () => call<LegalIndexState>("/legal/index", { method: "POST" }),
+  searchContracts: (query: string, documentId?: string) =>
+    call<LegalSearchHit[]>("/legal/search", json({ query, document_id: documentId ?? null })),
   legalReviews: (id: string) => call<LegalReviewSummary[]>(`/documents/${id}/reviews`),
   legalReview: (id: string, reviewId: string) => call<LegalReview>(`/documents/${id}/reviews/${reviewId}`),
   startLegalReview: (id: string) => call<LegalReview>(`/documents/${id}/reviews`, { method: "POST" }),

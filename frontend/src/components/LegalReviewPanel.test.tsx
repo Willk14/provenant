@@ -14,6 +14,9 @@ vi.mock("@/lib/api", () => ({
     decideLegalFinding: vi.fn(),
     askLegalQuestion: vi.fn(),
     saveLegalPlaybook: vi.fn(),
+    legalIndex: vi.fn(),
+    buildLegalIndex: vi.fn(),
+    searchContracts: vi.fn(),
   },
 }));
 
@@ -41,6 +44,9 @@ describe("LegalReviewPanel", () => {
     vi.mocked(api.legalReviews).mockResolvedValue([review]);
     vi.mocked(api.legalReview).mockResolvedValue(review);
     vi.mocked(api.decideLegalFinding).mockResolvedValue(finding);
+    vi.mocked(api.legalIndex).mockResolvedValue({
+      model: "hashing-v1", semantic: false, documents: 1, ready: 1, running: 0, failed: 0, queued: 0,
+    });
   });
   afterEach(() => {
     cleanup();
@@ -64,6 +70,24 @@ describe("LegalReviewPanel", () => {
     expect(reject.disabled).toBe(false);
     fireEvent.click(reject);
     await waitFor(() => expect(api.decideLegalFinding).toHaveBeenCalledWith("doc-1", "r1", "f1", "rejected", "Not relevant here"));
+  });
+
+  it("searches this contract, cites the page and never reads an empty result as silence", async () => {
+    const onCite = vi.fn();
+    vi.mocked(api.searchContracts).mockResolvedValueOnce([{
+      citation: finding.citation, text: "On a Change of Control the Lender may cancel.", score: 0.03, similarity: 0.5,
+      matched: ["vector", "keyword"],
+    }]).mockResolvedValueOnce([]);
+    render(<LegalReviewPanel doc={doc} onCite={onCite} />);
+    const box = await screen.findByRole("textbox", { name: "Search contracts" });
+    fireEvent.change(box, { target: { value: "change of control" } });
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+    expect(await screen.findByText("similar words + same words")).toBeTruthy();
+    expect(api.searchContracts).toHaveBeenCalledWith("change of control", "doc-1");
+    fireEvent.click(screen.getAllByTitle("Show on the PDF")[0]);
+    expect(onCite).toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+    expect(await screen.findByText(/does not prove the contract is silent/)).toBeTruthy();
   });
 
   it("says plainly when the review used only the keyword scan", async () => {

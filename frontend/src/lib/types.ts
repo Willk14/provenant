@@ -314,6 +314,25 @@ export interface LegalPlaybook {
   topics: { key: string; label: string; position: string; standard: boolean }[];
 }
 
+export interface LegalIndexState {
+  model: string;
+  semantic: boolean;
+  documents: number;
+  ready: number;
+  running: number;
+  failed: number;
+  queued: number;
+}
+
+/** A passage found by vector and keyword search: a lead to read, located on its page. */
+export interface LegalSearchHit {
+  citation: LegalCitation;
+  text: string;
+  score: number;
+  similarity: number | null;
+  matched: ("vector" | "keyword")[];
+}
+
 export interface TrialBalanceSummary {
   id: string;
   period_end: string;

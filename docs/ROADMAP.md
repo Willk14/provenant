@@ -96,6 +96,8 @@ Built as thin vertical slices. Each milestone ships something a user can run end
 - [x] Firm playbook, cited findings, topics not found, lawyer decisions, follow-up questions
 - [x] Accepted findings can propose a term into normal partner review
 - [x] Free keyword baseline, and a Managed Agent with only Provenant's tools
+- [x] Page-located chunks, embeddings in pgvector, hybrid vector and keyword search (ADR 0012)
+- [ ] Measure retrieval recall on real contracts; compare the local index with `voyage-law-2`
 - [ ] Evaluate the Claude reviewer on real contracts (needs an API key; costs money)
 - [ ] Redlines, Word output, and the review in the working-papers pack
 

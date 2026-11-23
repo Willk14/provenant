@@ -6,8 +6,9 @@ from typing import Literal
 from fastapi import FastAPI
 from pydantic import BaseModel, Field
 
-from provenant.api import legal
+from provenant.api import legal, retrieval
 from provenant.legal import DEFAULT_TOPICS, PLAYBOOK_VERSION, fingerprint
+from provenant.legal.embeddings import embedder_from_env
 
 
 class PlaybookTopicOut(BaseModel):
@@ -116,6 +117,30 @@ class QuestionIn(BaseModel):
     question: str = Field(max_length=1000)
 
 
+class IndexStateOut(BaseModel):
+    model: str
+    semantic: bool
+    documents: int
+    ready: int
+    running: int
+    failed: int
+    queued: int = 0
+
+
+class SearchIn(BaseModel):
+    query: str = Field(max_length=1000)  # in the body, so contract questions stay out of URLs and access logs
+    document_id: str | None = Field(default=None, max_length=36)
+    limit: int = Field(default=8, ge=1, le=20)
+
+
+class SearchHitOut(BaseModel):
+    citation: CitationOut
+    text: str
+    score: float
+    similarity: float | None
+    matched: list[str]
+
+
 def add_routes(app: FastAPI, Auth, Db) -> None:
     def full(s, tenant_id: str, row) -> ReviewOut:
         return ReviewOut(
@@ -138,6 +163,26 @@ def add_routes(app: FastAPI, Auth, Db) -> None:
     def put_playbook(body: PlaybookIn, p: Auth, s: Db) -> PlaybookOut:
         legal.save_playbook(s, p, body.positions)
         return playbook_out(*legal.playbook(s, p.tenant_id))
+
+    @app.get("/legal/index", response_model=IndexStateOut)
+    def get_index(p: Auth, s: Db) -> IndexStateOut:
+        return IndexStateOut(**retrieval.index_state(s, embedder_from_env(), p.tenant_id))
+
+    @app.post("/legal/index", response_model=IndexStateOut, status_code=202)
+    def build_index(p: Auth, s: Db) -> IndexStateOut:
+        embedder = embedder_from_env()
+        queued = retrieval.request_indexing(s, p, embedder)
+        return IndexStateOut(**retrieval.index_state(s, embedder, p.tenant_id), queued=queued)
+
+    @app.post("/legal/search", response_model=list[SearchHitOut])
+    def search(body: SearchIn, p: Auth, s: Db) -> list[SearchHitOut]:
+        scope = retrieval.contract_family(s, p.tenant_id, body.document_id) if body.document_id else None
+        hits = retrieval.search(s, embedder_from_env(), p.tenant_id, body.query, scope, body.limit)
+        return [SearchHitOut(
+            citation=CitationOut(document_id=h.document_id, filename=h.filename, quote=h.text, page=h.page, bbox=h.bbox),
+            text=h.text, score=round(h.score, 6), similarity=None if h.similarity is None else round(h.similarity, 4),
+            matched=list(h.matched),
+        ) for h in hits]
 
     @app.get("/documents/{document_id}/reviews", response_model=list[ReviewSummaryOut])
     def list_reviews(document_id: str, p: Auth, s: Db) -> list[ReviewSummaryOut]:

@@ -5,7 +5,7 @@ finding still waits for a lawyer. A quote that is not on the cited page is refus
 """
 import json
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -78,6 +78,10 @@ TOOLS: tuple[dict, ...] = (
      "input_schema": _obj({"document": _CITE["document"], "page": _CITE["page"]}, ["document", "page"])},
     {"name": "search", "description": "Find literal words across every page. Case-insensitive.",
      "input_schema": _obj({"query": {"type": "string", "description": "Words to find"}}, ["query"])},
+    {"name": "find_relevant_clauses",
+     "description": "Find the passages most related to a topic, using vector and keyword search. Results are leads: "
+                    "they can miss a clause, and anything you rely on must be quoted from the page.",
+     "input_schema": _obj({"query": {"type": "string", "description": "What to look for, in plain words"}}, ["query"])},
     {"name": "record_finding",
      "description": "Record one issue for a lawyer to decide. The quote must be exactly on the cited page or it is "
                     "refused. Set proposed_term and proposed_value only when the clause states a value for a term "
@@ -112,9 +116,11 @@ TOOLS: tuple[dict, ...] = (
 class ReviewToolbox:
     """Runs one agent's tool calls. Mistakes come back as text the agent can act on, never as exceptions."""
 
-    def __init__(self, documents: Sequence[ContractDocument], topics: Sequence[Topic], mode: str = "review") -> None:
+    def __init__(self, documents: Sequence[ContractDocument], topics: Sequence[Topic], mode: str = "review",
+                 retriever: Callable[[str], Sequence[Any]] | None = None) -> None:
         if mode not in ("review", "question"):
             raise ValueError("mode must be review or question")
+        self.retriever = retriever
         self.documents = {f"D{i}": d for i, d in enumerate(documents, start=1)}
         self.topics = {t.key: t for t in topics}
         self.mode = mode
@@ -133,7 +139,7 @@ class ReviewToolbox:
         if self.calls > MAX_CALLS:
             raise RuntimeError(f"the agent exceeded {MAX_CALLS} tool calls")
         handler = {"list_documents": self._list, "read_page": self._read, "search": self._search,
-                   "record_finding": self._record, "finish_review": self._finish,
+                   "find_relevant_clauses": self._find, "record_finding": self._record, "finish_review": self._finish,
                    "answer_question": self._answer}.get(name)
         if handler is None:
             return f"ERROR: unknown tool {name}"
@@ -189,6 +195,18 @@ class ReviewToolbox:
                     if len(hits) == MAX_SEARCH_RESULTS:
                         return json.dumps({"results": hits, "more": True})
         return json.dumps({"results": hits, "more": False})
+
+    def _find(self, tool_input: Mapping[str, Any]) -> str:
+        if self.retriever is None:
+            raise ValueError("clause retrieval is unavailable; use search and read_page")
+        keys = {d.id: k for k, d in self.documents.items()}
+        try:
+            hits = self.retriever(str(tool_input["query"]))
+        except Exception as exc:  # a retrieval outage must not end a review that can still read the pages
+            return f"ERROR: clause retrieval failed ({type(exc).__name__}); use search and read_page"
+        parts = [f'<contract_excerpt document="{keys[h.document_id]}" page="{h.page}">\n{h.text}\n</contract_excerpt>'
+                 for h in hits if h.document_id in keys]
+        return "\n".join(parts) if parts else "No related passages found. That does not prove the contract is silent."
 
     def _record(self, tool_input: Mapping[str, Any]) -> str:
         if self.mode != "review":

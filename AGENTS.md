@@ -27,9 +27,9 @@ The Postgres suite needs a superuser URL (it creates a database per run and test
 | `backend/provenant/leases/`, `covenants/` | Pure IFRS 16 and covenant engines |
 | `backend/provenant/analytics/` | `journal.py`: general ledger to Parquet and journal entry tests in DuckDB (ADR 0009) |
 | `backend/provenant/tax/` | Pure tax code: `mapping.py` (FS lines, treatments, keyword suggestions), `engine.py` (computation, credits, deferred tax), `register.py` (fixed asset register CSV) |
-| `backend/provenant/legal/` | Contract review: playbook, cited-finding toolbox, baseline and Managed Agent readers (ADR 0011) |
+| `backend/provenant/legal/` | Contract review and retrieval: playbook, cited-finding toolbox, agents, chunks, embeddings (ADR 0011, 0012) |
 | `backend/provenant/api/` | FastAPI app (`main.py`), models (`db.py`), use cases (`services.py`, `tax.py`), tax HTTP routes (`tax_routes.py`) |
-| `backend/provenant/migrations/versions/` | Alembic `0001`–`0016`; tests build the schema through migrations |
+| `backend/provenant/migrations/versions/` | Alembic `0001`–`0017`; tests build the schema through migrations |
 | `frontend/src/lib/tax.ts` | Tax API client and types |
 | `frontend/src/components/` | `ClientWorkspace`, `MappingTab`, `RecordsTab`, `TaxTab`, plus lease and covenant views |
 

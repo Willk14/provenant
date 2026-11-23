@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, sessionmaker
 
+from provenant.api import retrieval
 from provenant.api.auth import PARTNER, PREPARER, REVIEWER, Principal
 from provenant.api.db import (
     ContractFindingRow,
@@ -33,6 +34,7 @@ from provenant.api.storage import BlobStore
 from provenant.extraction.pdftext import open_pages
 from provenant.legal import PLAYBOOK_VERSION, ContractDocument, ReviewToolbox, Topic, fingerprint, topics_with
 from provenant.legal.agent import ReviewAgent
+from provenant.legal.embeddings import embedder_from_env
 from provenant.provenance import ExtractedField, SourceRef, Status
 
 log = logging.getLogger(__name__)
@@ -221,6 +223,23 @@ def _failure(exc: Exception) -> str:
     return f"{type(exc).__name__}: {exc}"[:500]
 
 
+def _retriever(factory: sessionmaker[Session], store: BlobStore, tenant_id: str, documents: list[ContractDocument]):
+    """Search over this contract and its amendments. If indexing fails the agent still reads the pages."""
+    ids = [d.id for d in documents]
+    try:
+        embedder = embedder_from_env()
+        retrieval.ensure_indexed(factory, store, embedder, tenant_id, ids)
+    except Exception:
+        log.exception("contract retrieval is unavailable for this run")
+        return None
+
+    def find(query: str):
+        with tenant_session(factory, tenant_id) as s:
+            return retrieval.search(s, embedder, tenant_id, query, ids)
+
+    return find
+
+
 def run_review_job(factory: sessionmaker[Session], store: BlobStore, agent: ReviewAgent, tenant_id: str,
                    document_id: str) -> None:
     """A failure is recorded on the review and not retried automatically, so a bad run is not paid for three times.
@@ -238,7 +257,7 @@ def run_review_job(factory: sessionmaker[Session], store: BlobStore, agent: Revi
     try:
         with tenant_session(factory, tenant_id) as s:
             documents = _documents(s, store, tenant_id, document_id)
-        toolbox = ReviewToolbox(documents, topics)
+        toolbox = ReviewToolbox(documents, topics, retriever=_retriever(factory, store, tenant_id, documents))
         agent.review(topics, toolbox)
         if not toolbox.finished:
             raise RuntimeError("the agent stopped before accounting for every topic")
@@ -281,7 +300,8 @@ def run_question_job(factory: sessionmaker[Session], store: BlobStore, agent: Re
     try:
         with tenant_session(factory, tenant_id) as s:
             documents = _documents(s, store, tenant_id, document_id)
-        toolbox = ReviewToolbox(documents, topics, mode="question")
+        toolbox = ReviewToolbox(documents, topics, mode="question",
+                                retriever=_retriever(factory, store, tenant_id, documents))
         agent.ask(question, topics, toolbox)
         if toolbox.answer is None:
             raise RuntimeError("the agent stopped before answering")

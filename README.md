@@ -154,6 +154,12 @@ paper, not legal advice.
 | Accept or reject a finding | `PUT .../reviews/{rid}/findings/{fid}` |
 | Ask a cited follow-up question | `POST .../reviews/{rid}/questions` |
 
+Contract search (ADR 0012) stores page-located chunks and embeddings in Postgres with pgvector, then merges vector and
+keyword results: `GET`/`POST /legal/index`, `POST /legal/search`. `PROVENANT_EMBEDDINGS=hashing` (default) stays on your
+server and matches similar words. `voyage` uses the legal model `voyage-law-2`, needs the `voyage` extra and
+`VOYAGE_API_KEY`, and sends contract text to Voyage AI. Postgres needs the `vector` extension; on Supabase, enable it
+under Database, Extensions before migrating.
+
 `PROVENANT_LEGAL_AGENT=baseline` (default) is a free keyword scan. For the Claude agent, run
 `python scripts/setup_legal_agent.py` once, then set `PROVENANT_LEGAL_AGENT=claude` with the two ids it prints.
 `PROVENANT_LEGAL_DELETE_SESSIONS=1` deletes the hosted session after each run. Read the data handling section of the

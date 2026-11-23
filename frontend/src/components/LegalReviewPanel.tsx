@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { ContractSearch } from "@/components/ContractSearch";
 import { api } from "@/lib/api";
 import { formatDate } from "@/lib/format";
 import {
@@ -92,6 +93,8 @@ export function LegalReviewPanel({ doc, onCite }: Props) {
         <PlaybookEditor key={playbook.sha256} playbook={playbook} busy={busy}
           onSave={(positions) => void act(() => api.saveLegalPlaybook(positions))} />
       )}
+
+      <ContractSearch doc={doc} onCite={onCite} />
 
       {review?.status === "failed" && (
         <div className="error-banner">The review did not finish: {review.error}. Nothing from it was saved.</div>
