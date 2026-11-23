@@ -13,10 +13,12 @@ from threading import Event
 from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session, sessionmaker
 
+from provenant.api import legal
 from provenant.api.db import Job, make_engine, make_sessionmaker
 from provenant.api.services import extract_document
 from provenant.api.storage import BlobStore, make_store
 from provenant.extraction import Extractor
+from provenant.legal.agent import agent_from_env
 
 log = logging.getLogger("provenant.worker")
 
@@ -50,11 +52,15 @@ def run_once(factory: sessionmaker[Session], store: BlobStore, extractor: Extrac
         job = _claim(s, datetime.now(UTC))
         if job is None:
             return False
-        job_id, tenant_id, document_id, attempts = job.id, job.tenant_id, job.document_id, job.attempts
+        job_id, tenant_id, document_id, attempts, kind = job.id, job.tenant_id, job.document_id, job.attempts, job.kind
 
     error = None
     try:
-        extract_document(factory, store, extractor, tenant_id, document_id)
+        if kind in (legal.REVIEW_JOB, legal.QUESTION_JOB):
+            task = legal.run_review_job if kind == legal.REVIEW_JOB else legal.run_question_job
+            task(factory, store, agent_from_env(), tenant_id, document_id)
+        else:
+            extract_document(factory, store, extractor, tenant_id, document_id)
     except Exception as exc:
         log.exception("job %s failed (attempt %s)", job_id, attempts)
         error = f"{type(exc).__name__}: {exc}"[:500]

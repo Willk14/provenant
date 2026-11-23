@@ -193,6 +193,28 @@ def test_covenant_period_inputs_are_tenant_isolated(client, app, database_url):
         assert s.scalar(text("select count(*) from covenant_period_inputs")) == 0
 
 
+def test_contract_reviews_are_tenant_isolated(client, app, database_url, monkeypatch):
+    import provenant.worker as worker
+    from tests.test_api import PARTNER, PREPARER, run_jobs
+    from tests.test_covenants_api import upload_agreement
+    from tests.test_legal_api import LINES, ScriptedAgent
+
+    monkeypatch.setattr(worker, "agent_from_env", ScriptedAgent)
+    doc_id = upload_agreement(client, app, LINES)
+    assert client.put("/legal/playbook", headers=PARTNER, json={
+        "positions": {"indemnity": "Our clients give no indemnities."}}).status_code == 200
+    review = client.post(f"/documents/{doc_id}/reviews", headers=PREPARER).json()
+    run_jobs(app)
+    assert client.post(f"/documents/{doc_id}/reviews/{review['id']}/questions", headers=PREPARER,
+                       json={"question": "Can they cancel?"}).status_code == 202
+    factory = make_sessionmaker(make_engine(database_url))
+    tables = ("legal_playbooks", "contract_reviews", "contract_findings", "contract_questions")
+    with tenant_session(factory, "firm-a") as s:
+        assert all(s.scalar(text(f"select count(*) from {t}")) >= 1 for t in tables)
+    with tenant_session(factory, "firm-b") as s:
+        assert all(s.scalar(text(f"select count(*) from {t}")) == 0 for t in tables)
+
+
 def test_covenant_adjustments_are_tenant_isolated(client, app, database_url):
     from tests.test_api import PREPARER
     from tests.test_covenants_api import upload_agreement, verify_all

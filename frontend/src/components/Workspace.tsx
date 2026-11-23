@@ -4,17 +4,26 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { CovenantsPanel } from "@/components/CovenantsPanel";
-import { PdfViewer, type Highlight } from "@/components/PdfViewer";
+import { LegalReviewPanel } from "@/components/LegalReviewPanel";
+import { PdfViewer, type Highlight, type HighlightName } from "@/components/PdfViewer";
 import { SchedulePanel } from "@/components/SchedulePanel";
 import { DocumentStatusPill } from "@/components/StatusPill";
 import { TermsPanel, type PendingBox } from "@/components/TermsPanel";
 import { api, ApiError } from "@/lib/api";
 import { formatDate, shortHash } from "@/lib/format";
 import { resolveInputs, type Selection } from "@/lib/trace";
-import { fieldLabel, KINDS, leaseTermsOutstanding, type DocumentSummary, type FieldName, type Schedule } from "@/lib/types";
+import {
+  fieldLabel,
+  KINDS,
+  leaseTermsOutstanding,
+  type DocumentSummary,
+  type FieldName,
+  type LegalCitation,
+  type Schedule,
+} from "@/lib/types";
 import { usePersona } from "@/lib/usePersona";
 
-export type Tab = "terms" | "schedule";
+export type Tab = "terms" | "schedule" | "review";
 
 export function Workspace({ id, initialField, initialTab }: { id: string; initialField?: FieldName; initialTab?: Tab }) {
   const persona = usePersona();
@@ -26,9 +35,10 @@ export function Workspace({ id, initialField, initialTab }: { id: string; initia
   const [blocked, setBlocked] = useState<string | null>(null);
   const [selectedField, setSelectedField] = useState<FieldName | null>(initialField ?? null);
   const [selection, setSelection] = useState<Selection | null>(null);
-  const [focus, setFocus] = useState<{ name: FieldName; nonce: number } | null>(
+  const [focus, setFocus] = useState<{ name: HighlightName; nonce: number } | null>(
     initialField ? { name: initialField, nonce: 1 } : null,
   );
+  const [cited, setCited] = useState<{ id: string; citation: LegalCitation } | null>(null);
   const [drawingFor, setDrawingFor] = useState<FieldName | null>(null);
   const [pendingBox, setPendingBox] = useState<PendingBox | null>(null);
 
@@ -78,19 +88,27 @@ export function Workspace({ id, initialField, initialTab }: { id: string; initia
   }, [busy, load]);
 
   const kind = doc?.kind ?? "lease";
-  const highlights: Highlight[] = useMemo(
-    () =>
-      (doc?.fields ?? []).filter((f) => f.page >= 1).map((f) => ({
-        id: f.id,
-        name: f.name,
-        label: fieldLabel(f.name, kind),
-        page: f.page,
-        bbox: f.bbox,
-        status: f.status,
-        manual: f.extractor === "manual",
-      })),
-    [doc, kind],
-  );
+  const highlights: Highlight[] = useMemo(() => {
+    const terms: Highlight[] = (doc?.fields ?? []).filter((f) => f.page >= 1).map((f) => ({
+      id: f.id,
+      name: f.name,
+      label: fieldLabel(f.name, kind),
+      page: f.page,
+      bbox: f.bbox,
+      status: f.status,
+      manual: f.extractor === "manual",
+    }));
+    if (tab !== "review" || !cited) return terms;
+    return [...terms, {
+      id: `finding-${cited.id}`,
+      name: `finding:${cited.id}` as const,
+      label: "Cited wording",
+      page: cited.citation.page,
+      bbox: cited.citation.bbox,
+      status: "needs_review",
+      manual: false,
+    }];
+  }, [doc, kind, tab, cited]);
 
   // On the schedule tab, light up exactly the fields behind the selected figure that live in this PDF.
   const tracedHere = useMemo(
@@ -99,6 +117,7 @@ export function Workspace({ id, initialField, initialTab }: { id: string; initia
   );
   const [covenantClause, setCovenantClause] = useState<FieldName | null>(null);
   const active = useMemo<ReadonlySet<FieldName>>(() => {
+    if (tab === "review") return new Set();
     if (tab === "schedule" && kind === "credit_agreement") return new Set(covenantClause ? [covenantClause] : []);
     if (tab === "schedule" && selection) return new Set(tracedHere.map((f) => f.name));
     return new Set(selectedField ? [selectedField] : []);
@@ -197,12 +216,13 @@ export function Workspace({ id, initialField, initialTab }: { id: string; initia
           <PdfViewer
             data={pdf}
             highlights={highlights}
-            active={active}
+            active={tab === "review" && cited ? new Set<HighlightName>([`finding:${cited.id}`]) : active}
             focus={focus}
             drawing={drawingFor !== null}
             onSelect={(name) => {
+              if (name.startsWith("finding:")) return;
               setTab("terms");
-              focusField(name);
+              focusField(name as FieldName);
             }}
             onDraw={(page, bbox) => {
               if (!drawingFor) return;
@@ -225,6 +245,11 @@ export function Workspace({ id, initialField, initialTab }: { id: string; initia
           <button role="tab" aria-selected={tab === "schedule"} onClick={() => setTab("schedule")}>
             {kind === "credit_agreement" ? "Covenants" : "IFRS 16 schedule"}
           </button>
+          {kind !== "amendment" && (
+            <button role="tab" aria-selected={tab === "review"} onClick={() => setTab("review")}>
+              Legal review
+            </button>
+          )}
         </div>
         <div className="panel-body">
           {!doc || !persona ? (
@@ -250,6 +275,14 @@ export function Workspace({ id, initialField, initialTab }: { id: string; initia
               }}
               onCancelBox={() => setPendingBox(null)}
               onChanged={load}
+            />
+          ) : tab === "review" && doc.kind !== "amendment" ? (
+            <LegalReviewPanel
+              doc={doc}
+              onCite={(citedId, citation) => {
+                setCited({ id: citedId, citation });
+                setFocus({ name: `finding:${citedId}`, nonce: Date.now() });
+              }}
             />
           ) : doc.kind === "credit_agreement" ? (
             <CovenantsPanel

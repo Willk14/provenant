@@ -92,6 +92,13 @@ Built as thin vertical slices. Each milestone ships something a user can run end
 - [ ] iTax return figures
 - [x] Suggestions learned from the firm's confirmed mappings at other clients (two-thirds agreement, no ties)
 
+## Contract review agent (ADR 0011)
+- [x] Firm playbook, cited findings, topics not found, lawyer decisions, follow-up questions
+- [x] Accepted findings can propose a term into normal partner review
+- [x] Free keyword baseline, and a Managed Agent with only Provenant's tools
+- [ ] Evaluate the Claude reviewer on real contracts (needs an API key; costs money)
+- [ ] Redlines, Word output, and the review in the working-papers pack
+
 ## M4 — Due diligence and ERP
-- [ ] Data-room bulk ingestion; change-of-control / assignment / indemnity flags
+- [ ] Data-room bulk ingestion and bulk contract review
 - [ ] ERP connectors (Xero, QuickBooks first) + AI-suggested chart-of-accounts mapping

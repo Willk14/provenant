@@ -500,6 +500,88 @@ class CovenantAdjustmentRow(Base):
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class LegalPlaybookRow(Base):
+    """A firm's own positions for contract review; topics it has not changed keep the standard position."""
+
+    __tablename__ = "legal_playbooks"
+
+    tenant_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    positions: Mapped[str] = mapped_column(Text)  # JSON: topic key -> position
+    updated_by: Mapped[str] = mapped_column(String(200))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class ContractReviewRow(Base):
+    """One run of the review agent, with the exact playbook it used."""
+
+    __tablename__ = "contract_reviews"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(String(64), index=True)
+    document_id: Mapped[str] = mapped_column(ForeignKey("documents.id"), index=True)
+    status: Mapped[str] = mapped_column(String(16), default="queued")  # queued | running | done | failed
+    agent: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    playbook_version: Mapped[str] = mapped_column(String(32))
+    playbook_sha256: Mapped[str] = mapped_column(String(64))
+    playbook: Mapped[str] = mapped_column(Text)  # JSON: topic key -> position, as run
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    not_found: Mapped[str] = mapped_column(Text, default="[]", server_default="[]")  # JSON list of topic keys
+    error: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    requested_by: Mapped[str] = mapped_column(String(200))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class ContractFindingRow(Base):
+    """An issue with a quote located on a PDF page. It means nothing until a lawyer accepts it."""
+
+    __tablename__ = "contract_findings"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(String(64), index=True)
+    review_id: Mapped[str] = mapped_column(ForeignKey("contract_reviews.id", ondelete="CASCADE"), index=True)
+    document_id: Mapped[str] = mapped_column(ForeignKey("documents.id"))
+    filename: Mapped[str] = mapped_column(String(255))
+    topic: Mapped[str] = mapped_column(String(32))
+    severity: Mapped[str] = mapped_column(String(8))
+    title: Mapped[str] = mapped_column(String(200))
+    explanation: Mapped[str] = mapped_column(Text)
+    suggestion: Mapped[str] = mapped_column(Text)
+    quote: Mapped[str] = mapped_column(Text)
+    document_sha256: Mapped[str] = mapped_column(String(64))
+    page: Mapped[int] = mapped_column(Integer)
+    x0: Mapped[float] = mapped_column(Float)
+    top: Mapped[float] = mapped_column(Float)
+    x1: Mapped[float] = mapped_column(Float)
+    bottom: Mapped[float] = mapped_column(Float)
+    char_start: Mapped[int] = mapped_column(Integer)
+    char_end: Mapped[int] = mapped_column(Integer)
+    proposed_term: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    proposed_value: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    decision: Mapped[str | None] = mapped_column(String(8), nullable=True)  # accepted | rejected
+    decision_note: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    decided_by: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    field_id: Mapped[str | None] = mapped_column(String(36), nullable=True)  # the term an acceptance put up for review
+
+
+class ContractQuestionRow(Base):
+    __tablename__ = "contract_questions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(String(64), index=True)
+    review_id: Mapped[str] = mapped_column(ForeignKey("contract_reviews.id", ondelete="CASCADE"), index=True)
+    document_id: Mapped[str] = mapped_column(ForeignKey("documents.id"), index=True)
+    question: Mapped[str] = mapped_column(String(1000))
+    status: Mapped[str] = mapped_column(String(16), default="queued")  # queued | running | done | failed
+    answer: Mapped[str | None] = mapped_column(Text, nullable=True)
+    not_stated: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    citations: Mapped[str] = mapped_column(Text, default="[]", server_default="[]")  # JSON, each located on a page
+    error: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    asked_by: Mapped[str] = mapped_column(String(200))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
 class TrialBalanceLineRow(Base):
     __tablename__ = "trial_balance_lines"
 

@@ -141,6 +141,24 @@ The Tax tab also shows a provisional Kenyan instalment-tax plan from the prepare
 current-year tax computation, agricultural income proportion and dated instalment payment records. Review
 the statutory basis and applicable law for the accounting period; the plan is not a penalty calculation.
 
+### Contract review (ADR 0011)
+
+The Legal review tab reviews a contract and its amendments against the firm's playbook. Every finding quotes the PDF,
+every topic is either covered or listed as not found, and a lawyer accepts or rejects each one. Output is a working
+paper, not legal advice.
+
+| Step | Call |
+|---|---|
+| Read or change the firm's positions (partner) | `GET`/`PUT /legal/playbook` |
+| Start a review; read it | `POST /documents/{id}/reviews`, `GET .../reviews/{rid}` |
+| Accept or reject a finding | `PUT .../reviews/{rid}/findings/{fid}` |
+| Ask a cited follow-up question | `POST .../reviews/{rid}/questions` |
+
+`PROVENANT_LEGAL_AGENT=baseline` (default) is a free keyword scan. For the Claude agent, run
+`python scripts/setup_legal_agent.py` once, then set `PROVENANT_LEGAL_AGENT=claude` with the two ids it prints.
+`PROVENANT_LEGAL_DELETE_SESSIONS=1` deletes the hosted session after each run. Read the data handling section of the
+ADR before sending client contracts.
+
 ### Roles
 
 | Role | Can |

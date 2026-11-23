@@ -1,5 +1,20 @@
 import { identityHeaders } from "./identity";
-import type { BBox, CovenantAdjustment, CovenantPeriodInput, CovenantRun, DocumentSummary, Field, FieldName, Schedule, TrialBalanceSummary } from "./types";
+import type {
+  BBox,
+  CovenantAdjustment,
+  CovenantPeriodInput,
+  CovenantRun,
+  DocumentSummary,
+  Field,
+  FieldName,
+  LegalFinding,
+  LegalPlaybook,
+  LegalQuestion,
+  LegalReview,
+  LegalReviewSummary,
+  Schedule,
+  TrialBalanceSummary,
+} from "./types";
 
 export class ApiError extends Error {
   constructor(
@@ -83,5 +98,17 @@ export const api = {
     call<CovenantAdjustment>(`/documents/${id}/covenants/adjustments/${adjustmentId}/approve`, { method: "POST" }),
   deleteCovenantAdjustment: (id: string, adjustmentId: string) =>
     call<void>(`/documents/${id}/covenants/adjustments/${adjustmentId}`, { method: "DELETE" }),
+  legalPlaybook: () => call<LegalPlaybook>("/legal/playbook"),
+  saveLegalPlaybook: (positions: Record<string, string>) =>
+    call<LegalPlaybook>("/legal/playbook", { ...json({ positions }), method: "PUT" }),
+  legalReviews: (id: string) => call<LegalReviewSummary[]>(`/documents/${id}/reviews`),
+  legalReview: (id: string, reviewId: string) => call<LegalReview>(`/documents/${id}/reviews/${reviewId}`),
+  startLegalReview: (id: string) => call<LegalReview>(`/documents/${id}/reviews`, { method: "POST" }),
+  decideLegalFinding: (id: string, reviewId: string, findingId: string, decision: "accepted" | "rejected", note: string) =>
+    call<LegalFinding>(`/documents/${id}/reviews/${reviewId}/findings/${findingId}`, {
+      ...json({ decision, note }), method: "PUT",
+    }),
+  askLegalQuestion: (id: string, reviewId: string, question: string) =>
+    call<LegalQuestion>(`/documents/${id}/reviews/${reviewId}/questions`, json({ question })),
   verifyLog: () => call<{ intact: boolean; events: number }>("/review-log/verify"),
 };

@@ -6,9 +6,12 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { isUsableBox, toCss, toPdfBox, type Point } from "@/lib/geometry";
 import type { BBox, FieldName, FieldStatus } from "@/lib/types";
 
+/** A contract term, or a cited passage from a legal review finding. */
+export type HighlightName = FieldName | `finding:${string}`;
+
 export interface Highlight {
   id: string;
-  name: FieldName;
+  name: HighlightName;
   label: string;
   page: number;
   bbox: BBox;
@@ -19,11 +22,11 @@ export interface Highlight {
 interface Props {
   data: ArrayBuffer;
   highlights: Highlight[];
-  active: ReadonlySet<FieldName>;
-  focus: { name: FieldName; nonce: number } | null;
+  active: ReadonlySet<HighlightName>;
+  focus: { name: HighlightName; nonce: number } | null;
   drawing: boolean;
   onDraw: (page: number, bbox: BBox) => void;
-  onSelect: (name: FieldName) => void;
+  onSelect: (name: HighlightName) => void;
 }
 
 interface Size {

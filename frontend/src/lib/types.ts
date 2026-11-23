@@ -251,6 +251,69 @@ export const COVENANT_FIELD: Record<CovenantKind, FieldName> = {
   min_liquidity: "min_liquidity",
 };
 
+export interface LegalCitation {
+  document_id: string;
+  filename: string;
+  quote: string;
+  page: number;
+  bbox: BBox;
+}
+
+/** A cited issue from the review agent. It means nothing until a person accepts it. */
+export interface LegalFinding {
+  id: string;
+  topic: string;
+  severity: "high" | "medium" | "low" | "info";
+  title: string;
+  explanation: string;
+  suggestion: string;
+  citation: LegalCitation;
+  proposed_term: FieldName | null;
+  proposed_value: string | null;
+  decision: "accepted" | "rejected" | null;
+  decision_note: string | null;
+  decided_by: string | null;
+  field_id: string | null;
+}
+
+export interface LegalQuestion {
+  id: string;
+  question: string;
+  status: "queued" | "running" | "done" | "failed";
+  answer: string | null;
+  not_stated: boolean;
+  citations: LegalCitation[];
+  error: string | null;
+  asked_by: string;
+  created_at: string;
+}
+
+export interface LegalReviewSummary {
+  id: string;
+  status: "queued" | "running" | "done" | "failed";
+  agent: string | null;
+  playbook_version: string;
+  playbook_sha256: string;
+  summary: string | null;
+  not_found: string[];
+  error: string | null;
+  requested_by: string;
+  created_at: string;
+  finished_at: string | null;
+}
+
+export interface LegalReview extends LegalReviewSummary {
+  findings: LegalFinding[];
+  questions: LegalQuestion[];
+}
+
+export interface LegalPlaybook {
+  version: string;
+  sha256: string;
+  updated_by: string | null;
+  topics: { key: string; label: string; position: string; standard: boolean }[];
+}
+
 export interface TrialBalanceSummary {
   id: string;
   period_end: string;
