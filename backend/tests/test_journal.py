@@ -69,6 +69,29 @@ def test_each_journal_test_finds_what_it_should(ledger):
     assert [(r[4], r[8]) for r in lines] == [("5200", D("1000.00")), ("1000", D("-900.00"))]
 
 
+def test_many_identical_lines_do_not_exhaust_memory(tmp_path):
+    # 30,000 one-line entries of the same fee: a self-join would build 30,000 x 29,999 = 899,970,000 rows. All
+    # 30,000 are possible duplicates, value 30,000 x 33 = 990,000; each names 5 others and says there are more.
+    csv, parquet = tmp_path / "gl.csv", tmp_path / "gl.parquet"
+    csv.write_text("entry_id,date,account_code,description,amount\n" + "".join(
+        f"C{i:05d},2026-03-02,6100,M-Pesa charge,33\n" for i in range(30_000)), encoding="utf-8")
+    load(csv, parquet)
+    duplicates = next(t for t in analyse(parquet, *YEAR).tests if t.key == "duplicates")
+    assert (duplicates.count, duplicates.value) == (30_000, D(990_000))
+    assert duplicates.sample[0].detail == "same as C00001, C00002, C00003, C00004, C00005 and others"
+
+
+def test_a_few_duplicates_are_all_named(tmp_path):
+    # A, B and C share one line, so A's detail lists exactly the other two.
+    csv, parquet = tmp_path / "gl.csv", tmp_path / "gl.parquet"
+    csv.write_text("entry_id,date,account_code,description,amount\n" + "".join(
+        f"{e},2026-03-02,6100,Fee,33\n" for e in "ABC"), encoding="utf-8")
+    load(csv, parquet)
+    duplicates = next(t for t in analyse(parquet, *YEAR).tests if t.key == "duplicates")
+    assert {f.entry_id: f.detail for f in duplicates.sample} == {
+        "A": "same as B, C", "B": "same as A, C", "C": "same as A, B"}
+
+
 def test_tests_needing_a_column_say_so(tmp_path):
     csv, parquet = tmp_path / "gl.csv", tmp_path / "gl.parquet"
     csv.write_text("entry_id,date,account_code,amount\nA,2026-01-05,1000,10\nA,2026-01-05,4000,-10\n", encoding="utf-8")

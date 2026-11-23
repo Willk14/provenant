@@ -25,6 +25,8 @@ RARE_ACCOUNT_LINES = 2  # accounts used this many times or fewer in the year
 PERIOD_END_DAYS = 5
 WORK_HOURS = (7, 20)  # postings outside 07:00-20:00
 SAMPLE = 200  # entries listed per test; counts and totals cover the whole population
+DUPLICATES_SHOWN = 5  # other entries named on a possible duplicate
+RISK_ENTRIES = 500  # entries on the review list, most tests tripped first
 
 TESTS = {
     "unbalanced": ("Entries that do not balance", "Debits and credits of the entry differ."),
@@ -56,6 +58,13 @@ def _connect() -> duckdb.DuckDBPyConnection:
 def load(csv_path: Path, parquet_path: Path) -> int:
     """Validate the CSV and write the normalised ledger to Parquet. Returns the number of lines."""
     con = _connect()
+    try:
+        return _load(con, csv_path, parquet_path)
+    finally:
+        con.close()
+
+
+def _load(con: duckdb.DuckDBPyConnection, csv_path: Path, parquet_path: Path) -> int:
     try:
         con.execute(f"CREATE VIEW raw AS SELECT * FROM read_csv({_q(str(csv_path))}, header = true, all_varchar = true)")
     except duckdb.Error as exc:
@@ -105,7 +114,6 @@ def load(csv_path: Path, parquet_path: Path) -> int:
     if not rows:
         raise LedgerError("the general ledger has no lines")
     con.execute(f"COPY (SELECT * EXCLUDE (date_text) FROM gl ORDER BY row_no) TO {_q(str(parquet_path))} (FORMAT parquet)")
-    con.close()
     return rows
 
 
@@ -163,6 +171,14 @@ class Analysis:
 def analyse(parquet_path: Path, year_start: date, year_end: date, *, approval_limit: Decimal | None = None,
             pl_balances: Mapping[str, Decimal] | None = None) -> Analysis:
     con = _connect()
+    try:
+        return _analyse(con, parquet_path, year_start, year_end, approval_limit, pl_balances)
+    finally:
+        con.close()
+
+
+def _analyse(con: duckdb.DuckDBPyConnection, parquet_path: Path, year_start: date, year_end: date,
+             approval_limit: Decimal | None, pl_balances: Mapping[str, Decimal] | None) -> Analysis:
     con.execute(f"CREATE VIEW gl AS SELECT * FROM read_parquet({_q(str(parquet_path))})")
     con.execute("CREATE TABLE entries AS SELECT entry_id, sum(greatest(amount, 0)) AS value, min(date) AS date "
                 "FROM gl GROUP BY entry_id")
@@ -176,11 +192,23 @@ def analyse(parquet_path: Path, year_start: date, year_end: date, *, approval_li
     selections: dict[str, tuple[str, dict]] = {
         "unbalanced": ("SELECT entry_id, 'debits less credits ' || CAST(sum(amount) AS VARCHAR) FROM gl "
                        "GROUP BY entry_id HAVING sum(amount) <> 0", {}),
-        "duplicates": ("""
-            SELECT g.entry_id, 'same as ' || string_agg(DISTINCT o.entry_id, ', ')
-            FROM gl g JOIN gl o ON o.account_code = g.account_code AND o.amount = g.amount AND o.date = g.date
-              AND lower(trim(o.description)) = lower(trim(g.description)) AND o.entry_id <> g.entry_id
-            GROUP BY g.entry_id""", {}),
+        # Grouped, not a self-join: n identical lines (recurring fees) would otherwise make n x n rows.
+        "duplicates": (f"""
+            WITH repeated AS (SELECT account_code, amount, date, lower(trim(description)) AS text FROM gl
+                              GROUP BY account_code, amount, date, text HAVING min(entry_id) <> max(entry_id)),
+                 lines AS (SELECT DISTINCT g.entry_id, r.account_code, r.amount, r.date, r.text
+                           FROM gl g JOIN repeated r ON g.account_code = r.account_code AND g.amount = r.amount
+                             AND g.date = r.date AND lower(trim(g.description)) = r.text),
+                 same AS (SELECT account_code, amount, date, text, count(*) AS n, min(entry_id, {DUPLICATES_SHOWN + 1}) AS peers
+                          FROM lines GROUP BY account_code, amount, date, text),
+                 matched AS (SELECT l.entry_id, max(s.n) AS largest,
+                                    list_sort(list_filter(list_distinct(flatten(list(s.peers))),
+                                                          lambda x: x <> l.entry_id)) AS others
+                             FROM lines l JOIN same s USING (account_code, amount, date, text) GROUP BY l.entry_id)
+            SELECT entry_id, 'same as ' || array_to_string(others[1:{DUPLICATES_SHOWN}], ', ')
+                   || CASE WHEN len(others) > {DUPLICATES_SHOWN} OR largest > {DUPLICATES_SHOWN + 1}
+                           THEN ' and others' ELSE '' END
+            FROM matched""", {}),
         "round_amounts": (f"SELECT entry_id, 'line of ' || CAST(max(abs(amount)) AS VARCHAR) FROM gl "
                           f"WHERE abs(amount) >= {ROUND_FLOOR} AND abs(amount) % {ROUND_UNIT} = 0 GROUP BY entry_id", {}),
         "weekend": ("SELECT entry_id, dayname(min(date)) FROM gl WHERE dayofweek(date) IN (0, 6) GROUP BY entry_id", {}),
@@ -205,8 +233,9 @@ def analyse(parquet_path: Path, year_start: date, year_end: date, *, approval_li
             "SELECT entry_id, 'entry value ' || CAST(value AS VARCHAR) FROM entries WHERE value >= $low AND value < $limit",
             {"low": approval_limit * Decimal("0.9"), "limit": approval_limit})
 
-    results, flagged = [], {}
-    for key, (title, description) in TESTS.items():
+    results = []
+    con.execute("CREATE TABLE flagged (entry_id VARCHAR, test VARCHAR, position INTEGER)")  # stays in DuckDB: can be millions
+    for position, (key, (title, description)) in enumerate(TESTS.items()):
         applies = not ((key == "after_hours" and not has_time) or (key == "rare_users" and not has_user)
                        or (key == "near_limit" and approval_limit is None))
         if not applies:
@@ -217,15 +246,14 @@ def analyse(parquet_path: Path, year_start: date, year_end: date, *, approval_li
                     "JOIN entries e USING (entry_id)", extra or None)
         count, value = con.execute("SELECT count(*), COALESCE(sum(value), 0) FROM hit").fetchone()
         sample = con.execute(f"SELECT entry_id, value, detail FROM hit ORDER BY value DESC, entry_id LIMIT {SAMPLE}").fetchall()
-        for (entry_id,) in con.execute("SELECT entry_id FROM hit").fetchall():
-            flagged.setdefault(entry_id, []).append(key)
+        con.execute("INSERT INTO flagged SELECT entry_id, $test, $position FROM hit", {"test": key, "position": position})
         results.append(TestResult(key, title, description, count, Decimal(value),
                                   tuple(Flag(e, Decimal(v), d) for e, v, d in sample)))
 
-    values = dict(con.execute("SELECT entry_id, value FROM entries WHERE entry_id IN (SELECT unnest($ids))",
-                              {"ids": list(flagged)}).fetchall()) if flagged else {}
-    risk = sorted(((e, Decimal(values[e]), tuple(t)) for e, t in flagged.items()),
-                  key=lambda x: (-len(x[2]), -x[1], x[0]))[:500]
+    risk = [(e, Decimal(v), tuple(t)) for e, v, t in con.execute(f"""
+        SELECT f.entry_id, any_value(e.value) AS value, list(f.test ORDER BY f.position)
+        FROM flagged f JOIN entries e USING (entry_id) GROUP BY f.entry_id
+        ORDER BY count(*) DESC, value DESC, f.entry_id LIMIT {RISK_ENTRIES}""").fetchall()]
 
     recon = ()
     if pl_balances is not None:
@@ -233,7 +261,6 @@ def analyse(parquet_path: Path, year_start: date, year_end: date, *, approval_li
                                  "GROUP BY account_code", params).fetchall())
         recon = tuple(ReconRow(code, Decimal(moved.get(code, 0)), tb) for code, tb in sorted(pl_balances.items()))
     benford = _benford(con)
-    con.close()
     return Analysis(lines, n_entries, Decimal(debits), first, last, tuple(results), benford, recon, tuple(risk))
 
 
@@ -257,8 +284,9 @@ def _benford(con: duckdb.DuckDBPyConnection) -> Benford | None:
 def entry_lines(parquet_path: Path, entry_ids: Iterable[str]) -> list[tuple]:
     """The lines behind flagged entries, for the reviewer."""
     con = _connect()
-    rows = con.execute(f"SELECT entry_id, row_no, date, posted_at, account_code, description, user_id, source, amount "
-                       f"FROM read_parquet({_q(str(parquet_path))}) WHERE entry_id IN (SELECT unnest($ids)) "
-                       f"ORDER BY entry_id, row_no", {"ids": list(entry_ids)}).fetchall()
-    con.close()
-    return rows
+    try:
+        return con.execute(f"SELECT entry_id, row_no, date, posted_at, account_code, description, user_id, source, amount "
+                           f"FROM read_parquet({_q(str(parquet_path))}) WHERE entry_id IN (SELECT unnest($ids)) "
+                           f"ORDER BY entry_id, row_no", {"ids": list(entry_ids)}).fetchall()
+    finally:
+        con.close()

@@ -30,14 +30,18 @@ os.environ["PROVENANT_INLINE_WORKER"] = "1"
 def start_postgres(pgserver, attempts: int = 36):
     """Start or attach to the embedded server. After the machine sleeps or restarts, Postgres replays its log
     before accepting connections, which can outlast pgserver's 10-second start timeout: keep trying for up to
-    three minutes instead of failing (the server keeps recovering in the background meanwhile)."""
+    three minutes instead of failing (the server keeps recovering in the background meanwhile).
+
+    A failed start leaves a handle with no server details in pgserver's cache, and attaching to a server that is
+    still recovering fails its readiness assertion, so each retry drops the cached handle and asks again."""
     import subprocess
     import time
 
     for attempt in range(1, attempts + 1):
         try:
             return pgserver.get_server(str(PG_DIR), cleanup_mode=None)  # attaches if it is already running
-        except (subprocess.TimeoutExpired, subprocess.CalledProcessError) as exc:
+        except (subprocess.TimeoutExpired, subprocess.CalledProcessError, AssertionError) as exc:
+            pgserver.postgres_server.PostgresServer._instances.pop(PG_DIR.expanduser().resolve(), None)
             if attempt == attempts:
                 raise RuntimeError(f"embedded Postgres did not start; see {PG_DIR / 'log'}") from exc
             print(f"Postgres is still starting (recovering after a restart?); retrying ({attempt}/{attempts})")

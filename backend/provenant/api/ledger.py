@@ -71,7 +71,11 @@ def upload(s: Session, p: Principal, store: BlobStore, client_id: str, year_end:
             lines = journal.load(table_path, parquet_path)
         except journal.LedgerError as exc:
             raise Invalid(str(exc)) from exc
-        parquet_sha = hashlib.sha256(parquet_path.read_bytes()).hexdigest()  # compressed: small even for big ledgers
+        parquet_digest = hashlib.sha256()
+        with parquet_path.open("rb") as parquet:
+            while chunk := parquet.read(CHUNK):
+                parquet_digest.update(chunk)
+        parquet_sha = parquet_digest.hexdigest()
         store.put_file(digest.hexdigest(), csv_path)
         store.put_file(parquet_sha, parquet_path)
     row = _ledger(s, p.tenant_id, client_id, year_end)
