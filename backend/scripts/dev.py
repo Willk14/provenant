@@ -3,6 +3,7 @@
     python scripts/dev.py            # Postgres (embedded), http://127.0.0.1:8000  (docs at /docs)
     python scripts/dev.py --reset    # start from an empty database and storage
     python scripts/dev.py --sqlite   # the old single-file SQLite database instead
+    python scripts/dev.py --supabase # the hosted Supabase database, using the settings in backend/.env
 
 Postgres runs embedded (pgserver, no Docker), in the same data directory the Postgres test suite uses, as a
 separate `provenant` database. Migrations run as the owner; the API connects as `provenant_app`, a non-superuser,
@@ -69,16 +70,48 @@ def postgres(reset: bool) -> tuple[str, str]:
     return owner.render_as_string(hide_password=False), app.render_as_string(hide_password=False)
 
 
+def supabase_urls(env_file: Path = BACKEND / ".env") -> tuple[str, str]:
+    """(owner URL for migrations, app-role URL for the API) through the IPv4 session pooler. Secrets stay in the
+    git-ignored file and are never printed."""
+    from sqlalchemy import URL
+
+    if not env_file.exists():
+        raise SystemExit(f"--supabase needs {env_file}")
+    lines = env_file.read_text(encoding="utf-8").splitlines()
+    values = dict(line.split("=", 1) for line in lines if "=" in line and not line.lstrip().startswith("#"))
+    need = ("PROVENANT_SUPABASE_REF", "PROVENANT_SUPABASE_HOST", "PROVENANT_SUPABASE_OWNER_PASSWORD",
+            "PROVENANT_SUPABASE_APP_PASSWORD")
+    if missing := [k for k in need if not values.get(k)]:
+        raise SystemExit(f"--supabase: missing from {env_file.name}: {', '.join(missing)}")
+
+    def url(role: str, password: str) -> str:
+        return URL.create("postgresql+psycopg", username=f"{role}.{values['PROVENANT_SUPABASE_REF']}", password=password,
+                          host=values["PROVENANT_SUPABASE_HOST"], port=5432, database="postgres",
+                          query={"sslmode": "require"}).render_as_string(hide_password=False)
+
+    return url("provenant_owner", values["PROVENANT_SUPABASE_OWNER_PASSWORD"]), url(APP_ROLE, values["PROVENANT_SUPABASE_APP_PASSWORD"])
+
+
 def main() -> None:
     import uvicorn
 
     from provenant.api.migrate import upgrade
 
     reset = "--reset" in sys.argv
+    if "--supabase" in sys.argv and (reset or "--sqlite" in sys.argv):
+        raise SystemExit("--supabase cannot be combined with --reset or --sqlite")
     if reset:
         shutil.rmtree(DATA, ignore_errors=True)
     DATA.mkdir(exist_ok=True)
-    if "--sqlite" in sys.argv:
+    if "--supabase" in sys.argv:
+        owner, app = supabase_urls()
+        os.environ["PROVENANT_APP_ROLE"] = APP_ROLE
+        os.environ.setdefault("PROVENANT_DB_POOL_SIZE", "3")  # the free plan's pooler allows few connections
+        os.environ.setdefault("PROVENANT_DB_MAX_OVERFLOW", "2")
+        upgrade(owner)
+        os.environ["DATABASE_URL"] = app
+        print(f"Postgres: Supabase session pooler as {APP_ROLE} (row-level security on)")
+    elif "--sqlite" in sys.argv:
         os.environ.setdefault("DATABASE_URL", f"sqlite:///{(DATA / 'provenant.db').as_posix()}")
         upgrade(os.environ["DATABASE_URL"])
     elif "DATABASE_URL" in os.environ:

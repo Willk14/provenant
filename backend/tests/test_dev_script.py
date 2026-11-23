@@ -3,6 +3,8 @@ import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "dev.py"
 
 
@@ -11,6 +13,22 @@ def _dev():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def test_supabase_urls_use_the_pooler_and_separate_roles(tmp_path):
+    env = tmp_path / ".env"
+    env.write_text("PROVENANT_SUPABASE_REF=abc\nPROVENANT_SUPABASE_HOST=pooler.example\n"
+                   "PROVENANT_SUPABASE_OWNER_PASSWORD=own/er\nPROVENANT_SUPABASE_APP_PASSWORD=app@1\n", encoding="utf-8")
+    owner, app = _dev().supabase_urls(env)
+    assert owner == "postgresql+psycopg://provenant_owner.abc:own%2Fer@pooler.example:5432/postgres?sslmode=require"
+    assert app == "postgresql+psycopg://provenant_app.abc:app%401@pooler.example:5432/postgres?sslmode=require"
+
+
+def test_supabase_settings_must_be_complete(tmp_path):
+    env = tmp_path / ".env"
+    env.write_text("PROVENANT_SUPABASE_REF=abc\n", encoding="utf-8")
+    with pytest.raises(SystemExit, match="PROVENANT_SUPABASE_HOST"):
+        _dev().supabase_urls(env)
 
 
 def test_a_server_still_recovering_is_retried_with_a_fresh_handle(monkeypatch):

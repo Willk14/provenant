@@ -1,4 +1,5 @@
 """Persistence. Every row carries tenant_id; Postgres adds RLS on top (db/postgres/001_hardening.sql)."""
+import os
 from datetime import UTC, date, datetime
 from uuid import uuid4
 
@@ -590,8 +591,12 @@ class ReviewEventRow(Base):
 
 
 def make_engine(url: str) -> Engine:
-    connect_args = {"check_same_thread": False} if url.startswith("sqlite") else {}
-    return create_engine(url, connect_args=connect_args)
+    if url.startswith("sqlite"):
+        return create_engine(url, connect_args={"check_same_thread": False})
+    # A hosted database or pooler can drop idle connections and caps how many each client may hold.
+    return create_engine(url, pool_pre_ping=True, pool_recycle=300,
+                         pool_size=int(os.environ.get("PROVENANT_DB_POOL_SIZE", "5")),
+                         max_overflow=int(os.environ.get("PROVENANT_DB_MAX_OVERFLOW", "10")))
 
 
 def make_sessionmaker(engine: Engine) -> sessionmaker[Session]:
