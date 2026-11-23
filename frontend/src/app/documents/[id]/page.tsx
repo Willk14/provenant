@@ -11,7 +11,6 @@ export default async function DocumentPage({
   const { id } = await params;
   const { field, tab } = await searchParams;
   const initialField = field && field in FIELD_LABELS ? (field as FieldName) : undefined;
-  return (
-    <Workspace key={id} id={id} initialField={initialField} initialTab={tab === "schedule" ? "schedule" : "terms"} />
-  );
+  const initialTab = tab === "schedule" || tab === "review" || tab === "drafts" ? tab : "terms";
+  return <Workspace key={`${id}-${initialTab}`} id={id} initialField={initialField} initialTab={initialTab} />;
 }

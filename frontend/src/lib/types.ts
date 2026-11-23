@@ -361,6 +361,39 @@ export interface ContractDraft {
   }[];
 }
 
+export interface AiAgents {
+  engine: { mode: "keyword" | "claude" | "needs_setup"; label: string; model: string | null; detail: string };
+  agents: {
+    key: "reviewer" | "questions" | "drafter";
+    name: string;
+    description: string;
+    tab: "review" | "drafts";
+    available: boolean;
+    note: string | null;
+    runs: number;
+    waiting: number;
+  }[];
+  contracts: { id: string; filename: string; kind: string }[];
+  activity: {
+    kind: "review" | "question" | "draft";
+    id: string;
+    document_id: string;
+    filename: string;
+    title: string;
+    status: string;
+    agent: string | null;
+    by: string;
+    at: string;
+  }[];
+}
+
+export interface AiUsage {
+  total_runs: number;
+  failed_runs: number;
+  unpriced_runs: number;
+  estimated_cost_microusd: number;
+}
+
 export interface TrialBalanceSummary {
   id: string;
   period_end: string;

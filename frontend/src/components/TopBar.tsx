@@ -28,6 +28,9 @@ export function TopBar() {
         <Link href="/review" aria-current={path === "/review" ? "page" : undefined}>
           Review queue
         </Link>
+        <Link href="/agents" aria-current={path.startsWith("/agents") ? "page" : undefined}>
+          AI agents
+        </Link>
       </nav>
       <div className="persona">
         <span className="dev-badge" title="Identity comes from request headers. Local development only.">

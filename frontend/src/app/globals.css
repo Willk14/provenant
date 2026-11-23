@@ -1775,3 +1775,105 @@ button.chip {
   color: var(--warn);
   font-weight: 600;
 }
+
+/* ---- AI agents ----------------------------------------------------------------------------- */
+
+.agent-engine {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 18px;
+  margin-bottom: 18px;
+}
+
+.agent-engine-title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 3px;
+}
+
+.agent-usage {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  align-items: flex-end;
+  font-size: 12px;
+}
+
+.agent-usage b {
+  font-size: 16px;
+}
+
+.agent-picker {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+.agent-picker select {
+  flex: 0 1 340px;
+  min-width: 0;
+}
+
+.agent-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.agent-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 16px;
+}
+
+.agent-card h2,
+.agent-section {
+  margin: 0;
+  font-size: 15px;
+}
+
+.agent-card p {
+  flex: 1;
+  margin: 0;
+}
+
+.agent-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+.agent-section {
+  margin: 24px 0 10px;
+}
+
+@media (max-width: 860px) {
+  .agent-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .agent-engine,
+  .agent-picker {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .agent-picker select {
+    flex: none;
+  }
+  .agent-usage {
+    align-items: flex-start;
+  }
+}

@@ -7,6 +7,8 @@ import type {
   DocumentSummary,
   Field,
   FieldName,
+  AiAgents,
+  AiUsage,
   ContractDraft,
   DraftKind,
   LegalFinding,
@@ -118,6 +120,8 @@ export const api = {
     }),
   askLegalQuestion: (id: string, reviewId: string, question: string) =>
     call<LegalQuestion>(`/documents/${id}/reviews/${reviewId}/questions`, json({ question })),
+  aiAgents: () => call<AiAgents>("/ai/agents"),
+  aiUsage: () => call<AiUsage>("/ai/runs?limit=1"),
   contractDrafts: (id: string) => call<ContractDraft[]>(`/documents/${id}/drafts`),
   startContractDraft: (id: string, kind: DraftKind, instructions: string) =>
     call<ContractDraft>(`/documents/${id}/drafts`, json({ kind, instructions })),

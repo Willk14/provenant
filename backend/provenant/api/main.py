@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from provenant.api import (
+    ai_agents,
     ai_runs,
     covenants,
     etims,
@@ -599,6 +600,7 @@ def create_app(
     legal_routes.add_routes(app, Auth, Db)
     legal_drafts.add_routes(app, Auth, Db)
     ai_runs.add_routes(app, Auth, Db)
+    ai_agents.add_routes(app, Auth, Db)
     etims.add_routes(app, Auth, Db)
     variance.add_routes(app, Auth, Db)
     statements.add_routes(app, Auth, Db)
