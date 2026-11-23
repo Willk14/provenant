@@ -191,3 +191,19 @@ def test_covenant_period_inputs_are_tenant_isolated(client, app, database_url):
         assert s.scalar(text("select count(*) from covenant_period_inputs")) == 1
     with tenant_session(factory, "firm-b") as s:
         assert s.scalar(text("select count(*) from covenant_period_inputs")) == 0
+
+
+def test_covenant_adjustments_are_tenant_isolated(client, app, database_url):
+    from tests.test_api import PREPARER
+    from tests.test_covenants_api import upload_agreement, verify_all
+
+    doc_id = upload_agreement(client, app)
+    verify_all(client, doc_id)
+    assert client.post(f"/documents/{doc_id}/covenants/adjustments", headers=PREPARER, json={
+        "kind": "addback", "quarter_end": "2026-12-31", "label": "Restructuring", "amount": "1000",
+        "clause": "Clause 1.1", "basis": "Board paper of 14 December"}).status_code == 201
+    factory = make_sessionmaker(make_engine(database_url))
+    with tenant_session(factory, "firm-a") as s:
+        assert s.scalar(text("select count(*) from covenant_adjustments")) == 1
+    with tenant_session(factory, "firm-b") as s:
+        assert s.scalar(text("select count(*) from covenant_adjustments")) == 0

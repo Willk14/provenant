@@ -53,6 +53,10 @@ FORMATS: dict[str, tuple[str, str]] = {
     # A springing covenant: leverage is tested only when revolver usage exceeds this share of the commitment.
     "springing_usage_percent": (r"\d{1,3}(\.\d+)?%", "a percentage like 35%"),
     "revolver_commitment": _AMOUNT,
+    # How the agreement defines covenant EBITDA and treats leases.
+    "addback_cap_percent": (r"\d{1,2}(\.\d+)?%", "a percentage below 100, like 20%"),
+    "addback_cap_basis": (r"(?i)before add-backs|after add-backs", "before add-backs or after add-backs"),
+    "lease_treatment": (r"(?i)frozen GAAP|IFRS 16", "frozen GAAP or IFRS 16"),
 }
 
 

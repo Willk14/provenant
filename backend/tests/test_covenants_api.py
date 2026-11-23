@@ -3,7 +3,7 @@ from decimal import Decimal
 
 from fpdf import FPDF
 
-from tests.test_api import OTHER_FIRM, PARTNER, PREPARER, REVIEWER, review, run_jobs
+from tests.test_api import OTHER_FIRM, PARTNER, PREPARER, REVIEWER, review, run_jobs, uploaded_lease
 
 AGREEMENT_LINES = [
     "FACILITY AGREEMENT",
@@ -194,6 +194,85 @@ def test_relative_first_test_date_and_threshold_step(client, app):
     assert Decimal(june["value"]) == Decimal("3.36") and june["status"] == "breach"
     assert Decimal(june["threshold"]) == Decimal("3.25") and june["field_id"] == ids["max_leverage_steps"]
     assert june["note"] == "Threshold 3.25x applies from 2027-06-30"
+
+
+def _enter_input(client, doc_id, name, value):
+    r = client.post(f"/documents/{doc_id}/inputs", headers=PREPARER,
+                    json={"name": name, "value": value, "basis": "Facility agreement, definitions clause 1.1"})
+    assert r.status_code == 201, r.text
+
+
+def _leverage(client, doc_id, period):
+    run = client.get(f"/documents/{doc_id}/covenants", headers=PREPARER, params={"as_of": "2027-05-20"}).json()
+    quarter = next(t for t in run["test_dates"] if t["period_end"] == period)
+    return next(x for x in quarter["results"] if x["kind"] == "leverage")
+
+
+def test_addback_is_approved_by_a_partner_before_it_counts_and_is_capped(client, app):
+    doc_id = upload_agreement(client, app)
+    _enter_input(client, doc_id, "addback_cap_percent", "5%")
+    _enter_input(client, doc_id, "addback_cap_basis", "before add-backs")
+    url = f"/documents/{doc_id}/covenants/adjustments"
+    body = {"kind": "addback", "quarter_end": "2027-03-31", "label": "Restructuring costs", "amount": "30,000,000",
+            "capped": True, "clause": "Clause 1.1(c)", "basis": "Board paper of 14 March 2027"}
+    assert client.post(url, headers=PREPARER, json=body).status_code == 409  # terms are not verified yet
+    verify_all(client, doc_id)
+    for q in QUARTERS:
+        upload_tb(client, doc_id, q, tb_csv(**STEADY))
+    upload_tb(client, doc_id, "2027-03-31", tb_csv(**WEAK))
+
+    assert client.post(url, headers=PREPARER, json={**body, "quarter_end": "2027-02-28"}).status_code == 422
+    assert client.post(url, headers=PREPARER, json={**body, "amount": "-5"}).status_code == 422  # a capped deduction
+    assert client.post(url, headers=PREPARER, json={**body, "basis": "short"}).status_code == 422
+    assert client.post(url, headers=OTHER_FIRM, json=body).status_code == 404
+    item = client.post(url, headers=PREPARER, json=body)
+    assert item.status_code == 201
+    approve = f"{url}/{item.json()['id']}/approve"
+
+    # Net debt 950 + 58 - 60 = 948. LTM EBITDA 75 + 75 + 75 + 25 = 250, so 3.79x: unapproved, it does not count.
+    assert _leverage(client, doc_id, "2027-03-31")["status"] == "breach"
+    assert Decimal(_leverage(client, doc_id, "2027-03-31")["value"]) == round(Decimal(948) / Decimal(250), 4)
+    assert client.post(approve, headers=PREPARER).status_code == 403
+    assert client.post(approve, headers=REVIEWER).status_code == 403
+    assert client.post(approve, headers=OTHER_FIRM).status_code == 404
+    assert client.post(approve, headers=PARTNER).status_code == 200
+
+    # The cap is 5% of 250 = 12.5 of the 30, so EBITDA is 262.5 and leverage 948 / 262.5 = 3.6114x: still a breach.
+    capped = _leverage(client, doc_id, "2027-03-31")
+    assert Decimal(capped["value"]) == round(Decimal(948) / Decimal("262.5"), 4) and capped["status"] == "breach"
+    lines = {w["label"]: w for w in capped["workings"]}
+    assert lines["Add-back: Restructuring costs (2027-03-31)"]["source"] == item.json()["id"]
+    assert Decimal(lines["Add-backs above the cap"]["amount"]) == Decimal("-17500000")
+
+    assert client.delete(f"{url}/{item.json()['id']}", headers=PREPARER).status_code == 403  # approved
+    assert client.delete(f"{url}/{item.json()['id']}", headers=PARTNER).status_code == 204
+    assert Decimal(_leverage(client, doc_id, "2027-03-31")["value"]) == round(Decimal(948) / Decimal(250), 4)
+
+
+def test_frozen_gaap_lease_uses_its_verified_schedule(client, app):
+    lease_id, _ = uploaded_lease(client, app)
+    verify_all(client, lease_id)
+    doc_id = upload_agreement(client, app)
+    _enter_input(client, doc_id, "lease_treatment", "frozen GAAP")
+    verify_all(client, doc_id)
+    for q in QUARTERS:
+        upload_tb(client, doc_id, q, tb_csv(**STEADY))
+    assert _leverage(client, doc_id, "2026-12-31")["status"] == "undetermined"  # no lease approved yet
+
+    url = f"/documents/{doc_id}/covenants/adjustments"
+    body = {"kind": "frozen_lease", "lease_document_id": lease_id, "clause": "Clause 1.3", "basis": "Operating lease before IFRS 16"}
+    assert client.post(url, headers=PREPARER, json={**body, "lease_document_id": doc_id}).status_code == 422
+    item = client.post(url, headers=PREPARER, json=body)
+    assert item.status_code == 201
+    assert client.post(url, headers=PREPARER, json=body).status_code == 409  # once per agreement
+    assert client.post(f"{url}/{item.json()['id']}/approve", headers=PARTNER).status_code == 200
+
+    result = _leverage(client, doc_id, "2026-12-31")
+    charge = next(w for w in result["workings"] if w["label"].startswith("Operating lease charge"))
+    # 12 payments of 1,000 spread evenly is 1,000 a month. The lease's months ending in 2026 are counted.
+    months = int(-Decimal(charge["amount"]) / 1000)
+    assert charge["source"] == lease_id and months == 11
+    assert result["status"] in ("pass", "warning")
 
 
 def test_springing_and_delivery_inputs_are_confirmed_before_they_count(client, app):

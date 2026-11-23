@@ -7,6 +7,7 @@ import { formatAmount, formatDate } from "@/lib/format";
 import {
   COVENANT_FIELD,
   COVENANT_LABELS,
+  type CovenantAdjustment,
   type CovenantKind,
   type CovenantPeriodInput,
   type CovenantResult,
@@ -19,7 +20,7 @@ import {
 
 const KINDS: CovenantKind[] = ["leverage", "interest_cover", "min_liquidity"];
 const STATUS_PILL = { pass: "pill-ok", warning: "pill-warn", breach: "pill-bad", not_tested: "", undetermined: "pill-warn" } as const;
-const STATUS_WORDS: Partial<Record<CovenantResult["status"], string>> = { not_tested: "Not tested", undetermined: "Needs usage" };
+const STATUS_WORDS: Partial<Record<CovenantResult["status"], string>> = { not_tested: "Not tested", undetermined: "Needs input" };
 const ALERT_CLASS = { breach: "callout-bad", overdue: "callout-bad", warning: "callout-warn", due: "" } as const;
 
 function today(): string {
@@ -149,6 +150,8 @@ export function CovenantsPanel({ doc, onTrace }: Props) {
               <PeriodInputs doc={doc} run={run} onChanged={load} />
             )}
 
+            <Adjustments doc={doc} run={run} onChanged={load} />
+
             {selectedResult && selectedDate ? (
               <Workings
                 result={selectedResult}
@@ -261,8 +264,8 @@ function Workings({
       {result.note && <div className="term-note">{result.note}</div>}
       <table className="workings-table">
         <tbody>
-          {result.workings.map((w) => (
-            <tr key={w.label} data-total={/^(Net debt|EBITDA)/.test(w.label) || undefined}>
+          {result.workings.map((w, i) => (
+            <tr key={`${w.label}-${i}`} data-total={/^(Net debt|EBITDA)/.test(w.label) || undefined}>
               <td>{w.label}</td>
               <td className="num">{formatAmount(w.amount)}</td>
             </tr>
@@ -360,6 +363,129 @@ function PeriodInputs({ doc, run, onChanged }: { doc: DocumentSummary; run: Cove
         <input className="input" value={basis} onChange={(e) => setBasis(e.target.value)}
           placeholder="Basis, e.g. agent's statement" aria-label="Basis" />
         <button className="btn btn-sm" disabled={busy || basis.trim().length < 10 || (!drawn.trim() && !delivered)}>Save</button>
+      </form>
+      {error && <div className="error-banner">{error}</div>}
+    </div>
+  );
+}
+
+/** How the agreement defines EBITDA: add-backs, deductions and frozen-GAAP leases, each approved by a partner. */
+function Adjustments({ doc, run, onChanged }: { doc: DocumentSummary; run: CovenantRun; onChanged: () => void }) {
+  const [leases, setLeases] = useState<DocumentSummary[]>([]);
+  const [quarter, setQuarter] = useState("");
+  const [label, setLabel] = useState("");
+  const [amount, setAmount] = useState("");
+  const [capped, setCapped] = useState(true);
+  const [leaseId, setLeaseId] = useState("");
+  const [clause, setClause] = useState("");
+  const [basis, setBasis] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const frozen = run.terms.frozen_gaap;
+
+  useEffect(() => {
+    if (!frozen) return;
+    api.documents().then((docs) => setLeases(docs.filter((d) => d.kind === "lease"))).catch((e: Error) => setError(e.message));
+  }, [frozen]);
+
+  const firstTest = new Date(`${run.terms.first_test_date}T00:00:00Z`);
+  const quarters = [3, 2, 1].map((back) => {
+    const d = new Date(Date.UTC(firstTest.getUTCFullYear(), firstTest.getUTCMonth() - 3 * back + 1, 0));
+    return d.toISOString().slice(0, 10);
+  }).concat(run.test_dates.map((t) => t.period_end));
+  const chosenQuarter = quarter || run.terms.first_test_date;
+
+  async function act(action: () => Promise<unknown>, clear = false) {
+    setBusy(true);
+    setError(null);
+    try {
+      await action();
+      if (clear) {
+        setLabel("");
+        setAmount("");
+        setLeaseId("");
+        setClause("");
+        setBasis("");
+      }
+      onChanged();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const describe = (x: CovenantAdjustment) => x.kind === "frozen_lease"
+    ? "Frozen GAAP lease"
+    : `${formatDate(x.quarter_end as string)} · ${formatAmount(x.amount as string)}${x.capped ? " · capped" : ""}`;
+  const cap = run.terms.addback_cap === null ? "No cap on add-backs" :
+    `Capped add-backs limited to ${(Number(run.terms.addback_cap) * 100).toFixed(2).replace(/\.?0+$/, "")}% of EBITDA ${run.terms.addback_cap_basis}`;
+  const ready = clause.trim().length >= 3 && basis.trim().length >= 10;
+
+  return (
+    <div className="term" style={{ cursor: "default", marginTop: 14 }}>
+      <div className="term-head">
+        <span className="term-label">Covenant EBITDA adjustments</span>
+        <span className="faint" style={{ fontSize: 12 }}>used once a partner approves</span>
+      </div>
+      <div className="term-note">{cap}.</div>
+      {run.adjustments.length > 0 && (
+        <ul className="chain">
+          {run.adjustments.map((x) => (
+            <li key={x.id}>
+              <span>
+                <b>{x.label}</b> <span className="num">{describe(x)}</span>{" "}
+                <span className="faint">
+                  {x.clause} · {x.basis} · by {x.entered_by}{x.approved_by ? ` · approved by ${x.approved_by}` : ""}
+                </span>
+              </span>
+              <span style={{ display: "flex", gap: 6 }}>
+                {!x.approved_by && (
+                  <button className="btn btn-sm" disabled={busy}
+                    onClick={() => void act(() => api.approveCovenantAdjustment(doc.id, x.id))}>
+                    Approve
+                  </button>
+                )}
+                <button className="btn btn-sm" disabled={busy} aria-label={`Remove ${x.label}`}
+                  onClick={() => void act(() => api.deleteCovenantAdjustment(doc.id, x.id))}>
+                  Remove
+                </button>
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      <form className="term-actions" style={{ flexWrap: "wrap" }} onSubmit={(e) => {
+        e.preventDefault();
+        void act(() => api.addCovenantAdjustment(doc.id, {
+          kind: "addback", quarter_end: chosenQuarter, label, amount, capped, clause, basis,
+        }), true);
+      }}>
+        <select className="input" value={chosenQuarter} onChange={(e) => setQuarter(e.target.value)} aria-label="Quarter of the item">
+          {quarters.map((q) => <option key={q} value={q}>{formatDate(q)}</option>)}
+        </select>
+        <input className="input" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Item, e.g. restructuring" aria-label="Item" />
+        <input className="input" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="Amount (deduction negative)" aria-label="Amount" />
+        <label className="faint" style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12 }}>
+          <input type="checkbox" checked={capped} onChange={(e) => setCapped(e.target.checked)} /> Under the cap
+        </label>
+        <input className="input" value={clause} onChange={(e) => setClause(e.target.value)} placeholder="Clause, e.g. 1.1(c)" aria-label="Clause" />
+        <input className="input" value={basis} onChange={(e) => setBasis(e.target.value)} placeholder="Basis, e.g. board paper" aria-label="Adjustment basis" />
+        <button className="btn btn-sm" disabled={busy || !ready || !label.trim() || !amount.trim()}>Add item</button>
+        {frozen && (
+          <>
+            <select className="input" value={leaseId} onChange={(e) => setLeaseId(e.target.value)} aria-label="Lease under frozen GAAP">
+              <option value="">Choose a lease</option>
+              {leases.map((l) => <option key={l.id} value={l.id}>{l.filename}</option>)}
+            </select>
+            <button type="button" className="btn btn-sm" disabled={busy || !ready || !leaseId}
+              onClick={() => void act(() => api.addCovenantAdjustment(doc.id, {
+                kind: "frozen_lease", lease_document_id: leaseId, clause, basis,
+              }), true)}>
+              Add lease
+            </button>
+          </>
+        )}
       </form>
       {error && <div className="error-banner">{error}</div>}
     </div>

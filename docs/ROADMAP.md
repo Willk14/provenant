@@ -60,7 +60,8 @@ Built as thin vertical slices. Each milestone ships something a user can run end
 - [x] Deterministic covenant engine: LTM from four quarters, exact comparisons, headroom, workings
 - [x] Deadlines and alerts: certificate due dates, cure windows, overdue data, near-limit warnings
 - [x] Covenants tab: results by quarter, workings with the trial balances used, clause highlighted on the PDF
-- [ ] Frozen-GAAP / IFRS 16 adjustments using Provenant's own lease schedules; EBITDA add-backs
+- [x] Frozen-GAAP / IFRS 16 adjustments using Provenant's own lease schedules; EBITDA add-backs and caps
+- [ ] Frozen-GAAP respreading of amended leases; pro forma adjustments
 - [ ] Baskets, DSCR and other covenant types; year-to-date trial balances; Claude extraction of covenant terms
 - [x] GL import → Parquet → DuckDB (ADR 0009): nine versioned JE tests and Benford over the whole
       population, reconciliation to the trial balance, exceptions cleared under maker-checker

@@ -9,12 +9,29 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from provenant.api.auth import PARTNER, PREPARER, REVIEWER, Principal
-from provenant.api.db import CovenantPeriodInputRow, Document, FieldRow, TrialBalanceLineRow, TrialBalanceRow
-from provenant.api.services import Conflict, Forbidden, Invalid, NotFound, as_csv, get_document, list_fields, require
+from provenant.api.db import (
+    CovenantAdjustmentRow,
+    CovenantPeriodInputRow,
+    Document,
+    FieldRow,
+    TrialBalanceLineRow,
+    TrialBalanceRow,
+)
+from provenant.api.services import (
+    Conflict,
+    Forbidden,
+    Invalid,
+    NotFound,
+    as_csv,
+    get_document,
+    lease_schedule,
+    list_fields,
+    require,
+)
 from provenant.core import tb_csv
 from provenant.core.money import to_decimal
 from provenant.covenants import Category, PeriodInput, TBLine, Terms, TestDate, TrialBalance, run
-from provenant.covenants.engine import month_end
+from provenant.covenants.engine import Adjustment, FrozenLease, month_end
 
 MAX_TB_BYTES = tb_csv.MAX_BYTES
 CENT = Decimal("0.01")
@@ -165,8 +182,8 @@ def alerts(test_dates: list[TestDate], as_of: date) -> list[Alert]:
                 out.append(Alert("warning", t.period_end, f"{KIND_LABELS[r.covenant.kind]} within the warning headroom at {quarter}"))
             elif r.status == "undetermined":
                 severity = "overdue" if t.certificate_due < as_of else "warning"
-                out.append(Alert(severity, t.certificate_due, f"{KIND_LABELS[r.covenant.kind]} at {quarter} cannot be "
-                                                              "determined: enter and confirm the revolver drawn"))
+                out.append(Alert(severity, t.certificate_due,
+                                 f"{KIND_LABELS[r.covenant.kind]} at {quarter} cannot be determined: {r.note}"))
         status = status_of(t, as_of)
         if status == "overdue":
             out.append(Alert("overdue", t.certificate_due, f"Certificate for {quarter} was due {t.certificate_due}: {t.missing}"))
@@ -184,16 +201,40 @@ class CovenantRun:
     trial_balances: dict[date, TrialBalanceRow]
     as_of: date
     period_inputs: list[CovenantPeriodInputRow]
+    adjustments: list[CovenantAdjustmentRow]
+
+
+def _terms(s: Session, tenant_id: str, document_id: str) -> tuple[Terms, list[FieldRow]]:
+    rows = list_fields(s, tenant_id, document_id)
+    try:
+        return Terms.from_fields({r.name: r.to_domain() for r in rows}), rows
+    except (PermissionError, ValueError) as exc:
+        raise Conflict(str(exc)) from exc
+
+
+def _frozen_leases(s: Session, tenant_id: str, rows: list[CovenantAdjustmentRow]) -> tuple[list[FrozenLease], str | None]:
+    """The approved leases' verified schedules. A lease that cannot be spread reliably is a stated problem, so the
+    ratios it feeds are undetermined. shortcut: amended leases are not respread on an operating lease basis yet."""
+    leases: list[FrozenLease] = []
+    problem = None
+    for row in rows:
+        try:
+            chained = lease_schedule(s, tenant_id, row.lease_document_id)
+        except Conflict as exc:
+            problem = problem or f"lease {row.label}: {exc}"
+            continue
+        if chained.amendments or chained.separate:
+            problem = problem or f"lease {row.label} has amendments, which frozen GAAP does not cover yet"
+            continue
+        leases.append(FrozenLease(row.label, row.lease_document_id, tuple(
+            (p.end_date, p.payment, p.interest, p.closing) for p in chained.schedule.periods)))
+    return leases, problem
 
 
 def covenant_run(s: Session, tenant_id: str, document_id: str, as_of: date) -> CovenantRun:
     """Every test date from the first test date to a year past `as_of`, tested where trial balances allow."""
     doc = _credit_agreement(s, tenant_id, document_id)
-    rows = list_fields(s, tenant_id, doc.id)
-    try:
-        terms = Terms.from_fields({r.name: r.to_domain() for r in rows})
-    except (PermissionError, ValueError) as exc:
-        raise Conflict(str(exc)) from exc
+    terms, rows = _terms(s, tenant_id, doc.id)
 
     tb_rows = s.scalars(
         select(TrialBalanceRow).where(TrialBalanceRow.tenant_id == tenant_id, TrialBalanceRow.document_id == doc.id)
@@ -215,14 +256,109 @@ def covenant_run(s: Session, tenant_id: str, document_id: str, as_of: date) -> C
             None if r.revolver_drawn_cents is None else Decimal(r.revolver_drawn_cents) * CENT, r.delivered_on)
         for r in input_rows if r.confirmed_by
     }
+    adjustment_rows = _adjustments(s, tenant_id, doc.id)
+    approved = [r for r in adjustment_rows if r.approved_by]
+    addbacks = [Adjustment(r.quarter_end, r.label, Decimal(r.amount_cents) * CENT, r.capped, r.id)
+                for r in approved if r.kind == "addback"]
+    leases, lease_problem = ([], None)
+    if terms.frozen_gaap:
+        leases, lease_problem = _frozen_leases(s, tenant_id, [r for r in approved if r.kind == "frozen_lease"])
     return CovenantRun(
         terms=terms,
         fields=rows,
-        test_dates=run(terms, trial_balances, horizon, confirmed),
+        test_dates=run(terms, trial_balances, horizon, confirmed, addbacks, leases, lease_problem),
         trial_balances={r.period_end: r for r in tb_rows},
         as_of=as_of,
         period_inputs=input_rows,
+        adjustments=adjustment_rows,
     )
+
+
+def _adjustments(s: Session, tenant_id: str, document_id: str) -> list[CovenantAdjustmentRow]:
+    return list(s.scalars(
+        select(CovenantAdjustmentRow)
+        .where(CovenantAdjustmentRow.tenant_id == tenant_id, CovenantAdjustmentRow.document_id == document_id)
+        .order_by(CovenantAdjustmentRow.quarter_end, CovenantAdjustmentRow.entered_at)
+    ))
+
+
+def _adjustment(s: Session, tenant_id: str, document_id: str, adjustment_id: str) -> CovenantAdjustmentRow:
+    row = s.scalar(select(CovenantAdjustmentRow).where(
+        CovenantAdjustmentRow.tenant_id == tenant_id, CovenantAdjustmentRow.document_id == document_id,
+        CovenantAdjustmentRow.id == adjustment_id))
+    if row is None:
+        raise NotFound("adjustment not found")
+    return row
+
+
+def add_adjustment(s: Session, p: Principal, document_id: str, kind: str, clause: str, basis: str,
+                   quarter_end: date | None = None, label: str = "", amount: str | None = None,
+                   capped: bool = False, lease_document_id: str | None = None) -> CovenantAdjustmentRow:
+    """Record an add-back, a deduction or a frozen-GAAP lease. It has no effect until a partner approves it."""
+    require(p, PREPARER, REVIEWER, PARTNER)
+    doc = _credit_agreement(s, p.tenant_id, document_id)
+    terms, _ = _terms(s, p.tenant_id, doc.id)
+    clause, basis, label = " ".join(clause.split()), " ".join(basis.split()), " ".join(label.split())
+    if len(clause) < 3:
+        raise Invalid("name the clause of the agreement that allows this")
+    if len(basis) < 10:
+        raise Invalid("state the basis (e.g. the invoice, board paper or lender's confirmation)")
+    row = CovenantAdjustmentRow(tenant_id=p.tenant_id, document_id=doc.id, kind=kind, clause=clause[:255],
+                                basis=basis[:1000], entered_by=p.user, entered_at=datetime.now(timezone.utc))
+    if kind == "addback":
+        if quarter_end is None or not terms.on_test_cycle(quarter_end):
+            raise Invalid("the quarter must be a quarter-end of the agreement's testing cycle")
+        if len(label) < 3:
+            raise Invalid("describe the item")
+        try:
+            value = to_decimal(amount or "")
+            exact = value != 0 and abs(value) < MAX_DRAWN and value == value.quantize(CENT)
+        except (ValueError, ArithmeticError) as exc:
+            raise Invalid(f"amount: {exc}") from exc
+        if not exact:
+            raise Invalid("the amount must be non-zero and to the cent; a deduction is negative")
+        if capped and value < 0:
+            raise Invalid("a cap limits add-backs, so a deduction cannot be capped")
+        row.quarter_end, row.label, row.amount_cents, row.capped = quarter_end, label[:255], int(value / CENT), capped
+    elif kind == "frozen_lease":
+        if not terms.frozen_gaap:
+            raise Conflict("the agreement's lease treatment is not frozen GAAP")
+        lease = get_document(s, p.tenant_id, lease_document_id or "")
+        if lease.kind != "lease":
+            raise Invalid("choose a lease")
+        row.lease_document_id, row.label = lease.id, lease.filename[:255]
+    else:
+        raise Invalid("the adjustment must be an add-back or a frozen-GAAP lease")
+    s.add(row)
+    try:
+        s.commit()
+    except IntegrityError as exc:
+        s.rollback()
+        raise Conflict("that lease is already on this agreement") from exc
+    return row
+
+
+def approve_adjustment(s: Session, p: Principal, document_id: str, adjustment_id: str) -> CovenantAdjustmentRow:
+    require(p, PARTNER)
+    doc = _credit_agreement(s, p.tenant_id, document_id)
+    row = _adjustment(s, p.tenant_id, doc.id, adjustment_id)
+    if p.user in (row.entered_by, doc.uploaded_by):
+        raise Forbidden("someone other than the person who entered it, or uploaded the agreement, must approve it")
+    if row.approved_by:
+        raise Conflict(f"already approved by {row.approved_by}")
+    row.approved_by, row.approved_at = p.user, datetime.now(timezone.utc)
+    s.commit()
+    return row
+
+
+def delete_adjustment(s: Session, p: Principal, document_id: str, adjustment_id: str) -> None:
+    require(p, PREPARER, REVIEWER, PARTNER)
+    doc = _credit_agreement(s, p.tenant_id, document_id)
+    row = _adjustment(s, p.tenant_id, doc.id, adjustment_id)
+    if not p.has_any(PARTNER) and (row.approved_by or row.entered_by != p.user):
+        raise Forbidden("only a partner can remove an approved adjustment or someone else's entry")
+    s.delete(row)
+    s.commit()
 
 
 def _period_inputs(s: Session, tenant_id: str, document_id: str) -> list[CovenantPeriodInputRow]:

@@ -5,7 +5,14 @@ import pytest
 
 from provenant.covenants import Category, Covenant, Kind, PeriodInput, TBLine, Terms, TrialBalance, evaluate, figures, run
 from provenant.core.formats import check_value, parse_relative_test, parse_threshold_steps
-from provenant.covenants.engine import add_business_days, quarters_back, resolve_first_test
+from provenant.covenants.engine import (
+    Adjustment,
+    FrozenLease,
+    add_business_days,
+    adjust,
+    quarters_back,
+    resolve_first_test,
+)
 from provenant.provenance import ConfidenceGate, ReviewLog, Status
 
 M = Decimal("1000000")
@@ -164,6 +171,106 @@ def test_bad_threshold_steps_are_refused(kind, on, level, message):
     with pytest.raises(ValueError, match=message):
         Terms((Covenant(Kind.LEVERAGE, Decimal("3.50")),), date(2026, 12, 31), 45,
               threshold_steps=((kind, on, Decimal(level)),))
+
+
+def _addback(quarter, millions, capped=True, source="a1"):
+    return Adjustment(quarter, "Restructuring", Decimal(millions) * M, capped, source)
+
+
+def test_an_addback_counts_in_every_twelve_months_containing_its_quarter():
+    # 75 a quarter is 300 LTM. A 30 add-back in Q1 2026 is in the LTM to Dec 2026 (330) and has left by Mar 2027.
+    quarters = [*QUARTERS, date(2027, 3, 31)]
+    tbs = {d: tb(d, revenue=300, opex=225, interest=18, cash=120, borrowings=900) for d in quarters}
+    terms = Terms((Covenant(Kind.LEVERAGE, Decimal("3.5")),), date(2026, 12, 31), 45)
+    item = _addback(date(2026, 3, 31), 30, capped=False)
+    december, _ = adjust(figures(tbs, date(2026, 12, 31)), terms, [item], [])
+    march, _ = adjust(figures(tbs, date(2027, 3, 31)), terms, [item], [])
+    assert december.ebitda == 330 * M and march.ebitda == 300 * M
+
+
+@pytest.mark.parametrize("after, expected", [
+    # Base 300, capped add-backs 100. Before add-backs: 20% x 300 = 60 allowed, so 360.
+    (False, Decimal("360")),
+    # After add-backs: A <= 20% x (300 + A), so A <= 300 x 0.2 / 0.8 = 75, so 375.
+    (True, Decimal("375")),
+])
+def test_addback_cap_before_and_after(after, expected):
+    f = figures({t.period_end: t for t in STEADY}, date(2026, 12, 31))
+    terms = Terms(COVENANTS, date(2026, 12, 31), 45, addback_cap=Decimal("0.2"), cap_after_addbacks=after)
+    adjusted, problem = adjust(f, terms, [_addback(date(2026, 6, 30), 100)], [])
+    assert adjusted.ebitda == expected * M and problem is None
+    assert adjusted.ebitda_lines[-1].label == "Add-backs above the cap"
+
+
+def test_uncapped_items_raise_the_cap_base_and_escape_the_cap():
+    # Base 300 + uncapped 50 = 350; cap 10% = 35 of the 100 capped; EBITDA 350 + 35 = 385.
+    f = figures({t.period_end: t for t in STEADY}, date(2026, 12, 31))
+    terms = Terms(COVENANTS, date(2026, 12, 31), 45, addback_cap=Decimal("0.1"))
+    items = [_addback(date(2026, 6, 30), 100), _addback(date(2026, 9, 30), 50, capped=False, source="a2")]
+    assert adjust(f, terms, items, [])[0].ebitda == 385 * M
+
+
+def test_negative_ebitda_allows_no_capped_addbacks():
+    tbs = {d: tb(d, revenue=100, opex=120, interest=5, cash=10, borrowings=200) for d in QUARTERS}
+    terms = Terms(COVENANTS, date(2026, 12, 31), 45, addback_cap=Decimal("0.2"))
+    # Reported -80; the cap on a negative base is zero, so the 30 add-back is wholly removed.
+    assert adjust(figures(tbs, QUARTERS[-1]), terms, [_addback(QUARTERS[0], 30)], [])[0].ebitda == -80 * M
+
+
+def _lease() -> FrozenLease:
+    # Twelve months from Jan 2026: nothing for 3 months, then 40 a month (360 in total), so 30 a month straight-line.
+    # Interest is 1 a month; the liability falls by 10 a month from 120.
+    return FrozenLease("Office", "lease-1", tuple(
+        (date(2026, m, 28), (Decimal(0) if m <= 3 else Decimal(40)) * M, M, Decimal(120 - 10 * m) * M)
+        for m in range(1, 13)))
+
+
+def test_frozen_gaap_uses_straight_line_rent_and_removes_lease_debt_and_interest():
+    tbs = {d: tb(d, revenue=300, opex=225, interest=18, cash=120, borrowings=900, leases=60) for d in QUARTERS}
+    terms = Terms(COVENANTS, date(2026, 12, 31), 45, frozen_gaap=True)
+    f, problem = adjust(figures(tbs, QUARTERS[-1]), terms, [], [_lease()])
+    assert problem is None
+    assert f.ebitda == (300 - 360) * M  # 12 x 30 of operating lease charge against EBITDA of 300
+    assert f.net_debt == (900 + 60 - 120) * M  # the closing liability on 28 Dec is 120 - 120 = 0
+    assert f.interest == (72 - 12) * M
+
+
+def test_frozen_gaap_removes_the_liability_at_the_test_date():
+    # At 30 Sep the schedule's closing liability is 120 - 90 = 30, so net debt is 900 + 60 - 30 - 120 = 810.
+    quarters = [date(2025, 12, 31), date(2026, 3, 31), date(2026, 6, 30), date(2026, 9, 30)]
+    tbs = {d: tb(d, revenue=300, opex=225, interest=18, cash=120, borrowings=900, leases=60) for d in quarters}
+    terms = Terms(COVENANTS, date(2026, 9, 30), 45, frozen_gaap=True)
+    f, problem = adjust(figures(tbs, date(2026, 9, 30)), terms, [], [_lease()])
+    assert problem is None and f.net_debt == 810 * M
+    assert f.ebitda == (300 - 270) * M  # nine months at 30
+    assert f.interest == (72 - 9) * M
+
+
+@pytest.mark.parametrize("leases, problem, message", [
+    ([], None, "add and approve the leases"),
+    ([_lease()], "lease.pdf is not verified", "not verified"),
+])
+def test_frozen_gaap_never_passes_on_figures_it_cannot_rely_on(leases, problem, message):
+    terms = Terms(COVENANTS, date(2026, 12, 31), 45, frozen_gaap=True)
+    results = run(terms, STEADY, date(2026, 12, 31), leases=leases, lease_problem=problem)[0].results
+    by_kind = {r.covenant.kind: r for r in results}
+    assert by_kind[Kind.LEVERAGE].status == by_kind[Kind.INTEREST_COVER].status == "undetermined"
+    assert message in by_kind[Kind.LEVERAGE].note and by_kind[Kind.LEVERAGE].value is None
+    assert by_kind[Kind.MIN_LIQUIDITY].status == "pass"  # cash is not affected by lease accounting
+
+
+def test_lease_schedule_above_the_trial_balance_is_undetermined():
+    # The schedule's liability at 30 Sep is 30, but the trial balance holds only 10 of lease liabilities.
+    quarters = [date(2025, 12, 31), date(2026, 3, 31), date(2026, 6, 30), date(2026, 9, 30)]
+    tbs = {d: tb(d, revenue=300, opex=225, interest=18, cash=120, borrowings=900, leases=10) for d in quarters}
+    terms = Terms(COVENANTS, date(2026, 9, 30), 45, frozen_gaap=True)
+    assert "exceed" in adjust(figures(tbs, date(2026, 9, 30)), terms, [], [_lease()])[1]
+
+
+def test_an_adjustment_off_the_test_cycle_is_a_problem_not_ignored():
+    f = figures({t.period_end: t for t in STEADY}, date(2026, 12, 31))
+    terms = Terms(COVENANTS, date(2026, 12, 31), 45)
+    assert "2026-11-30" in adjust(f, terms, [_addback(date(2026, 11, 30), 5)], [])[1]
 
 
 def test_terms_from_fields_need_verification_and_a_covenant(make_field):

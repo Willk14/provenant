@@ -53,6 +53,9 @@ const PLACEHOLDERS: Record<FieldName, string> = {
   cure_runs_from: "due date or delivery",
   springing_usage_percent: "Percentage, e.g. 35%",
   revolver_commitment: "Amount, e.g. 100,000,000",
+  addback_cap_percent: "Percentage, e.g. 20%",
+  addback_cap_basis: "before add-backs or after add-backs",
+  lease_treatment: "frozen GAAP or IFRS 16",
 };
 
 export function displayValue(field: Pick<Field, "name" | "value">): string {
@@ -441,6 +444,9 @@ const INPUT_NOTES: Partial<Record<FieldName, string>> = {
   cure_runs_from: "Whether the cure window runs from the certificate's due date or from its delivery.",
   springing_usage_percent: "If leverage is tested only when the revolver is drawn above a share of the commitment, enter that share.",
   revolver_commitment: "The total revolving commitment the springing percentage is measured against.",
+  addback_cap_percent: "The most that capped EBITDA add-backs may be, as a share of EBITDA.",
+  addback_cap_basis: "Whether the agreement measures that share on EBITDA before or after the capped add-backs.",
+  lease_treatment: "Frozen GAAP tests covenants as if the chosen leases were operating leases, as before IFRS 16.",
 };
 
 /** A term the contract does not state (e.g. the incremental borrowing rate): value plus how it was set. */

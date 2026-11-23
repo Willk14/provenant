@@ -7,7 +7,7 @@ Conventions
   consecutive quarters; balance-sheet figures come from the test date's trial balance.
   shortcut: year-to-date P&L would need differencing between periods; add when a client sends YTD files.
 - EBITDA = revenue - operating expenses, where depreciation, amortisation and interest are mapped to their
-  own categories. shortcut: no agreement-specific add-backs or frozen-GAAP lease adjustments yet.
+  own categories. Agreement-defined add-backs, caps and frozen-GAAP leases are applied by `adjust`.
 """
 import calendar
 from collections.abc import Mapping, Sequence
@@ -81,21 +81,67 @@ class Figures:
     test_date: date
     totals: Mapping[Category, Decimal]
     periods: tuple[date, ...]  # the trial balances used, oldest first
+    ebitda_lines: tuple["Working", ...] = ()  # agreement adjustments, each naming its source
+    debt_lines: tuple["Working", ...] = ()
+    interest_lines: tuple["Working", ...] = ()
 
     @property
     def ebitda(self) -> Decimal:
-        return self.totals[Category.REVENUE] - self.totals[Category.OPERATING_EXPENSES]
+        reported = self.totals[Category.REVENUE] - self.totals[Category.OPERATING_EXPENSES]
+        return reported + sum((w.amount for w in self.ebitda_lines), ZERO)
 
     @property
     def net_debt(self) -> Decimal:
         t = self.totals
-        return t[Category.BORROWINGS] + t[Category.LEASE_LIABILITIES] - t[Category.CASH]
+        return (t[Category.BORROWINGS] + t[Category.LEASE_LIABILITIES] - t[Category.CASH]
+                + sum((w.amount for w in self.debt_lines), ZERO))
+
+    @property
+    def interest(self) -> Decimal:
+        return self.totals[Category.INTEREST_EXPENSE] + sum((w.amount for w in self.interest_lines), ZERO)
 
 
 @dataclass(frozen=True)
 class Working:
     label: str
     amount: Decimal
+    source: str | None = None  # the adjustment or lease document behind this line
+
+
+@dataclass(frozen=True)
+class Adjustment:
+    """An approved item the agreement's EBITDA definition adds back (positive) or deducts (negative). It belongs to
+    one quarter, so it counts in every twelve-month period that contains that quarter."""
+
+    quarter: date
+    label: str
+    amount: Decimal
+    capped: bool
+    source: str
+
+
+@dataclass(frozen=True)
+class FrozenLease:
+    """A lease treated as an operating lease under the agreement's frozen GAAP. `periods` holds each month's end
+    date, payment, IFRS 16 interest and closing liability from its verified schedule."""
+
+    name: str
+    source: str
+    periods: tuple[tuple[date, Decimal, Decimal, Decimal], ...]
+
+    def straight_line(self, after: date, through: date) -> Decimal:
+        """The operating lease charge: total payments spread evenly over the term, for months in the window."""
+        months = sum(after < end <= through for end, *_ in self.periods)
+        return sum((p[1] for p in self.periods), ZERO) * months / len(self.periods)
+
+    def interest(self, after: date, through: date) -> Decimal:
+        return sum((p[2] for p in self.periods if after < p[0] <= through), ZERO)
+
+    def liability(self, on: date) -> Decimal:
+        reached = [p for p in self.periods if p[0] <= on]
+        if reached:
+            return reached[-1][3]
+        return ZERO
 
 
 @dataclass(frozen=True)
@@ -176,6 +222,7 @@ def evaluate(covenant: Covenant, f: Figures, warning_headroom: Decimal) -> Resul
     ebitda_lines = (
         Working("Revenue (LTM)", t[Category.REVENUE]),
         Working("Operating expenses (LTM)", -t[Category.OPERATING_EXPENSES]),
+        *f.ebitda_lines,
         Working("EBITDA (LTM)", f.ebitda),
     )
     note = ""
@@ -183,6 +230,7 @@ def evaluate(covenant: Covenant, f: Figures, warning_headroom: Decimal) -> Resul
         workings = (
             Working("Borrowings", t[Category.BORROWINGS]),
             Working("Lease liabilities", t[Category.LEASE_LIABILITIES]),
+            *f.debt_lines,
             Working("Cash", -t[Category.CASH]),
             Working("Net debt", f.net_debt),
             *ebitda_lines,
@@ -194,12 +242,14 @@ def evaluate(covenant: Covenant, f: Figures, warning_headroom: Decimal) -> Resul
             value = f.net_debt / f.ebitda
             passes, headroom = value <= threshold, 1 - value / threshold
     elif covenant.kind is Kind.INTEREST_COVER:
-        workings = (*ebitda_lines, Working("Interest expense (LTM)", t[Category.INTEREST_EXPENSE]))
-        if t[Category.INTEREST_EXPENSE] <= 0:
+        workings = (*ebitda_lines, Working("Interest expense (LTM)", t[Category.INTEREST_EXPENSE]), *f.interest_lines)
+        if f.interest_lines:
+            workings = (*workings, Working("Covenant interest (LTM)", f.interest))
+        if f.interest <= 0:
             value, passes, headroom = None, True, None
             note = "no interest expense in the period"
         else:
-            value = f.ebitda / t[Category.INTEREST_EXPENSE]
+            value = f.ebitda / f.interest
             passes = value >= threshold
             headroom = 1 - threshold / value if value > 0 else None
     else:
@@ -230,11 +280,14 @@ class Terms:
     springing_usage: Decimal | None = None  # leverage is tested only when usage exceeds this fraction
     revolver_commitment: Decimal | None = None
     threshold_steps: tuple[tuple[Kind, date, Decimal], ...] = ()  # each applies from its test date to the next
+    addback_cap: Decimal | None = None  # capped add-backs may not exceed this fraction of EBITDA
+    cap_after_addbacks: bool = False  # the cap is measured on EBITDA after the capped add-backs, not before
+    frozen_gaap: bool = False  # confirmed leases are treated as operating leases
 
     FIELDS = ("max_leverage_ratio", "min_interest_cover", "min_liquidity", "max_leverage_steps",
               "min_interest_cover_steps", "min_liquidity_steps", "first_test_date", "reporting_days",
               "cure_period_days", "cure_day_basis", "cure_runs_from", "springing_usage_percent",
-              "revolver_commitment")
+              "revolver_commitment", "addback_cap_percent", "addback_cap_basis", "lease_treatment")
     REQUIRED = ("first_test_date", "reporting_days")
     COVENANT_FIELDS = {
         "max_leverage_ratio": Kind.LEVERAGE,
@@ -267,6 +320,8 @@ class Terms:
             for name, kind in cls.COVENANT_FIELDS.items()
             if name in present
         )
+        if ("addback_cap_percent" in present) != ("addback_cap_basis" in present):
+            raise ValueError("an add-back cap needs both its percentage and whether it is before or after add-backs")
         rule = parse_relative_test(value("first_test_date"))
         steps = tuple(
             (kind, on, threshold)
@@ -278,6 +333,10 @@ class Terms:
             covenants=covenants,
             first_test_date=(resolve_first_test(*rule) if rule else date.fromisoformat(value("first_test_date"))),
             threshold_steps=steps,
+            addback_cap=(to_decimal(value("addback_cap_percent").rstrip("%")) / 100
+                         if "addback_cap_percent" in present else None),
+            cap_after_addbacks="addback_cap_basis" in present and value("addback_cap_basis").lower() == "after add-backs",
+            frozen_gaap="lease_treatment" in present and value("lease_treatment").lower() == "frozen gaap",
             reporting_days=int(value("reporting_days")),
             cure_days=int(value("cure_period_days")) if "cure_period_days" in present else None,
             cure_business_days="cure_day_basis" in present and value("cure_day_basis").lower() == "business",
@@ -330,9 +389,15 @@ class Terms:
             if on <= self.first_test_date:
                 raise ValueError(f"the {label} step on {on} must be after the first test date; "
                                  "the level at the first test date is the base threshold")
-            months = (on.year - self.first_test_date.year) * 12 + on.month - self.first_test_date.month
-            if on != month_end(on.year, on.month) or months % 3:
+            if not self.on_test_cycle(on):
                 raise ValueError(f"the {label} step on {on} is not a quarterly test date")
+        if self.addback_cap is not None and not 0 < self.addback_cap < 1:
+            raise ValueError("the add-back cap must be above 0% and below 100%")
+
+    def on_test_cycle(self, on: date) -> bool:
+        """Whether `on` is a quarter-end of the agreement's testing cycle, before or after the first test."""
+        months = (on.year - self.first_test_date.year) * 12 + on.month - self.first_test_date.month
+        return on == month_end(on.year, on.month) and months % 3 == 0
 
     def cure_deadline(self, due: date, delivered_on: date | None) -> date | None:
         """When the cure window closes; None if there is no cure right or its start is not known yet."""
@@ -366,22 +431,75 @@ def apply_covenant(covenant: Covenant, f: Figures, terms: Terms, drawn: Decimal 
     return replace(result, workings=(*lines, *result.workings), note=f"{note}. {result.note}" if result.note else note)
 
 
-def apply_at_date(covenant: Covenant, f: Figures, terms: Terms, drawn: Decimal | None) -> Result:
-    """`apply_covenant` at the threshold in force on the test date, saying so when a step set it."""
+def adjust(f: Figures, terms: Terms, adjustments: Sequence[Adjustment], leases: Sequence[FrozenLease],
+           lease_problem: str | None = None) -> tuple[Figures, str | None]:
+    """The figures under the agreement's definitions, and why they cannot be relied on, if they cannot.
+
+    The cap is measured on EBITDA after frozen-GAAP rent and every uncapped item. Measured before add-backs, capped
+    items may reach cap x base; measured after them, A <= cap x (base + A), so A may reach base x cap / (1 - cap)."""
+    problem = lease_problem
+    off_cycle = sorted({a.quarter for a in adjustments if not terms.on_test_cycle(a.quarter)})
+    if off_cycle:
+        problem = f"an approved adjustment is not on a quarterly test date: {off_cycle[0].isoformat()}"
+    ebitda: list[Working] = []
+    debt: list[Working] = []
+    interest: list[Working] = []
+    if terms.frozen_gaap:
+        if not leases and problem is None:
+            problem = "the agreement uses frozen GAAP: add and approve the leases it applies to"
+        after = add_quarters(f.periods[0], -1)
+        for lease in leases:
+            ebitda.append(Working(f"Operating lease charge: {lease.name}", -lease.straight_line(after, f.test_date), lease.source))
+            debt.append(Working(f"Lease liability removed: {lease.name}", -lease.liability(f.test_date), lease.source))
+            interest.append(Working(f"Lease interest removed: {lease.name}", -lease.interest(after, f.test_date), lease.source))
+        if -sum((w.amount for w in debt), ZERO) > f.totals[Category.LEASE_LIABILITIES] + Decimal("0.01"):
+            problem = problem or "the lease schedules exceed the lease liabilities in the trial balance"
+        if -sum((w.amount for w in interest), ZERO) > f.totals[Category.INTEREST_EXPENSE] + Decimal("0.01"):
+            problem = problem or "the lease interest exceeds the interest expense in the trial balance"
+
+    in_period = [a for a in adjustments if a.quarter in f.periods]
+
+    def line(a: Adjustment) -> Working:
+        word = "Add-back" if a.amount > 0 else "Deduction"
+        return Working(f"{word}: {a.label} ({a.quarter.isoformat()})", a.amount, a.source)
+
+    ebitda.extend(line(a) for a in in_period if not a.capped)
+    reported = f.totals[Category.REVENUE] - f.totals[Category.OPERATING_EXPENSES]
+    base = reported + sum((w.amount for w in ebitda), ZERO)  # before any capped item
+    capped = [a for a in in_period if a.capped]
+    ebitda.extend(line(a) for a in capped)
+    if capped and terms.addback_cap is not None:
+        share = terms.addback_cap / (1 - terms.addback_cap) if terms.cap_after_addbacks else terms.addback_cap
+        allowed = max(base, ZERO) * share
+        total = sum((a.amount for a in capped), ZERO)
+        if total > allowed:
+            ebitda.append(Working("Add-backs above the cap", allowed - total))
+    return replace(f, ebitda_lines=tuple(ebitda), debt_lines=tuple(debt),
+                   interest_lines=tuple(w for w in interest if w.amount)), problem
+
+
+def apply_at_date(covenant: Covenant, f: Figures, terms: Terms, drawn: Decimal | None,
+                  problem: str | None = None) -> Result:
+    """`apply_covenant` at the threshold in force on the test date, saying so when a step set it. A ratio built on
+    figures that cannot be relied on is undetermined, never a pass."""
     step = terms.step_at(covenant.kind, f.test_date)
+    tested = covenant if step is None else replace(covenant, threshold=step[1])
+    result = apply_covenant(tested, f, terms, drawn)
+    if problem and covenant.kind is not Kind.MIN_LIQUIDITY and result.status != "not_tested":
+        return replace(result, status="undetermined", value=None, headroom=None, workings=(), note=problem)
     if step is None:
-        return apply_covenant(covenant, f, terms, drawn)
-    on, threshold = step
-    result = apply_covenant(replace(covenant, threshold=threshold), f, terms, drawn)
-    level = f"{threshold:,.2f}" if covenant.kind is Kind.MIN_LIQUIDITY else f"{threshold:.2f}x"
-    note = f"Threshold {level} applies from {on.isoformat()}"
+        return result
+    level = f"{step[1]:,.2f}" if covenant.kind is Kind.MIN_LIQUIDITY else f"{step[1]:.2f}x"
+    note = f"Threshold {level} applies from {step[0].isoformat()}"
     return replace(result, note=f"{note}. {result.note}" if result.note else note)
 
 
 def run(terms: Terms, trial_balances: Sequence[TrialBalance], horizon: date,
-        period_inputs: Mapping[date, PeriodInput] | None = None) -> list[TestDate]:
+        period_inputs: Mapping[date, PeriodInput] | None = None, adjustments: Sequence[Adjustment] = (),
+        leases: Sequence[FrozenLease] = (), lease_problem: str | None = None) -> list[TestDate]:
     """Every quarterly test date from the first test date up to `horizon`: tested where the trial balances
-    allow, otherwise listed with its deadline and what is missing. `period_inputs` holds confirmed facts only."""
+    allow, otherwise listed with its deadline and what is missing. `period_inputs`, `adjustments` and `leases` hold
+    confirmed facts only."""
     period_inputs = period_inputs or {}
     by_date = {tb.period_end: tb for tb in trial_balances}
     if len(by_date) != len(trial_balances):
@@ -396,7 +514,8 @@ def run(terms: Terms, trial_balances: Sequence[TrialBalance], horizon: date,
             out.append(TestDate(test_date, due, (), None, str(exc)))
         else:
             facts = period_inputs.get(test_date, PeriodInput())
-            results = tuple(apply_at_date(c, f, terms, facts.revolver_drawn) for c in terms.covenants)
+            f, problem = adjust(f, terms, adjustments, leases, lease_problem)
+            results = tuple(apply_at_date(c, f, terms, facts.revolver_drawn, problem) for c in terms.covenants)
             breached = any(r.status == "breach" for r in results)
             cure = terms.cure_deadline(due, facts.delivered_on) if breached else None
             pending = breached and bool(terms.cure_days) and cure is None

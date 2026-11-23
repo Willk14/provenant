@@ -29,9 +29,22 @@ Both re-keyings are where errors hide, and a missed breach or a missed cure wind
 - **Workings are evidence.** Each result shows its workings, the four trial balances used, and highlights the
   clause it was tested against on the agreement PDF.
 
+## Agreement-defined EBITDA (2026-11-23)
+- **Add-backs and deductions** belong to one quarter and count in every twelve-month period containing it. Each
+  names its clause and basis and has no effect until a partner other than its enterer and the agreement's uploader
+  approves it.
+- **The cap** is a partner-reviewed term. It is measured on EBITDA after frozen-GAAP rent and uncapped items.
+  Before add-backs, capped items may reach `cap x base`; after them, `base x cap / (1 - cap)`. A negative base
+  allows none.
+- **Frozen GAAP** applies only to leases a partner approves. Each one's total payments are spread evenly over its
+  term as an operating lease charge against EBITDA, and its schedule's liability and interest come out of net debt
+  and interest. Lease debt not covered by an approved lease stays in net debt.
+- **Doubt is never a pass.** No approved lease, an unverified or amended lease, a schedule above the trial balance,
+  or an adjustment off the testing cycle makes leverage and interest cover undetermined. Liquidity is unaffected.
+
 ## Not supported yet
-- Agreement-specific definitions: EBITDA add-backs, pro forma adjustments, and frozen-GAAP treatment of IFRS 16
-  leases. Provenant already has the lease schedules needed for frozen GAAP; wiring them in is the next step.
+- Pro forma adjustments, frozen-GAAP respreading of amended leases, and extraction of add-backs or caps. An
+  amended lease under frozen GAAP makes leverage and interest cover undetermined rather than guessing.
 - Year-to-date trial balances (differencing), non-quarterly test periods, and covenants other than the three
   above (DSCR, capex limits, baskets).
 - AI-suggested account mapping. The preparer supplies the category column today.

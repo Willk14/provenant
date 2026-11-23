@@ -1,5 +1,5 @@
 import { identityHeaders } from "./identity";
-import type { BBox, CovenantPeriodInput, CovenantRun, DocumentSummary, Field, FieldName, Schedule, TrialBalanceSummary } from "./types";
+import type { BBox, CovenantAdjustment, CovenantPeriodInput, CovenantRun, DocumentSummary, Field, FieldName, Schedule, TrialBalanceSummary } from "./types";
 
 export class ApiError extends Error {
   constructor(
@@ -75,5 +75,13 @@ export const api = {
     call<CovenantPeriodInput>(`/documents/${id}/covenants/periods/${periodEnd}`, { ...json(body), method: "PUT" }),
   confirmPeriodInput: (id: string, periodEnd: string) =>
     call<CovenantPeriodInput>(`/documents/${id}/covenants/periods/${periodEnd}/confirm`, { method: "POST" }),
+  addCovenantAdjustment: (id: string, body: {
+    kind: CovenantAdjustment["kind"]; clause: string; basis: string; quarter_end?: string; label?: string;
+    amount?: string; capped?: boolean; lease_document_id?: string;
+  }) => call<CovenantAdjustment>(`/documents/${id}/covenants/adjustments`, json(body)),
+  approveCovenantAdjustment: (id: string, adjustmentId: string) =>
+    call<CovenantAdjustment>(`/documents/${id}/covenants/adjustments/${adjustmentId}/approve`, { method: "POST" }),
+  deleteCovenantAdjustment: (id: string, adjustmentId: string) =>
+    call<void>(`/documents/${id}/covenants/adjustments/${adjustmentId}`, { method: "DELETE" }),
   verifyLog: () => call<{ intact: boolean; events: number }>("/review-log/verify"),
 };

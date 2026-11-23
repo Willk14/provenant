@@ -22,7 +22,10 @@ export type FieldName =
   | "cure_day_basis"
   | "cure_runs_from"
   | "springing_usage_percent"
-  | "revolver_commitment";
+  | "revolver_commitment"
+  | "addback_cap_percent"
+  | "addback_cap_basis"
+  | "lease_treatment";
 
 export type FieldStatus = "proposed" | "auto_accepted" | "needs_review" | "approved" | "corrected" | "rejected";
 
@@ -50,7 +53,7 @@ export interface Field {
 /** Terms a preparer may enter with a basis instead of a location: contracts rarely state them (ADR 0005). */
 export const INPUT_FIELDS: ReadonlySet<FieldName> = new Set<FieldName>([
   "annual_discount_rate", "expansion_treatment", "cure_day_basis", "cure_runs_from", "springing_usage_percent",
-  "revolver_commitment",
+  "revolver_commitment", "addback_cap_percent", "addback_cap_basis", "lease_treatment",
 ]);
 /** Judgements no contract states: entered as inputs only, never marked on the PDF. */
 export const INPUT_ONLY_FIELDS: ReadonlySet<FieldName> = new Set<FieldName>(["expansion_treatment"]);
@@ -190,11 +193,15 @@ export const KINDS: Record<DocumentKind, KindSpec> = {
       "cure_runs_from",
       "springing_usage_percent",
       "revolver_commitment",
+      "addback_cap_percent",
+      "addback_cap_basis",
+      "lease_treatment",
     ],
     required: new Set(["first_test_date", "reporting_days"]),
     judgement: new Set([
       "max_leverage_ratio", "min_interest_cover", "min_liquidity", "max_leverage_steps", "min_interest_cover_steps",
       "min_liquidity_steps", "cure_period_days", "cure_day_basis", "cure_runs_from", "springing_usage_percent", "revolver_commitment",
+      "addback_cap_percent", "addback_cap_basis", "lease_treatment",
     ]),
     labels: {},
   },
@@ -225,6 +232,9 @@ export const FIELD_LABELS: Record<FieldName, string> = {
   cure_runs_from: "Cure window runs from",
   springing_usage_percent: "Leverage tested above revolver usage of",
   revolver_commitment: "Revolver commitment",
+  addback_cap_percent: "EBITDA add-back cap",
+  addback_cap_basis: "Add-back cap measured",
+  lease_treatment: "Lease treatment in covenants",
 };
 
 export type CovenantKind = "leverage" | "interest_cover" | "min_liquidity";
@@ -257,7 +267,7 @@ export interface CovenantResult {
   status: "pass" | "warning" | "breach" | "not_tested" | "undetermined";
   value: string | null;
   headroom: string | null;
-  workings: { label: string; amount: string }[];
+  workings: { label: string; amount: string; source?: string | null }[];
   note: string;
 }
 
@@ -289,11 +299,30 @@ export interface CovenantRun {
     cure_runs_from: "due date" | "delivery";
     springing_usage: string | null;
     revolver_commitment: string | null;
+    addback_cap: string | null;
+    addback_cap_basis: "before add-backs" | "after add-backs" | null;
+    frozen_gaap: boolean;
   };
   test_dates: CovenantTestDate[];
   alerts: CovenantAlert[];
   inputs: Field[];
   period_inputs: CovenantPeriodInput[];
+  adjustments: CovenantAdjustment[];
+}
+
+/** An EBITDA add-back or deduction, or a lease under frozen GAAP; it counts only once a partner approves it. */
+export interface CovenantAdjustment {
+  id: string;
+  kind: "addback" | "frozen_lease";
+  quarter_end: string | null;
+  label: string;
+  amount: string | null;
+  capped: boolean;
+  lease_document_id: string | null;
+  clause: string;
+  basis: string;
+  entered_by: string;
+  approved_by: string | null;
 }
 
 /** Facts of a test date no trial balance holds; they count only once a second person confirms them. */

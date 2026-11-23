@@ -188,6 +188,7 @@ class TrialBalanceOut(BaseModel):
 class WorkingOut(BaseModel):
     label: str
     amount: Decimal
+    source: str | None = None  # the adjustment or lease document behind this line
 
 
 class CovenantResultOut(BaseModel):
@@ -227,6 +228,9 @@ class CovenantTermsOut(BaseModel):
     cure_runs_from: Literal["due date", "delivery"]
     springing_usage: Decimal | None
     revolver_commitment: Decimal | None
+    addback_cap: Decimal | None
+    addback_cap_basis: Literal["before add-backs", "after add-backs"] | None
+    frozen_gaap: bool
 
 
 class PeriodInputIn(BaseModel):
@@ -250,6 +254,38 @@ class PeriodInputOut(BaseModel):
                    entered_by=r.entered_by, confirmed_by=r.confirmed_by)
 
 
+class AdjustmentIn(BaseModel):
+    kind: Literal["addback", "frozen_lease"]
+    clause: str = Field(max_length=255)
+    basis: str = Field(max_length=1000)
+    quarter_end: date | None = None
+    label: str = Field(default="", max_length=255)
+    amount: str | None = Field(default=None, max_length=32)
+    capped: bool = False
+    lease_document_id: str | None = Field(default=None, max_length=36)
+
+
+class AdjustmentOut(BaseModel):
+    id: str
+    kind: str
+    quarter_end: date | None
+    label: str
+    amount: Decimal | None
+    capped: bool
+    lease_document_id: str | None
+    clause: str
+    basis: str
+    entered_by: str
+    approved_by: str | None
+
+    @classmethod
+    def of(cls, r) -> "AdjustmentOut":
+        amount = None if r.amount_cents is None else Decimal(r.amount_cents) * covenants.CENT
+        return cls(id=r.id, kind=r.kind, quarter_end=r.quarter_end, label=r.label, amount=amount, capped=r.capped,
+                   lease_document_id=r.lease_document_id, clause=r.clause, basis=r.basis, entered_by=r.entered_by,
+                   approved_by=r.approved_by)
+
+
 class CovenantsOut(BaseModel):
     as_of: date
     terms: CovenantTermsOut
@@ -257,6 +293,7 @@ class CovenantsOut(BaseModel):
     alerts: list[AlertOut]
     inputs: list[FieldOut]
     period_inputs: list[PeriodInputOut]
+    adjustments: list[AdjustmentOut]
 
 
 # ---- app -------------------------------------------------------------------------------------
@@ -488,6 +525,10 @@ def create_app(
                 cure_day_basis="business" if r.terms.cure_business_days else "calendar",
                 cure_runs_from="delivery" if r.terms.cure_from_delivery else "due date",
                 springing_usage=r.terms.springing_usage, revolver_commitment=r.terms.revolver_commitment,
+                addback_cap=r.terms.addback_cap,
+                addback_cap_basis=(None if r.terms.addback_cap is None else
+                                   "after add-backs" if r.terms.cap_after_addbacks else "before add-backs"),
+                frozen_gaap=r.terms.frozen_gaap,
             ),
             test_dates=[
                 TestDateOut(
@@ -506,7 +547,7 @@ def create_app(
                             status=res.status,
                             value=None if res.value is None else round(res.value, 2 if res.covenant.kind == "min_liquidity" else 4),
                             headroom=None if res.headroom is None else round(res.headroom, 4),
-                            workings=[WorkingOut(label=w.label, amount=w.amount) for w in res.workings],
+                            workings=[WorkingOut(label=w.label, amount=w.amount, source=w.source) for w in res.workings],
                             note=res.note,
                         )
                         for res in t.results
@@ -517,7 +558,21 @@ def create_app(
             alerts=[AlertOut(severity=a.severity, on=a.on, message=a.message) for a in covenants.alerts(r.test_dates, as_of)],
             inputs=[FieldOut.of(f) for f in r.fields],
             period_inputs=[PeriodInputOut.of(x) for x in r.period_inputs],
+            adjustments=[AdjustmentOut.of(x) for x in r.adjustments],
         )
+
+    @app.post("/documents/{document_id}/covenants/adjustments", response_model=AdjustmentOut, status_code=201)
+    def add_adjustment(document_id: str, body: AdjustmentIn, p: Auth, s: Db) -> AdjustmentOut:
+        return AdjustmentOut.of(covenants.add_adjustment(s, p, document_id, **body.model_dump()))
+
+    @app.post("/documents/{document_id}/covenants/adjustments/{adjustment_id}/approve", response_model=AdjustmentOut)
+    def approve_adjustment(document_id: str, adjustment_id: str, p: Auth, s: Db) -> AdjustmentOut:
+        return AdjustmentOut.of(covenants.approve_adjustment(s, p, document_id, adjustment_id))
+
+    @app.delete("/documents/{document_id}/covenants/adjustments/{adjustment_id}", status_code=204)
+    def delete_adjustment(document_id: str, adjustment_id: str, p: Auth, s: Db) -> Response:
+        covenants.delete_adjustment(s, p, document_id, adjustment_id)
+        return Response(status_code=204)
 
     @app.put("/documents/{document_id}/covenants/periods/{period_end}", response_model=PeriodInputOut)
     def save_period_input(document_id: str, period_end: date, body: PeriodInputIn, p: Auth, s: Db) -> PeriodInputOut:

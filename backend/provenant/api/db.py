@@ -5,6 +5,7 @@ from uuid import uuid4
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     Date,
     DateTime,
     Float,
@@ -15,6 +16,7 @@ from sqlalchemy import (
     UniqueConstraint,
     create_engine,
     event,
+    false,
     text,
 )
 from sqlalchemy.engine import Engine
@@ -473,6 +475,29 @@ class CovenantPeriodInputRow(Base):
     entered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     confirmed_by: Mapped[str | None] = mapped_column(String(200), nullable=True)
     confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class CovenantAdjustmentRow(Base):
+    """An EBITDA add-back or deduction, or a lease under frozen GAAP. Used only once a partner approves it."""
+
+    __tablename__ = "covenant_adjustments"
+    __table_args__ = (UniqueConstraint("document_id", "lease_document_id"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(String(64), index=True)
+    document_id: Mapped[str] = mapped_column(ForeignKey("documents.id"), index=True)
+    kind: Mapped[str] = mapped_column(String(16))  # addback | frozen_lease
+    quarter_end: Mapped[date | None] = mapped_column(Date, nullable=True)
+    label: Mapped[str] = mapped_column(String(255))
+    amount_cents: Mapped[int | None] = mapped_column(BigInteger, nullable=True)  # negative for a deduction
+    capped: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    lease_document_id: Mapped[str | None] = mapped_column(ForeignKey("documents.id"), nullable=True)
+    clause: Mapped[str] = mapped_column(String(255))
+    basis: Mapped[str] = mapped_column(String(1000))
+    entered_by: Mapped[str] = mapped_column(String(200))
+    entered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    approved_by: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class TrialBalanceLineRow(Base):
