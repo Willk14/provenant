@@ -98,10 +98,10 @@ export default function Landing() {
       </header>
 
       <main>
-        <section className="landing-hero">
+        <section className="landing-hero landing-hero-solo">
           <div className="landing-hero-copy">
             <span className="landing-eyebrow">For law firms, agents and finance teams in Kenya</span>
-            <h1>Stop retyping contracts into spreadsheets. Start signing off work you can prove.</h1>
+            <h1>Every clause and every figure, traced to its source.</h1>
             <p>
               Lawyers, agents and finance teams spend hours copying figures out of documents, then more hours proving
               where they came from. Provenant reads the documents, does the first pass with AI agents and Kenya-ready
@@ -112,23 +112,6 @@ export default function Landing() {
               <a href="#problem" className="btn btn-lg">See the problem we solve</a>
             </div>
           </div>
-          <figure className="landing-trace" aria-label="Example of a figure traced to its source">
-            <div className="trace-doc">
-              <div className="trace-line" />
-              <div className="trace-line short" />
-              <div className="trace-line" />
-              <div className="trace-hit">Monthly Rent: KES 450,000.00</div>
-              <div className="trace-line" />
-              <div className="trace-line short" />
-            </div>
-            <div className="trace-card">
-              <span className="faint">Monthly payment</span>
-              <b className="num">450,000.00</b>
-              <span className="trace-source">westlands-office-lease.pdf · page 1</span>
-              <span className="pill pill-ok">Verified by a reviewer</span>
-            </div>
-            <figcaption className="faint">Click any figure to see the page and the words behind it.</figcaption>
-          </figure>
         </section>
 
         <section id="problem" className="landing-section">
@@ -191,7 +174,7 @@ export default function Landing() {
         </section>
 
         <section className="landing-cta">
-          <h2>Spend your time on judgement, not on retyping.</h2>
+          <h2>Spend your time on judgement, not on paperwork.</h2>
           <p className="landing-lead">Bring one contract or one client year, and see every number trace back to its source.</p>
           <Link href="/login" className="btn btn-primary btn-lg">Sign in</Link>
         </section>
