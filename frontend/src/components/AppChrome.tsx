@@ -3,6 +3,7 @@
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
+import { AgentRail } from "@/components/AgentRail";
 import { TopBar } from "@/components/TopBar";
 import { api } from "@/lib/api";
 import { AUTH_MODE, PUBLIC_PATHS, supabase } from "@/lib/auth";
@@ -37,7 +38,10 @@ export function AppChrome({ children }: { children: React.ReactNode }) {
   return (
     <>
       <TopBar />
-      {allowed ? children : <div className="empty">Checking your sign-in…</div>}
+      <div className="app-shell">
+        <AgentRail />
+        <div className="app-main">{allowed ? children : <div className="empty">Checking your sign-in…</div>}</div>
+      </div>
     </>
   );
 }

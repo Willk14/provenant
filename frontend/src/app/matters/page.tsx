@@ -81,7 +81,7 @@ export default function MattersPage() {
       {error && <div className="error-banner">{error}</div>}
       {notice && <div className="callout callout-ok">{notice}</div>}
 
-      <form className="card practice-form" onSubmit={(e) => {
+      <form id="intake" className="card practice-form" onSubmit={(e) => {
         e.preventDefault();
         void act(async () => {
           const made = await practiceApi.openMatter({ title, matter_type: type, client_kind: kind,
@@ -132,7 +132,7 @@ export default function MattersPage() {
       </form>
 
       {audit && (
-        <section className="card practice-audit">
+        <section id="file-audit" className="card practice-audit">
           <div className="practice-row space">
             <strong>File audit</strong>
             <span className={`pill ${issues ? "pill-warn" : "pill-ok"}`}>{issues ? `${issues} to fix` : "Nothing missing"}</span>
@@ -155,7 +155,7 @@ export default function MattersPage() {
         </section>
       )}
 
-      <div className="card">
+      <div id="matter-list" className="card">
         {matters === null ? <div className="empty">Loading…</div> : matters.length === 0 ? (
           <div className="empty">No matters yet. Open the first one above.</div>
         ) : (

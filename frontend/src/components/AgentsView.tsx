@@ -127,7 +127,7 @@ export function AgentsView() {
 
           <div className="agent-grid">
             {data.agents.map((a) => (
-              <article className="card agent-card" key={a.key}>
+              <article className="card agent-card" key={a.key} id={`agent-${a.key}`}>
                 <h2>{a.name}</h2>
                 <p className="muted">{a.description}</p>
                 <div className="agent-counts">
