@@ -2523,3 +2523,112 @@ button.chip {
   flex-wrap: wrap;
   gap: 6px;
 }
+
+/* ---- landing: audiences -------------------------------------------------------------------- */
+
+.landing-audiences {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.landing-audience {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  column-gap: 40px;
+  padding: 28px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+  scroll-margin-top: 80px;
+}
+
+.landing-audience .landing-eyebrow,
+.landing-audience h2,
+.landing-audience .landing-lead {
+  grid-column: 1;
+}
+
+.landing-audience h2 {
+  margin: 0 0 10px;
+  font-size: 24px;
+  line-height: 1.25;
+}
+
+.landing-audience .landing-lead {
+  margin: 0;
+}
+
+.landing-checks {
+  grid-column: 2;
+  grid-row: 1 / span 3;
+  align-self: center;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.landing-checks li {
+  position: relative;
+  padding: 9px 0 9px 28px;
+  border-bottom: 1px solid var(--line);
+  line-height: 1.45;
+}
+
+.landing-checks li:last-child {
+  border-bottom: 0;
+}
+
+.landing-checks li::before {
+  content: "✓";
+  position: absolute;
+  left: 0;
+  top: 9px;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.landing-cta .landing-lead {
+  margin: -6px auto 20px;
+}
+
+@media (max-width: 900px) {
+  .landing-audience {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 20px;
+  }
+  .landing-checks {
+    grid-column: 1;
+    grid-row: auto;
+    margin-top: 14px;
+  }
+}
+
+/* ---- landing: pitch ------------------------------------------------------------------------ */
+
+.landing-kicker {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.landing-problem {
+  border-top: 3px solid var(--bad);
+}
+
+.landing-band .landing-steps li {
+  background: var(--bg);
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+
+.landing-audience .landing-eyebrow {
+  justify-self: start;
+}
+
+.landing-section {
+  scroll-margin-top: 72px;
+}
