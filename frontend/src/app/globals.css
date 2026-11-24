@@ -2647,3 +2647,114 @@ button.chip {
 .landing-hero-solo .landing-actions {
   justify-content: center;
 }
+
+/* ---- practice: matters and trust ----------------------------------------------------------- */
+
+.practice-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  margin-bottom: 14px;
+}
+
+.practice-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.practice-row.space {
+  justify-content: space-between;
+}
+
+.practice-row .grow,
+.practice-row .field.grow {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+.practice-row .field {
+  margin-top: 0;
+}
+
+.practice-list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.practice-audit {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  margin-bottom: 14px;
+}
+
+.practice-gap ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+  font-size: 13px;
+}
+
+.practice-item {
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+  font-size: 13px;
+}
+
+.practice-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.trust-three {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.trust-three > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+.trust-three b {
+  font-size: 18px;
+}
+
+@media (max-width: 760px) {
+  .practice-columns,
+  .trust-three {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* The top bar holds seven links: keep each on one line and let the row scroll rather than wrap. */
+.nav {
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.nav a {
+  flex: none;
+  white-space: nowrap;
+}
+
+@media (max-width: 1280px) {
+  .persona-label,
+  .persona-switch .role {
+    display: none;
+  }
+}

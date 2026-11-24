@@ -1,4 +1,5 @@
 """A Claude tool loop with limits enforced in code, and a usage record that never contains content (ADR 0014)."""
+import json
 import logging
 import time
 from collections.abc import Callable, Iterator, Mapping, Sequence
@@ -50,7 +51,8 @@ class Limits:
 
 @dataclass
 class RunRecord:
-    """What a run used. Deliberately has no field for prompts, documents, tool inputs or output."""
+    """What a run used. The usage ledger stores only these counts. `trace` holds what the model was given and did;
+    it is stored separately, in the firm's own append-only trace table (ADR 0018), never in the usage ledger."""
 
     purpose: str
     status: str = "failed"  # completed | failed | refused | deadline | budget
@@ -66,6 +68,7 @@ class RunRecord:
     cost_microusd: int | None = 0
     limit_cost_microusd: int = 0
     duration_ms: int = 0
+    trace: list[tuple[str, str]] = field(default_factory=list, repr=False)
 
     def add(self, response: Any, requested_model: str) -> None:
         model = getattr(response, "model", None) or requested_model
@@ -118,9 +121,21 @@ def _emit(record: RunRecord) -> None:
         runs.append(record)
 
 
-def record_call(purpose: str, requested_model: str, response: Any, duration_seconds: float) -> None:
+def _block(block: Any) -> str | None:
+    kind = getattr(block, "type", None)
+    if kind == "text":
+        return f"text: {block.text}"
+    if kind == "tool_use":
+        return f"tool_call {block.name}: {json.dumps(block.input, ensure_ascii=False, default=str)}"
+    if kind == "thinking":
+        return "thinking: (not returned by the API)"
+    return None
+
+
+def record_call(purpose: str, requested_model: str, response: Any, duration_seconds: float,
+                trace: list[tuple[str, str]] | None = None) -> None:
     """Record a single model call made outside the tool loop."""
-    record = RunRecord(purpose=purpose)
+    record = RunRecord(purpose=purpose, trace=list(trace or []))
     record.add(response, requested_model)
     record.status = "refused" if record.stop_reason == "refusal" else "completed"
     record.duration_ms = max(int(duration_seconds * 1000), 0)
@@ -182,6 +197,7 @@ def run_tools(client: Any, *, purpose: str, system: str, prompt: str, tools: Seq
     started = clock()
     deadline = started + limits.deadline_seconds
     messages: list[dict[str, Any]] = [{"role": "user", "content": prompt}]
+    record.trace += [("system", system), ("prompt", prompt)]
     try:
         for _ in range(limits.max_turns):
             if clock() > deadline:
@@ -199,6 +215,7 @@ def run_tools(client: Any, *, purpose: str, system: str, prompt: str, tools: Seq
                 "messages": messages,
             }, limits, deadline, clock, sleep)
             record.add(response, model)
+            record.trace += [("response", line) for line in filter(None, map(_block, response.content))]
             if response.stop_reason == "refusal":
                 raise Refused(f"model declined: {getattr(getattr(response, 'stop_details', None), 'category', None)}")
             if response.stop_reason != "tool_use":  # includes max_tokens: a cut-off tool call is never run
@@ -210,6 +227,7 @@ def run_tools(client: Any, *, purpose: str, system: str, prompt: str, tools: Seq
             for use in uses:
                 record.tool_calls += 1
                 output = execute(use.name, use.input)
+                record.trace.append(("tool_result", f"{use.name}: {output}"))
                 result = {"type": "tool_result", "tool_use_id": use.id, "content": output}
                 results.append({**result, "is_error": True} if output.startswith("ERROR:") else result)
             if done():

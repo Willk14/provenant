@@ -317,6 +317,29 @@ def test_members_notifications_and_inbox_are_tenant_isolated(client, app, databa
         assert [s.scalar(text(f"select count(*) from {t}")) for t in ("members", "notifications", "inbox_items")] == [0, 0, 0]
 
 
+def test_practice_tables_are_isolated_and_their_histories_append_only(client, app, database_url):
+    from tests.test_api import PARTNER, PREPARER
+    from tests.test_practice_api import open_matter
+
+    matter = open_matter(client)
+    account = client.post("/trust/accounts", headers=PARTNER, json={"name": "Client", "bank": "Bank"}).json()
+    client.post(f"/trust/accounts/{account['id']}/entries", headers=PREPARER, json={
+        "entry_date": "2026-11-05", "amount": "1000", "reference": "R1", "matter_id": matter["id"]})
+    factory = make_sessionmaker(make_engine(database_url))
+    tables = ("matters", "matter_parties", "matter_events", "conflict_checks", "trust_accounts", "trust_entries")
+    with tenant_session(factory, "firm-a") as s:
+        assert all(s.scalar(text(f"select count(*) from {t}")) >= 1 for t in tables)
+        for change in ("update matter_events set actor = 'x'", "delete from trust_entries", "update ai_traces set content = ''"):
+            with pytest.raises(DBAPIError, match="permission denied|append-only"):
+                s.execute(text(change))
+            s.rollback()
+        triggers = s.scalar(text("select count(*) from pg_trigger where tgname in "
+                                 "('matter_events_append_only', 'trust_entries_append_only', 'ai_traces_append_only')"))
+        assert triggers == 3
+    with tenant_session(factory, "firm-b") as s:
+        assert all(s.scalar(text(f"select count(*) from {t}")) == 0 for t in tables)
+
+
 def test_covenant_adjustments_are_tenant_isolated(client, app, database_url):
     from tests.test_api import PREPARER
     from tests.test_covenants_api import upload_agreement, verify_all

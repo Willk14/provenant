@@ -20,6 +20,7 @@ from provenant.api import (
     covenants,
     etims,
     inbox,
+    matters,
     ledger,
     legal_chat,
     legal_drafts,
@@ -29,6 +30,7 @@ from provenant.api import (
     services,
     statements,
     tax_routes,
+    trust_routes,
     variance,
 )
 from provenant.covenants.engine import quarters_back
@@ -598,6 +600,8 @@ def create_app(
     ai_agents.add_routes(app, Auth, Db)
     members.add_routes(app, Auth, Db)
     inbox.add_routes(app, Auth, Db, factory, store)
+    matters.add_routes(app, Auth, Db, store)
+    trust_routes.add_routes(app, Auth, Db)
     etims.add_routes(app, Auth, Db)
     variance.add_routes(app, Auth, Db)
     statements.add_routes(app, Auth, Db)

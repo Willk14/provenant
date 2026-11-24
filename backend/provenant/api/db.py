@@ -855,6 +855,174 @@ class ReviewEventRow(Base):
         )
 
 
+# ---- practice agents (ADR 0018) -------------------------------------------------------------
+
+
+class MatterRow(Base):
+    __tablename__ = "matters"
+    __table_args__ = (UniqueConstraint("tenant_id", "reference"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(String(64), index=True)
+    reference: Mapped[str] = mapped_column(String(40))
+    title: Mapped[str] = mapped_column(String(200))
+    matter_type: Mapped[str] = mapped_column(String(40))
+    client_kind: Mapped[str] = mapped_column(String(16))
+    status: Mapped[str] = mapped_column(String(16), default="conflict_review")
+    responsible: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    created_by: Mapped[str] = mapped_column(String(200))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
+class MatterPartyRow(Base):
+    __tablename__ = "matter_parties"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(String(64), index=True)
+    matter_id: Mapped[str] = mapped_column(ForeignKey("matters.id"), index=True)
+    name: Mapped[str] = mapped_column(String(200))
+    role: Mapped[str] = mapped_column(String(20))
+    identifier: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+
+class MatterEventRow(Base):
+    """Append-only: every decision on a matter, and who made it."""
+
+    __tablename__ = "matter_events"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(String(64), index=True)
+    matter_id: Mapped[str] = mapped_column(ForeignKey("matters.id"), index=True)
+    action: Mapped[str] = mapped_column(String(32))
+    actor: Mapped[str] = mapped_column(String(200))
+    note: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class ConflictCheckRow(Base):
+    __tablename__ = "conflict_checks"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(String(64), index=True)
+    matter_id: Mapped[str] = mapped_column(ForeignKey("matters.id"), index=True)
+    hits: Mapped[str] = mapped_column(Text)
+    compared: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(16), default="pending")
+    run_by: Mapped[str] = mapped_column(String(200))
+    run_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    decided_by: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    decision_note: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class MatterRequirementRow(Base):
+    __tablename__ = "matter_requirements"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(String(64), index=True)
+    matter_id: Mapped[str] = mapped_column(ForeignKey("matters.id"), index=True)
+    item: Mapped[str] = mapped_column(String(32))
+    status: Mapped[str] = mapped_column(String(16), default="provided")
+    filename: Mapped[str] = mapped_column(String(255))
+    sha256: Mapped[str] = mapped_column(String(64))
+    content_type: Mapped[str] = mapped_column(String(100))
+    expires_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    provided_by: Mapped[str] = mapped_column(String(200))
+    provided_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    verified_by: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class PractisingCertificateRow(Base):
+    __tablename__ = "practising_certificates"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(String(64), index=True)
+    holder: Mapped[str] = mapped_column(String(320))
+    number: Mapped[str] = mapped_column(String(64))
+    expires_on: Mapped[date] = mapped_column(Date)
+    recorded_by: Mapped[str] = mapped_column(String(200))
+    recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class WatchlistEntryRow(Base):
+    __tablename__ = "watchlist_entries"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(String(64), index=True)
+    list_name: Mapped[str] = mapped_column(String(120))
+    name: Mapped[str] = mapped_column(String(300))
+    identifier: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    reference: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    uploaded_by: Mapped[str] = mapped_column(String(200))
+    uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class TrustAccountRow(Base):
+    __tablename__ = "trust_accounts"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(String(64), index=True)
+    name: Mapped[str] = mapped_column(String(120))
+    bank: Mapped[str] = mapped_column(String(120))
+    dormant_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    dormant_basis: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    created_by: Mapped[str] = mapped_column(String(200))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class TrustEntryRow(Base):
+    """Append-only cashbook line: corrections are reversing entries, never edits."""
+
+    __tablename__ = "trust_entries"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(String(64), index=True)
+    account_id: Mapped[str] = mapped_column(ForeignKey("trust_accounts.id"), index=True)
+    entry_date: Mapped[date] = mapped_column(Date)
+    matter_id: Mapped[str | None] = mapped_column(ForeignKey("matters.id"), nullable=True)
+    amount_cents: Mapped[int] = mapped_column(BigInteger)
+    reference: Mapped[str] = mapped_column(String(64))
+    description: Mapped[str] = mapped_column(String(255))
+    entered_by: Mapped[str] = mapped_column(String(200))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class TrustReconciliationRow(Base):
+    __tablename__ = "trust_reconciliations"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(String(64), index=True)
+    account_id: Mapped[str] = mapped_column(ForeignKey("trust_accounts.id"), index=True)
+    as_of: Mapped[date] = mapped_column(Date)
+    period_start: Mapped[date] = mapped_column(Date)
+    bank_balance_cents: Mapped[int] = mapped_column(BigInteger)
+    statement_sha256: Mapped[str] = mapped_column(String(64))
+    result: Mapped[str] = mapped_column(Text)
+    balanced: Mapped[bool] = mapped_column(Boolean)
+    prepared_by: Mapped[str] = mapped_column(String(200))
+    prepared_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    approved_by: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class AiTraceRow(Base):
+    """Append-only: what a Claude run was given and did, kept in the firm's own database (ADR 0018)."""
+
+    __tablename__ = "ai_traces"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(String(64), index=True)
+    run_id: Mapped[str] = mapped_column(String(36), index=True)
+    purpose: Mapped[str] = mapped_column(String(32))
+    document_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    seq: Mapped[int] = mapped_column(Integer)
+    kind: Mapped[str] = mapped_column(String(16))
+    content: Mapped[str] = mapped_column(Text)
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
 def make_engine(url: str) -> Engine:
     if url.startswith("sqlite"):
         return create_engine(url, connect_args={"check_same_thread": False})

@@ -11,6 +11,8 @@ const LINKS = [
   { href: "/documents", label: "Documents" },
   { href: "/clients", label: "Clients & tax" },
   { href: "/review", label: "Review queue" },
+  { href: "/matters", label: "Matters" },
+  { href: "/trust", label: "Trust account" },
   { href: "/agents", label: "AI agents" },
   { href: "/team", label: "Team" },
 ];

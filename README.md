@@ -182,6 +182,14 @@ link, and partners invite staff from the **Team** page. Without them, the login 
 personas. `PROVENANT_SMTP_*` sends work notifications, and `PROVENANT_INBOUND_*` gives each firm an address for
 emailing in documents. See `deploy/staging.env.example` and `docs/adr/0017-sign-in-and-email.md`.
 
+**Practice agents for law firms (ADR 0018, Phase 1).** **Matters** opens a matter from an intake form, checks every
+party against the firm's other matters and uploaded sanctions or PEP lists, and waits for a reviewer or partner other
+than the person who opened it to clear or decline it. The file audit flags missing, unverified or expiring KYC items
+and practising certificates. **Trust account** reconciles the bank, the cashbook and every client ledger by rules, and
+raises hard alerts for breaks, overdrawn or unallocated ledgers and unrecorded bank items. Each Claude run's prompts and
+tool calls are kept in an append-only trace that partners can read (`GET /ai/runs/{id}/trace`; `PROVENANT_AI_TRACE=0`
+turns it off).
+
 The **AI agents** tab shows whether Claude is on and has a contract chat (ADR 0016). Answers must quote the contract,
 and any figure must appear in the quote or the question. Chats are private to their author.
 

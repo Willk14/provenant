@@ -186,7 +186,10 @@ class ClaudeLeaseExtractor:
                 messages=[{"role": "user", "content": f"<document>\n{document}\n</document>"}],
                 output_format=SCHEMAS[kind],
             )
-            record_call(f"extraction_{kind}", self.model, response, time.monotonic() - started)
+            record_call(f"extraction_{kind}", self.model, response, time.monotonic() - started, trace=[
+                ("system", INSTRUCTIONS[kind].format(common=COMMON, schedule=SCHEDULE)),
+                ("prompt", f"<document>\n{document}\n</document>"),
+                ("response", str(getattr(response, "parsed_output", "") or ""))])
             if response.stop_reason == "refusal":
                 raise ExtractionRefused(f"model declined: {getattr(response.stop_details, 'category', None)}")
             if response.parsed_output is None:
