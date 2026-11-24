@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
+import { EmailInbox } from "@/components/EmailInbox";
 import { DocumentStatusPill } from "@/components/StatusPill";
 import { UploadBox } from "@/components/UploadBox";
 import { api } from "@/lib/api";
@@ -68,6 +69,8 @@ export function DocumentsView() {
         agreements={(docs ?? []).filter((d) => d.kind === "credit_agreement")}
         onContractsChanged={load}
       />
+
+      {persona && <EmailInbox onFiled={load} />}
 
       {error && <div className="error-banner">{error}</div>}
 

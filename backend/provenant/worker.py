@@ -13,7 +13,7 @@ from threading import Event
 from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session, sessionmaker
 
-from provenant.api import ai_runs, legal, legal_chat, legal_drafts, retrieval
+from provenant.api import ai_runs, legal, legal_chat, legal_drafts, notifications, retrieval
 from provenant.api.db import Job, make_engine, make_sessionmaker
 from provenant.api.services import extract_document
 from provenant.api.storage import BlobStore, make_store
@@ -65,6 +65,8 @@ def run_once(factory: sessionmaker[Session], store: BlobStore, extractor: Extrac
                 legal_drafts.run_draft_job(factory, store, agent_from_env(), tenant_id, document_id)
             elif kind == legal_chat.CHAT_JOB:
                 legal_chat.run_chat_job(factory, store, agent_from_env(), tenant_id, document_id)
+            elif kind == notifications.NOTIFY_JOB:
+                notifications.deliver(factory, tenant_id)
             elif kind == retrieval.INDEX_JOB:
                 retrieval.index_document(factory, store, embedder_from_env(), tenant_id, document_id)
             else:

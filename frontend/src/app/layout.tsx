@@ -1,20 +1,19 @@
 import type { Metadata } from "next";
 
-import { TopBar } from "@/components/TopBar";
+import { AppChrome } from "@/components/AppChrome";
 
 import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Provenant",
-  description: "Every number knows where it came from.",
+  description: "Kenya tax, IFRS 16 leases and debt covenants, with every figure traced to its source.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
       <body>
-        <TopBar />
-        {children}
+        <AppChrome>{children}</AppChrome>
       </body>
     </html>
   );

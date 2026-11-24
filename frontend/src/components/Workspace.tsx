@@ -177,7 +177,7 @@ export function Workspace({ id, initialField, initialTab, initialCitation }: {
       <section className="ws-left">
         <div className="ws-head">
           <Link
-            href={doc?.parent ? `/documents/${doc.parent.id}` : "/"}
+            href={doc?.parent ? `/documents/${doc.parent.id}` : "/documents"}
             className="btn btn-sm btn-ghost"
             aria-label={doc?.parent ? "Back to the lease" : "Back to documents"}
           >

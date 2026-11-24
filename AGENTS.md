@@ -33,7 +33,8 @@ The Postgres suite needs a superuser URL (it creates a database per run and test
 | `backend/provenant/ai/` | `harness.py`: Claude tool loop with enforced limits and content-free usage records (ADR 0014) |
 | `backend/provenant/legal/drafting.py` | Paralegal drafting tools: figures proved against citations, placeholders (ADR 0015) |
 | `backend/provenant/legal/chat.py` | Contract chat tools: answers with figures proved against citations (ADR 0016) |
-| `backend/provenant/migrations/versions/` | Alembic `0001`–`0020`; tests build the schema through migrations |
+| `backend/provenant/api/members.py`, `notifications.py`, `inbox.py` | Staff directory and invitations, work emails, documents received by email (ADR 0017) |
+| `backend/provenant/migrations/versions/` | Alembic `0001`–`0022`; tests build the schema through migrations |
 | `frontend/src/lib/tax.ts` | Tax API client and types |
 | `frontend/src/components/` | `ClientWorkspace`, `MappingTab`, `RecordsTab`, `TaxTab`, plus lease and covenant views |
 

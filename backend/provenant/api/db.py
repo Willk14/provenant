@@ -658,6 +658,62 @@ class ContractChatMessageRow(Base):
     at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
+class MemberRow(Base):
+    """A person at a firm. Their access comes from the sign-in service; this records who they are and their email."""
+
+    __tablename__ = "members"
+    __table_args__ = (UniqueConstraint("tenant_id", "email"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(String(64), index=True)
+    user_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    email: Mapped[str] = mapped_column(String(320))
+    roles: Mapped[str] = mapped_column(String(64))  # comma-separated
+    status: Mapped[str] = mapped_column(String(16), default="invited")  # invited | active
+    invited_by: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    notify: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class NotificationRow(Base):
+    """An email to send. Its wording is generic and carries a link, never contract or client content."""
+
+    __tablename__ = "notifications"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(String(64), index=True)
+    email: Mapped[str] = mapped_column(String(320))
+    kind: Mapped[str] = mapped_column(String(32))
+    subject: Mapped[str] = mapped_column(String(200))
+    body: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(16), default="queued")  # queued | sent | failed | skipped
+    attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    error: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class InboxItemRow(Base):
+    """An attachment received by email. Nothing is read or used until a person files it."""
+
+    __tablename__ = "inbox_items"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(String(64), index=True)
+    sender: Mapped[str] = mapped_column(String(320))
+    subject: Mapped[str] = mapped_column(String(200))
+    filename: Mapped[str] = mapped_column(String(255))
+    sha256: Mapped[str] = mapped_column(String(64))
+    content_type: Mapped[str] = mapped_column(String(100))
+    size_bytes: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(16), default="new")  # new | filed | dismissed
+    document_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    handled_by: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    handled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class AiRunRow(Base):
     """Append-only usage of one Claude run. Holds no prompt, document text, tool input or model output (ADR 0014)."""
 

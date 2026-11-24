@@ -19,10 +19,12 @@ from provenant.api import (
     ai_runs,
     covenants,
     etims,
+    inbox,
     ledger,
     legal_chat,
     legal_drafts,
     legal_routes,
+    members,
     memo,
     services,
     statements,
@@ -105,12 +107,6 @@ class DocumentOut(BaseModel):
             missing_terms=missing_terms, fields=[FieldOut.of(f) for f in fields],
             amendments=[DocumentOut.of(a) for a in amendments], parent=DocumentOut.of(parent) if parent else None,
         )
-
-
-class MeOut(BaseModel):
-    tenant_id: str
-    user: str
-    roles: list[str]
 
 
 class ReviewIn(BaseModel):
@@ -330,7 +326,7 @@ def create_app(
     inline_worker = os.environ.get("PROVENANT_INLINE_WORKER") == "1" if inline_worker is None else inline_worker
     if authenticator is None and not dev_auth:
         raise RuntimeError(
-            "No authentication configured: set PROVENANT_JWT_ISSUER/AUDIENCE/JWKS_URL, "
+            "No authentication configured: set PROVENANT_SUPABASE_URL, or PROVENANT_JWT_ISSUER/AUDIENCE/JWKS_URL, "
             "or PROVENANT_DEV_AUTH=1 for local development"
         )
     if authenticator is not None and dev_auth:
@@ -363,7 +359,8 @@ def create_app(
                     raise AuthError("bearer token required")
                 p = authenticator(token)
             else:  # dev only: roles default to all three so one person can click through locally
-                p = principal_from(x_tenant_id, x_user, x_roles or "preparer,reviewer,partner")
+                p = principal_from(x_tenant_id, x_user, x_roles or "preparer,reviewer,partner",
+                                   x_user if x_user and "@" in x_user else "")
         except AuthError as exc:
             raise HTTPException(401, str(exc), headers={"WWW-Authenticate": "Bearer"}) from exc
         if not p.roles:
@@ -407,10 +404,6 @@ def create_app(
         if not created:
             response.status_code = 200
         return DocumentOut.of(doc)
-
-    @app.get("/me", response_model=MeOut)
-    def me(p: Auth) -> MeOut:
-        return MeOut(tenant_id=p.tenant_id, user=p.user, roles=sorted(p.roles))
 
     @app.get("/documents", response_model=list[DocumentOut])
     def documents(p: Auth, s: Db) -> list[DocumentOut]:
@@ -603,6 +596,8 @@ def create_app(
     legal_chat.add_routes(app, Auth, Db)
     ai_runs.add_routes(app, Auth, Db)
     ai_agents.add_routes(app, Auth, Db)
+    members.add_routes(app, Auth, Db)
+    inbox.add_routes(app, Auth, Db, factory, store)
     etims.add_routes(app, Auth, Db)
     variance.add_routes(app, Auth, Db)
     statements.add_routes(app, Auth, Db)

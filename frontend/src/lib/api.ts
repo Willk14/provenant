@@ -1,3 +1,4 @@
+import { AUTH_MODE, authHeaders } from "./auth";
 import { identityHeaders } from "./identity";
 import type {
   BBox,
@@ -13,6 +14,10 @@ import type {
   ContractDraft,
   DraftKind,
   LegalFinding,
+  Inbox,
+  InboxItem,
+  Me,
+  Member,
   LegalIndexState,
   LegalPlaybook,
   LegalQuestion,
@@ -33,9 +38,10 @@ export class ApiError extends Error {
 }
 
 async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const identity = AUTH_MODE === "supabase" ? (await authHeaders()) ?? {} : identityHeaders();
   const response = await fetch(`/api${path}`, {
     ...init,
-    headers: { ...identityHeaders(), ...(init.headers ?? {}) },
+    headers: { ...identity, ...(init.headers ?? {}) },
     cache: "no-store",
   });
   if (!response.ok) {
@@ -122,6 +128,15 @@ export const api = {
   askLegalQuestion: (id: string, reviewId: string, question: string) =>
     call<LegalQuestion>(`/documents/${id}/reviews/${reviewId}/questions`, json({ question })),
   aiAgents: () => call<AiAgents>("/ai/agents"),
+  me: () => call<Me>("/me"),
+  inbox: () => call<Inbox>("/inbox"),
+  inboxFile: (id: string) => call<ArrayBuffer>(`/inbox/${id}/file`),
+  fileInboxItem: (id: string, kind: "lease" | "credit_agreement") => call<InboxItem>(`/inbox/${id}/file`, json({ kind })),
+  dismissInboxItem: (id: string) => call<InboxItem>(`/inbox/${id}/dismiss`, { method: "POST" }),
+  setNotifications: (notify: boolean) => call<Me>("/me/notifications", { ...json({ notify }), method: "PUT" }),
+  members: () => call<Member[]>("/members"),
+  inviteMember: (email: string, roles: string[]) =>
+    call<{ member: Member; email_sent: boolean }>("/members", json({ email, roles })),
   aiUsage: () => call<AiUsage>("/ai/runs?limit=1"),
   contractChats: (id: string) => call<ContractChat[]>(`/documents/${id}/chats`),
   startContractChat: (id: string, message: string) => call<ContractChat>(`/documents/${id}/chats`, json({ message })),

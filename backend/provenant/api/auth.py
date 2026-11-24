@@ -20,6 +20,7 @@ class Principal:
     tenant_id: str
     user: str
     roles: frozenset[str]
+    email: str = ""  # for notifications only; identity is `user`, which never changes
 
     def has_any(self, *roles: str) -> bool:
         return not self.roles.isdisjoint(roles)
@@ -28,7 +29,15 @@ class Principal:
 Authenticator = Callable[[str], Principal]
 
 
-def principal_from(tenant_id: object, user: object, roles: object) -> Principal:
+def _claim(claims: dict, path: str) -> object:
+    """A claim by dotted path, e.g. `app_metadata.tenant_id` for Supabase Auth."""
+    value: object = claims
+    for part in path.split("."):
+        value = value.get(part) if isinstance(value, dict) else None
+    return value
+
+
+def principal_from(tenant_id: object, user: object, roles: object, email: object = "") -> Principal:
     if not isinstance(tenant_id, str) or not _TENANT.fullmatch(tenant_id):
         raise AuthError("missing or invalid tenant")
     if not isinstance(user, str) or not 0 < len(user) <= 200:
@@ -37,7 +46,8 @@ def principal_from(tenant_id: object, user: object, roles: object) -> Principal:
         roles = roles.split(",")
     if not isinstance(roles, (list, tuple)) or not all(isinstance(r, str) for r in roles):
         raise AuthError("roles must be a list of strings")
-    return Principal(tenant_id, user, frozenset(r.strip() for r in roles) & ROLES)
+    email = email if isinstance(email, str) and len(email) <= 320 else ""
+    return Principal(tenant_id, user, frozenset(r.strip() for r in roles) & ROLES, email)
 
 
 class JWTAuthenticator:
@@ -75,10 +85,22 @@ class JWTAuthenticator:
             )
         except jwt.PyJWTError as exc:
             raise AuthError(f"invalid token: {exc}") from exc
-        return principal_from(claims.get(self.tenant_claim), claims["sub"], claims.get(self.roles_claim, []))
+        roles = _claim(claims, self.roles_claim)
+        return principal_from(_claim(claims, self.tenant_claim), claims["sub"], [] if roles is None else roles,
+                              claims.get("email", ""))
+
+
+def supabase_url() -> str | None:
+    url = os.environ.get("PROVENANT_SUPABASE_URL", "").rstrip("/")
+    return url or None
 
 
 def authenticator_from_env() -> Authenticator | None:
+    """Supabase Auth (`PROVENANT_SUPABASE_URL`), or any OIDC issuer. Tenant and roles come from claims a user cannot
+    edit: for Supabase, `app_metadata`, which only the service can set (never `user_metadata`)."""
+    if url := supabase_url():
+        return JWTAuthenticator(f"{url}/auth/v1", "authenticated", jwks_url=f"{url}/auth/v1/.well-known/jwks.json",
+                                tenant_claim="app_metadata.tenant_id", roles_claim="app_metadata.roles")
     issuer = os.environ.get("PROVENANT_JWT_ISSUER")
     if not issuer:
         return None

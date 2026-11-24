@@ -7,6 +7,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from provenant.api import retrieval
+from provenant.api.notifications import notify_safely
 from provenant.api.auth import PARTNER, PREPARER, REVIEWER, Principal
 from provenant.api.db import (
     ContractFindingRow,
@@ -248,7 +249,7 @@ def run_review_job(factory: sessionmaker[Session], store: BlobStore, agent: Revi
         review = _active(s, tenant_id, document_id)
         if review is None:
             return
-        review_id = review.id
+        review_id, requested_by = review.id, review.requested_by
         review.status, review.agent, review.error = "running", agent.name[:64], None
         s.execute(delete(ContractFindingRow).where(ContractFindingRow.tenant_id == tenant_id,
                                                    ContractFindingRow.review_id == review_id))  # a reclaimed job
@@ -267,6 +268,9 @@ def run_review_job(factory: sessionmaker[Session], store: BlobStore, agent: Revi
             review = s.get(ContractReviewRow, review_id)
             review.status, review.error, review.finished_at = "failed", _failure(exc), datetime.now(UTC)
             s.commit()
+        notify_safely(factory, tenant_id, "review_failed", "A contract review did not finish",
+                      "A contract review you asked for did not finish. Nothing from it was saved.",
+                      f"/documents/{document_id}?tab=review", people=(requested_by,))
         return
     with tenant_session(factory, tenant_id) as s:
         for f in toolbox.findings:
@@ -282,7 +286,14 @@ def run_review_job(factory: sessionmaker[Session], store: BlobStore, agent: Revi
         review = s.get(ContractReviewRow, review_id)
         review.status, review.summary, review.not_found = "done", toolbox.summary, json.dumps(list(toolbox.not_found))
         review.finished_at = datetime.now(UTC)
+        uploader = get_document(s, tenant_id, document_id).uploaded_by
         s.commit()
+    if toolbox.findings:
+        count = len(toolbox.findings)
+        notify_safely(factory, tenant_id, "review_ready", "Contract review findings are waiting for you",
+                      f"A contract review finished with {count} finding{'s' if count != 1 else ''} for a reviewer or "
+                      "partner to decide.", f"/documents/{document_id}?tab=review",
+                      roles=("reviewer", "partner"), exclude=(uploader,))
 
 
 def run_question_job(factory: sessionmaker[Session], store: BlobStore, agent: ReviewAgent, tenant_id: str,

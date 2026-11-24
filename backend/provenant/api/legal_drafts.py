@@ -13,6 +13,7 @@ from provenant.api.auth import PARTNER, PREPARER, REVIEWER, Principal
 from provenant.api.db import ContractDraftEventRow, ContractDraftRow, Job, tenant_session
 from provenant.api.legal import ACTIVE, _citation, _contract, _documents, _failure, _retriever
 from provenant.api.legal_routes import CitationOut
+from provenant.api.notifications import notify, notify_safely
 from provenant.api.services import Conflict, Forbidden, Invalid, NotFound, get_document, list_amendments, require
 from provenant.api.storage import BlobStore
 from provenant.legal.agent import ReviewAgent
@@ -127,6 +128,15 @@ def decide_draft(s: Session, p: Principal, document_id: str, draft_id: str, deci
             raise Conflict("fill in every [[placeholder]] before approving")
     row.status = decision
     s.add(_event(row, decision, p.user, note[:1000] or None))
+    editors = {e.actor for e in events(s, p.tenant_id, row.id) if e.action == "edited"}
+    if decision == "approved":
+        notify(s, p.tenant_id, "draft_approved", "Your draft was approved",
+               "A draft you asked for or edited was approved and is ready to copy.",
+               f"/documents/{row.document_id}?tab=drafts", people={row.requested_by, *editors}, exclude=(p.user,))
+    else:
+        notify(s, p.tenant_id, "draft_returned", "A draft was returned with changes to make",
+               "A draft you asked for or edited was returned with a note on what to change.",
+               f"/documents/{row.document_id}?tab=drafts", people={row.requested_by, *editors}, exclude=(p.user,))
     s.commit()
     return row
 
@@ -138,7 +148,7 @@ def run_draft_job(factory: sessionmaker[Session], store: BlobStore, agent: Revie
         row = _active(s, tenant_id, document_id)
         if row is None:
             return
-        draft_id, kind, instructions = row.id, row.kind, row.instructions
+        draft_id, kind, instructions, requested_by = row.id, row.kind, row.instructions, row.requested_by
         row.status, row.agent, row.error = "running", agent.name[:64], None
         s.commit()
     try:
@@ -154,6 +164,9 @@ def run_draft_job(factory: sessionmaker[Session], store: BlobStore, agent: Revie
             row = s.get(ContractDraftRow, draft_id)
             row.status, row.error = "failed", _failure(exc)
             s.commit()
+        notify_safely(factory, tenant_id, "draft_failed", "A draft did not finish",
+                      "A draft you asked for did not finish. Nothing from it was saved.",
+                      f"/documents/{document_id}?tab=drafts", people=(requested_by,))
         return
     draft = toolbox.draft
     body = [{"text": x.text, "citations": [_citation(c) for c in x.citations], "edited": False} for x in draft.paragraphs]
@@ -162,7 +175,12 @@ def run_draft_job(factory: sessionmaker[Session], store: BlobStore, agent: Revie
         row.title, row.body, row.open_points = draft.title, json.dumps(body), json.dumps(list(draft.open_points))
         row.content_sha256, row.version, row.status = content_hash(draft.title, [x.text for x in draft.paragraphs]), 1, "ready"
         s.add(_event(row, "generated", agent.name[:64]))
+        uploader = get_document(s, tenant_id, document_id).uploaded_by
         s.commit()
+    notify_safely(factory, tenant_id, "draft_ready", "A draft is waiting for review",
+                  "A first draft is ready for a reviewer or partner to check and approve.",
+                  f"/documents/{document_id}?tab=drafts", roles=("reviewer", "partner"),
+                  exclude=(requested_by, uploader))
 
 
 class DraftParagraphOut(BaseModel):

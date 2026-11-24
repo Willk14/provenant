@@ -24,7 +24,8 @@ PG_DIR = Path(os.environ.get("PROVENANT_DEV_PGDATA", Path(tempfile.gettempdir())
 APP_ROLE, APP_PASSWORD, DATABASE = "provenant_app", "provenant_app_dev", "provenant"
 
 os.environ.setdefault("PROVENANT_STORAGE_DIR", str(DATA / "storage"))
-os.environ["PROVENANT_DEV_AUTH"] = "1"
+# Development personas, unless real Supabase sign-in is configured (the two cannot be combined).
+os.environ["PROVENANT_DEV_AUTH"] = "0" if os.environ.get("PROVENANT_SUPABASE_URL") else "1"
 os.environ["PROVENANT_INLINE_WORKER"] = "1"
 
 

@@ -141,7 +141,7 @@ def test_document_list_and_me(client, app):
     assert listed[short_id] == 3
     assert client.get("/documents", headers=OTHER_FIRM).json() == []
     me = client.get("/me", headers=REVIEWER).json()
-    assert me == {"tenant_id": "firm-a", "user": "rae@firm-a", "roles": ["reviewer"]}
+    assert (me["tenant_id"], me["user"], me["roles"]) == ("firm-a", "rae@firm-a", ["reviewer"])
 
 
 def test_tenants_are_isolated(client, app):

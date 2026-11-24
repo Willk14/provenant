@@ -175,6 +175,13 @@ Its figures must trace to the cited contract wording or the instructions, unknow
 a different reviewer or partner approves it. Provenant never sends a draft. `baseline` produces a free skeleton, and
 `claude-api` writes the wording.
 
+**Sign-in and email (ADR 0017).** `/` is the public landing page and `/login` signs people in. With
+`NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` in `frontend/.env.local`, and
+`PROVENANT_SUPABASE_URL` on the API (instead of `PROVENANT_DEV_AUTH`), people sign in with a password or an emailed
+link, and partners invite staff from the **Team** page. Without them, the login page offers the development
+personas. `PROVENANT_SMTP_*` sends work notifications, and `PROVENANT_INBOUND_*` gives each firm an address for
+emailing in documents. See `deploy/staging.env.example` and `docs/adr/0017-sign-in-and-email.md`.
+
 The **AI agents** tab shows whether Claude is on and has a contract chat (ADR 0016). Answers must quote the contract,
 and any figure must appear in the quote or the question. Chats are private to their author.
 

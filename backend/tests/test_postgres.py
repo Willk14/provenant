@@ -296,6 +296,27 @@ def test_contract_chats_are_isolated_and_messages_are_append_only(client, app, d
         assert s.scalar(text("select count(*) from contract_chat_messages")) == 0
 
 
+def test_members_notifications_and_inbox_are_tenant_isolated(client, app, database_url, monkeypatch):
+    from tests.test_email import message, post
+    from tests.test_api import PREPARER, REVIEWER
+    from provenant.api import inbox
+
+    monkeypatch.setenv("PROVENANT_INBOUND_SECRET", "inbound-secret")
+    monkeypatch.setenv("PROVENANT_INBOUND_DOMAIN", "in.provenant.test")
+    monkeypatch.setenv("PROVENANT_INBOUND_TOKEN", "hook-token")
+    for headers in (PREPARER, REVIEWER):
+        assert client.get("/me", headers=headers).status_code == 200
+    assert post(client, message(inbox.inbound_address("firm-a"))).json() == {"kept": 1}
+    factory = make_sessionmaker(make_engine(database_url))
+    with tenant_session(factory, "firm-a") as s:
+        s.execute(text("insert into notifications (id, tenant_id, email, kind, subject, body, status, attempts, "
+                       "created_at) values ('n1', 'firm-a', 'rae@firm-a', 'test', 'Subject', 'Body', 'queued', 0, now())"))
+        s.commit()
+        assert [s.scalar(text(f"select count(*) from {t}")) for t in ("members", "notifications", "inbox_items")] == [2, 1, 1]
+    with tenant_session(factory, "firm-b") as s:
+        assert [s.scalar(text(f"select count(*) from {t}")) for t in ("members", "notifications", "inbox_items")] == [0, 0, 0]
+
+
 def test_covenant_adjustments_are_tenant_isolated(client, app, database_url):
     from tests.test_api import PREPARER
     from tests.test_covenants_api import upload_agreement, verify_all

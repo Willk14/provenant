@@ -406,6 +406,40 @@ export interface ContractChat {
   }[];
 }
 
+export interface Me {
+  user: string;
+  email: string;
+  tenant_id: string;
+  roles: string[];
+  notify: boolean;
+}
+
+export interface Member {
+  id: string;
+  email: string;
+  roles: string[];
+  status: "invited" | "active";
+  notify: boolean;
+  last_seen_at: string | null;
+}
+
+export interface InboxItem {
+  id: string;
+  sender: string;
+  subject: string;
+  filename: string;
+  content_type: string;
+  size_bytes: number;
+  status: "new" | "filed" | "dismissed";
+  document_id: string | null;
+  received_at: string;
+}
+
+export interface Inbox {
+  address: string | null;
+  items: InboxItem[];
+}
+
 export interface AiUsage {
   total_runs: number;
   failed_runs: number;
