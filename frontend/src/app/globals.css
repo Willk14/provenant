@@ -2758,3 +2758,66 @@ button.chip {
     display: none;
   }
 }
+
+/* ---- practice phase 2 ---------------------------------------------------------------------- */
+
+.practice-form.flush {
+  padding: 0;
+  margin: 0;
+}
+
+.practice-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 4px 12px;
+}
+
+.practice-draft {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.practice-deviations {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  border-radius: 8px;
+  background: var(--warn-soft);
+  font-size: 13px;
+}
+
+.practice-deviation {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.practice-deviation del {
+  color: var(--bad);
+}
+
+.practice-deviation ins {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.diligence th,
+.diligence td {
+  min-width: 150px;
+  font-size: 12px;
+  vertical-align: top;
+}
+
+.diligence td.diligence-bad {
+  background: var(--bad-soft);
+}
+
+.docket-overdue td {
+  background: var(--bad-soft);
+}

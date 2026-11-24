@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
+import { DueDiligence, MatterDocket, PrecedentDrafts } from "@/components/MatterAgents";
 import { formatDate } from "@/lib/format";
 import { practiceApi, STATUS_PILL, STATUS_WORD, type Matter } from "@/lib/practice";
 import { usePersona } from "@/lib/usePersona";
@@ -145,6 +146,10 @@ export default function MatterPage() {
           <button className="btn btn-sm" disabled={busy}>Add to file</button>
         </form>
       </section>
+
+      <PrecedentDrafts matterId={id} open={matter.status === "open"} />
+      <MatterDocket matterId={id} />
+      <DueDiligence matterId={id} />
 
       <section className="card practice-form">
         <strong>History</strong>

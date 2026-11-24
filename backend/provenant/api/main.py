@@ -18,6 +18,8 @@ from provenant.api import (
     ai_agents,
     ai_runs,
     covenants,
+    diligence_routes,
+    docket_routes,
     etims,
     inbox,
     matters,
@@ -27,6 +29,7 @@ from provenant.api import (
     legal_routes,
     members,
     memo,
+    precedent_routes,
     services,
     statements,
     tax_routes,
@@ -602,6 +605,9 @@ def create_app(
     inbox.add_routes(app, Auth, Db, factory, store)
     matters.add_routes(app, Auth, Db, store)
     trust_routes.add_routes(app, Auth, Db)
+    precedent_routes.add_routes(app, Auth, Db)
+    docket_routes.add_routes(app, Auth, Db)
+    diligence_routes.add_routes(app, Auth, Db)
     etims.add_routes(app, Auth, Db)
     variance.add_routes(app, Auth, Db)
     statements.add_routes(app, Auth, Db)

@@ -340,6 +340,34 @@ def test_practice_tables_are_isolated_and_their_histories_append_only(client, ap
         assert all(s.scalar(text(f"select count(*) from {t}")) == 0 for t in tables)
 
 
+def test_phase2_practice_tables_are_isolated_and_precedent_versions_append_only(client, app, database_url):
+    from tests.test_api import PARTNER, PREPARER
+    from tests.test_phase2_api import LETTER, opened
+
+    precedent = client.post("/precedents", headers=PARTNER, json={
+        "name": "Engagement letter", "kind": "engagement_letter", "body": LETTER}).json()
+    matter = opened(client)
+    client.post(f"/matters/{matter['id']}/precedent-drafts", headers=PREPARER, json={"precedent_id": precedent["id"]})
+    client.post("/docket/rules", headers=PARTNER, json={"name": "Appeal", "trigger": "judgment", "days": 14,
+                                                       "basis": "Firm practice"})
+    client.post("/docket/holidays", headers=PARTNER, json={"day": "2026-12-25", "name": "Christmas Day"})
+    notice = client.post(f"/matters/{matter['id']}/notices", headers=PREPARER, json={
+        "text": "Judgment was delivered on 20th November 2026 in this matter."}).json()
+    client.post(f"/matters/{matter['id']}/notices/{notice['id']}/confirm", headers=PREPARER,
+                json={"event": "judgment", "event_date": "2026-11-20"})
+    factory = make_sessionmaker(make_engine(database_url))
+    tables = ("precedents", "precedent_versions", "precedent_drafts", "deadline_rules", "court_holidays",
+              "court_notices", "docket_entries")
+    with tenant_session(factory, "firm-a") as s:
+        assert all(s.scalar(text(f"select count(*) from {t}")) >= 1 for t in tables)
+        with pytest.raises(DBAPIError, match="permission denied|append-only"):
+            s.execute(text("update precedent_versions set body = 'changed'"))
+        s.rollback()
+        assert s.scalar(text("select count(*) from pg_trigger where tgname = 'precedent_versions_append_only'")) == 1
+    with tenant_session(factory, "firm-b") as s:
+        assert all(s.scalar(text(f"select count(*) from {t}")) == 0 for t in (*tables, "matter_documents"))
+
+
 def test_covenant_adjustments_are_tenant_isolated(client, app, database_url):
     from tests.test_api import PREPARER
     from tests.test_covenants_api import upload_agreement, verify_all

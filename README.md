@@ -190,6 +190,12 @@ raises hard alerts for breaks, overdrawn or unallocated ledgers and unrecorded b
 tool calls are kept in an append-only trace that partners can read (`GET /ai/runs/{id}/trace`; `PROVENANT_AI_TRACE=0`
 turns it off).
 
+**Phase 2 (ADR 0019).** Partners lock the firm's **Precedents**, and a matter's drafts are filled from its facts, with
+any departure from the precedent shown to a partner before approval. The **Docket** reads a pasted court notice,
+proposes the event and dates for a person to confirm, then computes deadlines from the firm's own rules and holidays
+and exports them as a calendar file. **Due diligence** links contracts to a matter, reviews them all and shows one
+matrix of deviations by topic, with an Excel export.
+
 The **AI agents** tab shows whether Claude is on and has a contract chat (ADR 0016). Answers must quote the contract,
 and any figure must appear in the quote or the question. Chats are private to their author.
 

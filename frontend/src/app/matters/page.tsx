@@ -73,6 +73,10 @@ export default function MattersPage() {
             other than the person who opened it decides. The file auditor watches each open matter&apos;s KYC.
           </p>
         </div>
+        <div className="practice-row">
+          <Link className="btn btn-sm" href="/docket">Docket</Link>
+          <Link className="btn btn-sm" href="/precedents">Precedents</Link>
+        </div>
       </div>
       {error && <div className="error-banner">{error}</div>}
       {notice && <div className="callout callout-ok">{notice}</div>}

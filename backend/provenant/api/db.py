@@ -1023,6 +1023,132 @@ class AiTraceRow(Base):
     at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
+# ---- practice agents phase 2 (ADR 0019) -----------------------------------------------------
+
+
+class PrecedentRow(Base):
+    __tablename__ = "precedents"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(String(64), index=True)
+    name: Mapped[str] = mapped_column(String(120))
+    kind: Mapped[str] = mapped_column(String(32))
+    current_version: Mapped[int] = mapped_column(Integer)
+    created_by: Mapped[str] = mapped_column(String(200))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class PrecedentVersionRow(Base):
+    """Append-only: a locked version of a precedent. Changing a precedent means a partner locks a new version."""
+
+    __tablename__ = "precedent_versions"
+    __table_args__ = (UniqueConstraint("precedent_id", "version"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(String(64), index=True)
+    precedent_id: Mapped[str] = mapped_column(ForeignKey("precedents.id"), index=True)
+    version: Mapped[int] = mapped_column(Integer)
+    body: Mapped[str] = mapped_column(Text)
+    sha256: Mapped[str] = mapped_column(String(64))
+    locked_by: Mapped[str] = mapped_column(String(200))
+    locked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class PrecedentDraftRow(Base):
+    __tablename__ = "precedent_drafts"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(String(64), index=True)
+    matter_id: Mapped[str] = mapped_column(ForeignKey("matters.id"), index=True)
+    precedent_id: Mapped[str] = mapped_column(ForeignKey("precedents.id"))
+    version: Mapped[int] = mapped_column(Integer)
+    field_values: Mapped[str] = mapped_column(Text)
+    included: Mapped[str] = mapped_column(Text)
+    standard_text: Mapped[str] = mapped_column(Text)
+    current_text: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(16), default="ready")
+    created_by: Mapped[str] = mapped_column(String(200))
+    edited_by: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    decided_by: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    decision_note: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
+class DeadlineRuleRow(Base):
+    __tablename__ = "deadline_rules"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(String(64), index=True)
+    name: Mapped[str] = mapped_column(String(160))
+    trigger: Mapped[str] = mapped_column(String(32))
+    days: Mapped[int] = mapped_column(Integer)
+    months: Mapped[int] = mapped_column(Integer)
+    counting: Mapped[str] = mapped_column(String(16))
+    roll_forward: Mapped[bool] = mapped_column(Boolean)
+    basis: Mapped[str] = mapped_column(String(300))
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_by: Mapped[str] = mapped_column(String(200))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class CourtHolidayRow(Base):
+    __tablename__ = "court_holidays"
+    __table_args__ = (UniqueConstraint("tenant_id", "day"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(String(64), index=True)
+    day: Mapped[date] = mapped_column(Date)
+    name: Mapped[str] = mapped_column(String(120))
+
+
+class CourtNoticeRow(Base):
+    __tablename__ = "court_notices"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(String(64), index=True)
+    matter_id: Mapped[str] = mapped_column(ForeignKey("matters.id"), index=True)
+    text: Mapped[str] = mapped_column(Text)
+    reading: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(16), default="new")
+    event: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    event_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    case_number: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    created_by: Mapped[str] = mapped_column(String(200))
+    confirmed_by: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class DocketEntryRow(Base):
+    __tablename__ = "docket_entries"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(String(64), index=True)
+    matter_id: Mapped[str] = mapped_column(ForeignKey("matters.id"), index=True)
+    notice_id: Mapped[str | None] = mapped_column(ForeignKey("court_notices.id"), nullable=True)
+    rule_id: Mapped[str | None] = mapped_column(ForeignKey("deadline_rules.id"), nullable=True)
+    title: Mapped[str] = mapped_column(String(200))
+    due_on: Mapped[date] = mapped_column(Date, index=True)
+    basis: Mapped[str] = mapped_column(String(400))
+    status: Mapped[str] = mapped_column(String(16), default="open")
+    created_by: Mapped[str] = mapped_column(String(200))
+    done_by: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    done_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class MatterDocumentRow(Base):
+    __tablename__ = "matter_documents"
+    __table_args__ = (UniqueConstraint("matter_id", "document_id"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    tenant_id: Mapped[str] = mapped_column(String(64), index=True)
+    matter_id: Mapped[str] = mapped_column(ForeignKey("matters.id"), index=True)
+    document_id: Mapped[str] = mapped_column(ForeignKey("documents.id"))
+    added_by: Mapped[str] = mapped_column(String(200))
+    added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
 def make_engine(url: str) -> Engine:
     if url.startswith("sqlite"):
         return create_engine(url, connect_args={"check_same_thread": False})
