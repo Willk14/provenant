@@ -234,6 +234,8 @@ export const taxApi = {
     api.raw<Account>(`/clients/${id}/mappings/${encodeURIComponent(code)}`, json("PUT", { fs_line: fsLine, tax_treatment: treatment })),
   confirmSuggestions: (id: string, yearEnd: string) =>
     api.raw<{ confirmed: number }>(`${base(id, yearEnd)}/confirm-suggestions`, { method: "POST" }),
+  mapWithClaude: (id: string, yearEnd: string) =>
+    api.raw<{ sent: number; suggested: number; left: number }>(`${base(id, yearEnd)}/mapping/claude`, { method: "POST" }),
   inputs: (id: string, yearEnd: string) => api.raw<Inputs>(`${base(id, yearEnd)}/inputs`),
   saveInputs: (id: string, yearEnd: string, inputs: Inputs) =>
     api.raw<Inputs>(`${base(id, yearEnd)}/inputs`, json("PUT", inputs)),

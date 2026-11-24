@@ -16,6 +16,7 @@ export interface Hit {
   score: number;
   kind: "adverse" | "same_side" | "screening";
   reason: string;
+  found_by?: "rules" | "claude";
 }
 
 export interface Gap {

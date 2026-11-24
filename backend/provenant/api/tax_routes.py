@@ -8,7 +8,7 @@ from urllib.parse import quote
 from fastapi import FastAPI, File, Form, Response, UploadFile
 from pydantic import BaseModel, Field
 
-from provenant.api import papers, tax
+from provenant.api import mapping_ai, papers, tax
 from provenant.api import export as workbook_export
 from provenant.api.services import MAX_UPLOAD_BYTES
 from provenant.api.storage import BlobStore
@@ -304,6 +304,11 @@ def add_routes(app: FastAPI, Auth, Db, store: BlobStore) -> None:  # noqa: N803 
         m = tax.map_account(s, p, client_id, code, body.fs_line, body.tax_treatment)
         return AccountOut(line_id="", code=m.code, name="", balance=Decimal(0), fs_line=m.fs_line,
                           tax_treatment=m.tax_treatment, status=m.status, rule=m.rule, confirmed_by=m.confirmed_by)
+
+    @app.post("/clients/{client_id}/years/{year_end}/mapping/claude")
+    def map_with_claude(client_id: str, year_end: date, p: Auth, s: Db) -> dict[str, int]:
+        """The mapping agent (ADR 0022): Claude suggests; a person still confirms every account."""
+        return mapping_ai.map_with_claude(s, p, client_id, year_end)
 
     @app.post("/clients/{client_id}/years/{year_end}/confirm-suggestions")
     def confirm(client_id: str, year_end: date, p: Auth, s: Db) -> dict[str, int]:

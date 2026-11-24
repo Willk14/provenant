@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
 import { api } from "@/lib/api";
@@ -55,6 +56,7 @@ export default function TeamPage() {
           <h1>Team</h1>
           <p className="muted">Who works in this firm&apos;s workspace. Partners invite people and choose their roles.</p>
         </div>
+        <Link className="btn btn-sm" href="/agents">AI agents and usage</Link>
       </div>
       {error && <div className="error-banner">{error}</div>}
       {notice && <div className="callout callout-ok">{notice}</div>}

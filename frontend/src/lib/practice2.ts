@@ -56,7 +56,13 @@ export interface CourtNotice {
   id: string;
   status: "new" | "confirmed" | "dismissed";
   text: string;
-  reading: { case_number: string | null; event: string | null; dates: string[]; evidence: Record<string, string> };
+  reading: {
+    case_number: string | null;
+    event: string | null;
+    dates: string[];
+    evidence: Record<string, string>;
+    reader?: "claude" | "rules";
+  };
   event: string | null;
   event_date: string | null;
   case_number: string | null;
@@ -130,3 +136,24 @@ export function saveBytes(bytes: ArrayBuffer, filename: string, type: string): v
   Object.assign(document.createElement("a"), { href: url, download: filename }).click();
   URL.revokeObjectURL(url);
 }
+
+/** Claude in the practice agents (ADR 0020): each answer is checked against its source before it reaches you. */
+export interface FieldSuggestion { field: string; value: string; source: string; quote: string }
+export interface Explanation {
+  entries: { id: string; date: string; amount: string; reference: string; matter: string | null }[];
+  bank_lines: { date: string; amount: string; reference: string; description: string }[];
+  difference: string;
+  likely_cause: string;
+  next_step: string;
+}
+
+export const claudeApi = {
+  suggestValues: (matterId: string, precedentId: string, values: Record<string, string>) =>
+    api.raw<{ empty: string[]; suggestions: FieldSuggestion[]; documents: number }>(
+      `/matters/${matterId}/precedent-drafts/suggest`, post({ precedent_id: precedentId, values })),
+  kycRequest: (matterId: string) =>
+    api.raw<{ letter: string; asks_for: string[] }>(`/matters/${matterId}/kyc-request`, { method: "POST" }),
+  explainReconciliation: (accountId: string, reconciliationId: string) =>
+    api.raw<{ explanations: Explanation[] }>(
+      `/trust/accounts/${accountId}/reconciliations/${reconciliationId}/explain`, { method: "POST" }),
+};

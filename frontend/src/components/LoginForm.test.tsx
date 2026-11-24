@@ -18,10 +18,10 @@ describe("LoginForm", () => {
 
   it("only returns people to a page of this app", () => {
     expect(safeNext("/clients/abc")).toBe("/clients/abc");
-    expect(safeNext("https://evil.test")).toBe("/documents");
-    expect(safeNext("//evil.test/path")).toBe("/documents");
-    expect(safeNext("/login")).toBe("/documents");
-    expect(safeNext(null)).toBe("/documents");
+    expect(safeNext("https://evil.test")).toBe("/home");
+    expect(safeNext("//evil.test/path")).toBe("/home");
+    expect(safeNext("/login")).toBe("/home");
+    expect(safeNext(null)).toBe("/home");
   });
 
   it("offers the demo people when sign-in is not configured", () => {

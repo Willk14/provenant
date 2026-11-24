@@ -2,29 +2,35 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 
 import { AUTH_MODE, supabase } from "@/lib/auth";
 import { PERSONAS, setPersona } from "@/lib/identity";
+import { todoApi } from "@/lib/todo";
 import { usePersona } from "@/lib/usePersona";
 
+// Matters, clients and tax, the trust account and the team are left out of the bar; their pages are still
+// reached from the items on To review.
 const LINKS = [
-  { href: "/documents", label: "Documents" },
-  { href: "/clients", label: "Clients & tax" },
-  { href: "/review", label: "Review queue" },
-  { href: "/matters", label: "Matters" },
-  { href: "/trust", label: "Trust account" },
-  { href: "/agents", label: "AI agents" },
-  { href: "/team", label: "Team" },
+  { href: "/home", label: "To review", also: ["/review", "/matters", "/docket", "/precedents", "/trust", "/clients", "/team"] },
+  { href: "/documents", label: "Documents", also: [] },
 ];
 
 export function TopBar() {
   const path = usePathname() ?? "";
   const router = useRouter();
   const persona = usePersona();
+  const [count, setCount] = useState(0);
+
+  // How many items wait for this person; refreshed as they move around the app.
+  useEffect(() => {
+    if (!persona) return;
+    todoApi.todo().then((t) => setCount(t.yours)).catch(() => setCount(0));
+  }, [persona, path]);
 
   return (
     <header className="topbar">
-      <Link href="/documents" className="brand">
+      <Link href="/home" className="brand">
         <span className="brand-mark" aria-hidden>
           P
         </span>
@@ -32,8 +38,10 @@ export function TopBar() {
       </Link>
       <nav className="nav">
         {LINKS.map((l) => (
-          <Link key={l.href} href={l.href} aria-current={path.startsWith(l.href) ? "page" : undefined}>
+          <Link key={l.href} href={l.href}
+            aria-current={[l.href, ...l.also].some((h) => path.startsWith(h)) ? "page" : undefined}>
             {l.label}
+            {l.href === "/home" && count > 0 && <span className="nav-count">{count}</span>}
           </Link>
         ))}
       </nav>

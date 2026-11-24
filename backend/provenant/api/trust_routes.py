@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from provenant.api import practice_ai
 from provenant.api.auth import PARTNER, PREPARER, REVIEWER, Principal
 from provenant.api.db import MatterRow, TrustAccountRow, TrustEntryRow, TrustReconciliationRow
 from provenant.api.services import MAX_UPLOAD_BYTES, Conflict, Forbidden, Invalid, NotFound, require
@@ -253,6 +254,24 @@ def add_routes(app: FastAPI, Auth, Db) -> None:  # noqa: N803 - FastAPI dependen
                             as_of: Annotated[date, Form()], bank_balance: Annotated[str, Form(max_length=32)]) -> dict:
         data = statement.file.read(MAX_UPLOAD_BYTES + 1)
         return _reconciliation_out(prepare(s, p, account_id, as_of, bank_balance, data))
+
+    @app.post("/trust/accounts/{account_id}/reconciliations/{reconciliation_id}/explain")
+    def post_explain(account_id: str, reconciliation_id: str, p: Auth, s: Db) -> dict:
+        """Claude's likely causes for the unmatched items (ADR 0020). Nothing is changed or approved."""
+        require(p, PREPARER, REVIEWER, PARTNER)
+        if not practice_ai.enabled():
+            raise Conflict("Claude is off: turn it on for the AI agents to explain a reconciliation")
+        row = s.scalar(select(TrustReconciliationRow).where(TrustReconciliationRow.tenant_id == p.tenant_id,
+                                                            TrustReconciliationRow.account_id == account_id,
+                                                            TrustReconciliationRow.id == reconciliation_id))
+        if row is None:
+            raise NotFound("reconciliation not found")
+        paper = json.loads(row.result)
+        got = practice_ai.explain_reconciliation(paper["outstanding"], paper["unrecorded"], paper["alerts"],
+                                                 practice_ai.factory_of(s), p.tenant_id)
+        if got is None:
+            raise Conflict("Claude could not explain this reconciliation; try again")
+        return {"explanations": got}
 
     @app.post("/trust/accounts/{account_id}/reconciliations/{reconciliation_id}/approve")
     def post_approve(account_id: str, reconciliation_id: str, p: Auth, s: Db) -> dict:

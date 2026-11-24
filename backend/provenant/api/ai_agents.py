@@ -78,9 +78,11 @@ def engine_status() -> EngineOut:
                                    and os.environ.get("PROVENANT_LEGAL_ENVIRONMENT_ID")):
         return EngineOut(mode="needs_setup", label="Managed agent not set up", model=MODEL,
                          detail="Run scripts/setup_legal_agent.py and set the two ids it prints.")
-    how = "Provenant's own harness" if choice == "claude-api" else "Managed Agents"
+    how = ("Every agent runs through Provenant's own harness." if choice == "claude-api" else
+           "Contract agents run through Managed Agents; practice agents through Provenant's own harness.")
     return EngineOut(mode="claude", label="Claude is on", model=MODEL,
-                     detail=f"Runs through {how}. Each run costs money and sends that contract's text to Anthropic.")
+                     detail=f"{how} Each run costs money and sends what that agent reads (a contract, a court notice, "
+                            "party names, unmatched trust items) to Anthropic.")
 
 
 def _count(s: Session, row, *where) -> int:

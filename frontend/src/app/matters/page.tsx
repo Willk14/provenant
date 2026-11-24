@@ -76,6 +76,7 @@ export default function MattersPage() {
         <div className="practice-row">
           <Link className="btn btn-sm" href="/docket">Docket</Link>
           <Link className="btn btn-sm" href="/precedents">Precedents</Link>
+          <Link className="btn btn-sm" href="/trust">Trust account</Link>
         </div>
       </div>
       {error && <div className="error-banner">{error}</div>}

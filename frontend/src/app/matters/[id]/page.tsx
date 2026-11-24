@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
+import { KycRequest } from "@/components/ClaudeAssist";
 import { DueDiligence, MatterDocket, PrecedentDrafts } from "@/components/MatterAgents";
 import { formatDate } from "@/lib/format";
 import { practiceApi, STATUS_PILL, STATUS_WORD, type Matter } from "@/lib/practice";
@@ -94,7 +95,7 @@ export default function MatterPage() {
               <tr key={i}>
                 <td>{h.party}<div className="faint" style={{ fontSize: 12 }}>{h.party_role}</div></td>
                 <td>{h.matched}<div className="faint" style={{ fontSize: 12 }}>{h.matched_role} · {h.source}</div></td>
-                <td className="muted">{h.reason}</td>
+                <td className="muted">{h.found_by === "claude" ? <><span className="pill pill-manual">Claude</span> {h.reason.replace(/^Claude: /, "")}</> : h.reason}</td>
                 <td><span className={`pill ${KIND_PILL[h.kind]}`}>{KIND_WORD[h.kind]}</span></td>
               </tr>
             ))}</tbody>
@@ -122,6 +123,7 @@ export default function MatterPage() {
             {matter.file_gaps.length ? `${matter.file_gaps.length} gap${matter.file_gaps.length === 1 ? "" : "s"}` : "Complete"}</span>
         </div>
         {matter.file_gaps.length > 0 && <ul className="practice-list">{matter.file_gaps.map((g) => <li key={g.item}><b>{g.problem}:</b> {g.detail}</li>)}</ul>}
+        {matter.file_gaps.length > 0 && <KycRequest matterId={matter.id} />}
         {matter.requirements.map((r) => (
           <div key={r.id} className="practice-row space practice-item">
             <span><b>{r.label}</b> <span className="faint">{r.filename}{r.expires_on ? ` · expires ${formatDate(r.expires_on)}` : ""} · from {r.provided_by}</span></span>

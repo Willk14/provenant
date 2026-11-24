@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from provenant.api import practice_ai
 from provenant.api.auth import PARTNER, PREPARER, REVIEWER
 from provenant.api.db import CourtHolidayRow, CourtNoticeRow, DeadlineRuleRow, DocketEntryRow, MatterRow
 from provenant.api.matters import _event, get_matter
@@ -129,11 +130,13 @@ def add_routes(app: FastAPI, Auth, Db) -> None:  # noqa: N803 - FastAPI dependen
         until a person confirms the event."""
         require(p, *ANY)
         matter = get_matter(s, p.tenant_id, matter_id)
-        reading = engine.read_notice(body.text)
+        reading = practice_ai.read_notice(body.text, practice_ai.factory_of(s), p.tenant_id)             if practice_ai.enabled() else None
+        if reading is None:  # Claude is off or its reading did not pass the checks: the rules-based reader
+            rules = engine.read_notice(body.text)
+            reading = {"case_number": rules.case_number, "event": rules.event,
+                       "dates": [d.isoformat() for d in rules.dates], "evidence": rules.evidence, "reader": "rules"}
         row = CourtNoticeRow(tenant_id=p.tenant_id, matter_id=matter.id, text=body.text, status="new",
-                             reading=json.dumps({"case_number": reading.case_number, "event": reading.event,
-                                                 "dates": [d.isoformat() for d in reading.dates],
-                                                 "evidence": reading.evidence}), created_by=p.user)
+                             reading=json.dumps(reading), created_by=p.user)
         s.add(row)
         _event(s, matter, "notice_received", p.user)
         s.commit()

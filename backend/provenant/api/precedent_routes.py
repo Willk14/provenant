@@ -3,13 +3,16 @@ import json
 from datetime import date
 from typing import Literal
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from provenant.api import practice_ai
 from provenant.api.auth import PARTNER, PREPARER, REVIEWER, Principal
-from provenant.api.db import MatterPartyRow, PrecedentDraftRow, PrecedentRow, PrecedentVersionRow
+from provenant.api.db import (Document, MatterDocumentRow, MatterPartyRow, PrecedentDraftRow, PrecedentRow,
+                              PrecedentVersionRow)
+from provenant.extraction.pdftext import open_pages
 from provenant.api.matters import _event, get_matter
 from provenant.api.services import Conflict, Forbidden, Invalid, NotFound, require
 from provenant.practice import precedents as engine
@@ -161,6 +164,36 @@ def add_routes(app: FastAPI, Auth, Db) -> None:  # noqa: N803 - FastAPI dependen
         _event(s, matter, "precedent_drafted", p.user, f"{precedent.name} v{version.version}")
         s.commit()
         return _draft_out(s, row)
+
+    @app.post("/matters/{matter_id}/precedent-drafts/suggest")
+    def suggest_values(matter_id: str, body: DraftIn, request: Request, p: Auth, s: Db) -> dict:
+        """Claude reads the matter's documents for the precedent's empty fields and quotes where each value comes
+        from (ADR 0020). The values go into the form for a person to check; Claude never writes a clause."""
+        require(p, *ANY)
+        if not practice_ai.enabled():
+            raise Conflict("Claude is off: turn it on for the AI agents to suggest values")
+        matter = get_matter(s, p.tenant_id, matter_id)
+        precedent = get_precedent(s, p.tenant_id, body.precedent_id)
+        version = _version(s, p.tenant_id, precedent.id, precedent.current_version)
+        facts = matter_facts(s, matter)
+        empty = [f for f in engine.fields(version.body) if not facts.get(f) and not body.values.get(f, "").strip()]
+        docs = s.scalars(select(Document).join(MatterDocumentRow, MatterDocumentRow.document_id == Document.id)
+                         .where(MatterDocumentRow.tenant_id == p.tenant_id, MatterDocumentRow.matter_id == matter.id))
+        documents = []
+        for d in docs:
+            try:
+                with open_pages(request.app.state.store.get(d.sha256)) as pages:
+                    documents.append((d.filename, [page.text for page in pages]))
+            except Exception:  # an unreadable file is left out, not fatal
+                continue
+        if not empty:
+            return {"empty": [], "suggestions": [], "documents": len(documents)}
+        if not documents:
+            raise Conflict("link the matter's contracts under Due diligence first: Claude reads values from them")
+        got = practice_ai.suggest_fields(empty, facts, documents, practice_ai.factory_of(s), p.tenant_id)
+        if got is None:
+            raise Conflict("Claude could not read the documents; try again")
+        return {"empty": empty, "suggestions": got, "documents": len(documents)}
 
     @app.put("/matters/{matter_id}/precedent-drafts/{draft_id}")
     def edit_draft(matter_id: str, draft_id: str, body: DraftEditIn, p: Auth, s: Db) -> dict:

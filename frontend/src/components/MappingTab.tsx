@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { formatAmount } from "@/lib/format";
 import { TREATMENT_LABELS, taxApi, type Account, type Mapping } from "@/lib/tax";
 
+const CLAUDE_RULE_PREFIX = "claude: ";
 const STATUS_PILL = { unmapped: "pill-bad", suggested: "pill-warn", confirmed: "pill-ok" } as const;
 const STATUS_LABEL = { unmapped: "Unmapped", suggested: "Suggested", confirmed: "Confirmed" } as const;
 const FIRM_RULE_PREFIX = "firm: "; // matches provenant.tax.mapping.FIRM_RULE_PREFIX
@@ -20,6 +21,7 @@ export function MappingTab({ clientId, yearEnd, onChanged }: Props) {
   const [filter, setFilter] = useState<"attention" | "all">("attention");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [claudeNote, setClaudeNote] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -39,6 +41,24 @@ export function MappingTab({ clientId, yearEnd, onChanged }: Props) {
   const counts = { unmapped: 0, suggested: 0, confirmed: 0 };
   mapping.accounts.forEach((a) => counts[a.status]++);
   const shown = filter === "all" ? mapping.accounts : mapping.accounts.filter((a) => a.status !== "confirmed");
+
+  async function mapWithClaude() {
+    setBusy(true);
+    setError(null);
+    setClaudeNote(null);
+    try {
+      const got = await taxApi.mapWithClaude(clientId, yearEnd);
+      setClaudeNote(got.sent === 0 ? "Every account is already mapped by the firm's practice or confirmed by a person."
+        : `Claude suggested ${got.suggested} of ${got.sent} account${got.sent === 1 ? "" : "s"}`
+          + (got.left ? `; ${got.left} left for you to map.` : ".") + " Check each one, then confirm.");
+      await load();
+      onChanged();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function confirmAll() {
     setBusy(true);
@@ -68,11 +88,15 @@ export function MappingTab({ clientId, yearEnd, onChanged }: Props) {
               All accounts
             </button>
           </div>
+          <button className="btn btn-sm" disabled={busy || counts.unmapped + counts.suggested === 0} onClick={mapWithClaude}>
+            {busy ? "Working…" : "Map with Claude"}
+          </button>
           <button className="btn btn-primary btn-sm" disabled={busy || counts.suggested === 0} onClick={confirmAll}>
             Confirm {counts.suggested} suggestions
           </button>
         </div>
         {error && <div className="error-banner">{error}</div>}
+        {claudeNote && <div className="callout callout-ok">{claudeNote}</div>}
         <div className="card table-scroll">
           {shown.length === 0 ? (
             <div className="empty">Every account is mapped and confirmed. The tax computation can run.</div>
@@ -158,6 +182,7 @@ function AccountRow({
   );
   const changed = fsLine !== (account.fs_line ?? "") || treatment !== (account.tax_treatment ?? "");
   const fromFirm = account.rule?.startsWith(FIRM_RULE_PREFIX) ?? false;
+  const fromClaude = account.rule?.startsWith(CLAUDE_RULE_PREFIX) ?? false;
 
   async function save() {
     setBusy(true);
@@ -177,10 +202,15 @@ function AccountRow({
         <div style={{ fontWeight: 550 }}>
           <span className="mono faint">{account.code}</span> {account.name}
         </div>
-        <span className={`pill ${STATUS_PILL[account.status]}`} title={account.rule && !fromFirm ? `Suggested by keyword rule: ${account.rule}` : undefined}>
+        <span className={`pill ${STATUS_PILL[account.status]}`} title={account.rule && !fromFirm && !fromClaude ? `Suggested by keyword rule: ${account.rule}` : undefined}>
           {STATUS_LABEL[account.status]}
           {account.confirmed_by ? ` · ${account.confirmed_by}` : ""}
         </span>
+        {fromClaude && account.status === "suggested" && (
+          <div className="faint" style={{ fontSize: 12, marginTop: 3 }}>
+            <span className="pill pill-manual">Claude</span> {account.rule?.slice(CLAUDE_RULE_PREFIX.length)}
+          </div>
+        )}
         {fromFirm && account.status === "suggested" && (
           <div className="faint" style={{ fontSize: 12, marginTop: 3 }}>
             Firm practice: {account.rule?.slice(FIRM_RULE_PREFIX.length)}

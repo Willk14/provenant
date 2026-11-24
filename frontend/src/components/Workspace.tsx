@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { AskTab } from "@/components/AskTab";
 import { CovenantsPanel } from "@/components/CovenantsPanel";
 import { DraftingPanel } from "@/components/DraftingPanel";
 import { LegalReviewPanel } from "@/components/LegalReviewPanel";
@@ -24,7 +25,7 @@ import {
 } from "@/lib/types";
 import { usePersona } from "@/lib/usePersona";
 
-export type Tab = "terms" | "schedule" | "review" | "drafts";
+export type Tab = "terms" | "schedule" | "review" | "drafts" | "ask";
 
 export function Workspace({ id, initialField, initialTab, initialCitation }: {
   id: string;
@@ -266,6 +267,11 @@ export function Workspace({ id, initialField, initialTab, initialCitation }: {
               Drafting
             </button>
           )}
+          {kind !== "amendment" && (
+            <button role="tab" aria-selected={tab === "ask"} onClick={() => setTab("ask")}>
+              Ask Claude
+            </button>
+          )}
         </div>
         <div className="panel-body">
           {!doc || !persona ? (
@@ -308,6 +314,8 @@ export function Workspace({ id, initialField, initialTab, initialCitation }: {
                 setFocus({ name: `finding:${citedId}`, nonce: Date.now() });
               }}
             />
+          ) : tab === "ask" && doc.kind !== "amendment" ? (
+            <AskTab contractId={doc.id} filename={doc.filename} />
           ) : doc.kind === "credit_agreement" ? (
             <CovenantsPanel
               doc={doc}

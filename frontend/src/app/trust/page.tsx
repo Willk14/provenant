@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { ReconciliationExplain } from "@/components/ClaudeAssist";
 import { formatAmount, formatDate } from "@/lib/format";
 import { practiceApi, type Reconciliation, type TrustAccount, type TrustEntry } from "@/lib/practice";
 import { usePersona } from "@/lib/usePersona";
@@ -144,6 +145,8 @@ export default function TrustPage() {
                 <li key={i}><span className={`pill ${a.severity === "hard" ? "pill-bad" : "pill-warn"}`}>{a.kind}</span> {a.message}</li>))}</ul>}
               {latest.workpaper.outstanding.length > 0 && <div className="faint" style={{ fontSize: 13 }}>
                 In transit: {latest.workpaper.outstanding.map((o) => `${o.reference || o.date} ${formatAmount(o.amount)}`).join(" · ")}</div>}
+              {(latest.workpaper.outstanding.length > 0 || latest.workpaper.unrecorded.length > 0) && !latest.approved_by && (
+                <ReconciliationExplain key={latest.id} accountId={account.id} reconciliationId={latest.id} />)}
               <table className="table">
                 <thead><tr><th>Client ledger</th><th style={{ textAlign: "right" }}>Balance</th><th style={{ textAlign: "right" }}>Last movement</th></tr></thead>
                 <tbody>{latest.workpaper.ledgers.map((l) => (

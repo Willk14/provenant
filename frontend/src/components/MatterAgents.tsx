@@ -13,6 +13,8 @@ import {
   type DocketEntry,
   type Precedent,
   type PrecedentDraft,
+  claudeApi,
+  type FieldSuggestion,
 } from "@/lib/practice2";
 import type { DocumentSummary } from "@/lib/types";
 
@@ -55,6 +57,8 @@ export function PrecedentDrafts({ matterId, open }: { matterId: string; open: bo
   const [precedentId, setPrecedentId] = useState("");
   const [values, setValues] = useState<Record<string, string>>({});
   const [include, setInclude] = useState<string[]>([]);
+  const [sources, setSources] = useState<Record<string, FieldSuggestion>>({});
+  const [hint, setHint] = useState<string | null>(null);
   if (!data) return <section className="card practice-form"><strong>Drafts from precedents</strong>{error && <div className="error-banner">{error}</div>}</section>;
   const [{ facts, drafts }, precedents] = data;
   const chosen: Precedent | undefined = precedents.find((p) => p.id === precedentId) ?? precedents[0];
@@ -74,7 +78,7 @@ export function PrecedentDrafts({ matterId, open }: { matterId: string; open: bo
             }}>
               <div className="practice-row">
                 <select className="input" value={chosen.id} aria-label="Precedent"
-                  onChange={(e) => { setPrecedentId(e.target.value); setValues({}); setInclude([]); }}>
+                  onChange={(e) => { setPrecedentId(e.target.value); setValues({}); setInclude([]); setSources({}); setHint(null); }}>
                   {precedents.map((p) => <option key={p.id} value={p.id}>{p.name} (v{p.version})</option>)}
                 </select>
                 {chosen.options.map((o) => (
@@ -90,10 +94,25 @@ export function PrecedentDrafts({ matterId, open }: { matterId: string; open: bo
                   <label key={f} className="field">{f.replace(/_/g, " ")}
                     <input className="input" value={values[f] ?? ""} placeholder={facts[f] || "leave blank to fill later"}
                       onChange={(e) => setValues({ ...values, [f]: e.target.value })} />
+                    {sources[f] && values[f] === sources[f].value && (
+                      <span className="faint claude-source">Claude, from {sources[f].source}: “{sources[f].quote}”</span>)}
                   </label>
                 ))}
               </div>
-              <div><button className="btn btn-primary btn-sm" disabled={busy}>Fill precedent</button></div>
+              <div className="practice-row">
+                <button className="btn btn-primary btn-sm" disabled={busy}>Fill precedent</button>
+                <button type="button" className="btn btn-sm" disabled={busy} onClick={() => void act(async () => {
+                  setHint(null);
+                  const got = await claudeApi.suggestValues(matterId, chosen.id, values);
+                  setValues((v) => ({ ...v, ...Object.fromEntries(got.suggestions.map((x) => [x.field, x.value])) }));
+                  setSources((s) => ({ ...s, ...Object.fromEntries(got.suggestions.map((x) => [x.field, x])) }));
+                  const left = got.empty.filter((f) => !got.suggestions.some((x) => x.field === f));
+                  setHint(got.empty.length === 0 ? "Every field already has a value."
+                    : left.length ? `Claude read ${got.documents} document${got.documents === 1 ? "" : "s"} and found no value for: ${left.join(", ")}.`
+                      : "Claude found a value for every empty field. Check each one against its source.");
+                })}>Suggest values with Claude</button>
+              </div>
+              {hint && <div className="faint" style={{ fontSize: 13 }}>{hint}</div>}
             </form>
           )}
       {drafts.map((d) => <DraftCard key={`${d.id}-${d.updated_at}`} draft={d} busy={busy} act={act} matterId={matterId} />)}
@@ -220,7 +239,11 @@ function NoticeCard({ notice, busy, act, matterId }: {
   const [caseNumber, setCaseNumber] = useState(notice.reading.case_number ?? "");
   return (
     <div className="practice-draft">
-      <b>Notice to confirm</b>
+      <div className="practice-row space">
+        <b>Notice to confirm</b>
+        <span className={`pill ${notice.reading.reader === "claude" ? "pill-ok" : "pill-warn"}`}>
+          {notice.reading.reader === "claude" ? "Read by Claude" : "Read by the rules reader"}</span>
+      </div>
       <div className="faint" style={{ fontSize: 12 }}>
         Read: {notice.reading.event ? `“${notice.reading.evidence.event}”` : "no event found"}
         {notice.reading.dates.length ? ` · dates ${notice.reading.dates.map((d) => `“${notice.reading.evidence[d]}”`).join(", ")}` : ""}

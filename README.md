@@ -196,6 +196,19 @@ proposes the event and dates for a person to confirm, then computes deadlines fr
 and exports them as a calendar file. **Due diligence** links contracts to a matter, reviews them all and shows one
 matrix of deviations by topic, with an Excel export.
 
+**Claude in every agent (ADR 0020).** When Claude is on, the practice agents use it too: it reads court notices,
+takes a second look for conflict matches spelling misses, suggests precedent field values quoted from the matter's
+documents, explains trust reconciliation breaks and drafts the KYC request to the client. Every answer is checked
+against its source before it is shown; the rules still count days and money, and a person still decides.
+
+**To review (ADR 0021).** The home page lists everything waiting for a person across the firm (deadlines, mappings,
+figures, findings, drafts, conflict checks, notices, reconciliations and KYC), who prepared each item, and whether you
+may decide it. The top bar holds To review and Documents; the other pages are reached from the items.
+
+**Mapping agent (ADR 0022).** "Map with Claude" on a client's mapping tab suggests a financial statement line and tax
+treatment, with a reason, for each account the firm's practice and keyword rules could not place. Suggestions are
+checked before they are saved and still need a person to confirm them.
+
 The **AI agents** tab shows whether Claude is on and has a contract chat (ADR 0016). Answers must quote the contract,
 and any figure must appear in the quote or the question. Chats are private to their author.
 

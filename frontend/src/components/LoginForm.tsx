@@ -9,7 +9,7 @@ import { PERSONAS, setPersona } from "@/lib/identity";
 
 /** Only send people back to a page of this app, never to another site. */
 export function safeNext(next: string | null): string {
-  return next && next.startsWith("/") && !next.startsWith("//") && !next.startsWith("/login") ? next : "/documents";
+  return next && next.startsWith("/") && !next.startsWith("//") && !next.startsWith("/login") ? next : "/home";
 }
 
 export function LoginForm() {

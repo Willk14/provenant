@@ -33,6 +33,7 @@ from provenant.api import (
     services,
     statements,
     tax_routes,
+    todo,
     trust_routes,
     variance,
 )
@@ -607,6 +608,7 @@ def create_app(
     trust_routes.add_routes(app, Auth, Db)
     precedent_routes.add_routes(app, Auth, Db)
     docket_routes.add_routes(app, Auth, Db)
+    todo.add_routes(app, Auth, Db)
     diligence_routes.add_routes(app, Auth, Db)
     etims.add_routes(app, Auth, Db)
     variance.add_routes(app, Auth, Db)

@@ -25,11 +25,12 @@ from provenant.api.db import (
     TrustEntryRow,
     WatchlistEntryRow,
 )
+from provenant.api import practice_ai
 from provenant.api.inbox import _allowed
 from provenant.api.services import MAX_UPLOAD_BYTES, Conflict, Forbidden, Invalid, NotFound, require
 from provenant.api.storage import BlobStore
 from provenant.practice import completeness as kyc
-from provenant.practice.conflicts import Known, Party, check
+from provenant.practice.conflicts import Known, Party, _kind, check, similarity
 
 ANY = (PREPARER, REVIEWER, PARTNER)
 ROLES = ("client", "counterparty", "related", "beneficial_owner")
@@ -55,6 +56,28 @@ def _next_reference(s: Session, tenant_id: str) -> str:
     return f"M-{year}-{count + 1:03d}"
 
 
+SECOND_LOOK_NAMES = 400  # known names sent to Claude at most, closest first
+
+
+def _second_look(s: Session, tenant_id: str, parties: list[Party], known: list[Known], hits: list[dict]) -> list[dict]:
+    """Claude looks for matches spelling misses (ADR 0020). It adds candidates; it never removes one the rules found."""
+    if not practice_ai.enabled() or not parties or not known:
+        return []
+    found = {(h["party"], h["matched"], h["source"]) for h in hits}
+    pool = [k for k in known if not any((x.name, k.name, k.source) in found for x in parties)]
+    pool.sort(key=lambda k: -max(similarity(x.name, k.name) for x in parties))
+    pool = pool[:SECOND_LOOK_NAMES]
+    got = practice_ai.conflict_second_look([(x.name, x.role) for x in parties], [(k.name, k.role, k.source) for k in pool],
+                                           set(), practice_ai.factory_of(s), tenant_id)
+    out = []
+    for m in got or []:
+        x, k = parties[m["party"]], pool[m["known"]]
+        out.append({"party": x.name, "party_role": x.role, "matched": k.name, "matched_role": k.role,
+                    "source": k.source, "score": round(similarity(x.name, k.name), 3), "kind": _kind(x.role, k.role),
+                    "reason": f"Claude: {m['reason']}", "found_by": "claude"})
+    return out
+
+
 def run_conflict_check(s: Session, p: Principal, matter: MatterRow) -> ConflictCheckRow:
     """Compare this matter's parties with every other matter's parties and the firm's screening lists."""
     parties = [Party(x.name, x.role, x.identifier or "") for x in s.scalars(select(MatterPartyRow).where(
@@ -64,8 +87,9 @@ def run_conflict_check(s: Session, p: Principal, matter: MatterRow) -> ConflictC
     known = [Known(x.name, x.role, ref, x.identifier or "") for x, ref in others]
     known += [Known(w.name, "watchlist", w.list_name + (f" ({w.reference})" if w.reference else ""), w.identifier or "")
               for w in s.scalars(select(WatchlistEntryRow).where(WatchlistEntryRow.tenant_id == p.tenant_id))]
-    hits = check(parties, known)
-    row = ConflictCheckRow(tenant_id=p.tenant_id, matter_id=matter.id, hits=json.dumps([asdict(h) for h in hits]),
+    hits = [{**asdict(h), "found_by": "rules"} for h in check(parties, known)]
+    hits += _second_look(s, p.tenant_id, parties, known, hits)
+    row = ConflictCheckRow(tenant_id=p.tenant_id, matter_id=matter.id, hits=json.dumps(hits),
                            compared=len(known), status="pending", run_by=p.user)
     s.add(row)
     _event(s, matter, "conflict_check", p.user, f"{len(hits)} possible match{'es' if len(hits) != 1 else ''} "
@@ -347,6 +371,25 @@ def add_routes(app: FastAPI, Auth, Db, store: BlobStore) -> None:  # noqa: N803 
             select(PractisingCertificateRow).where(PractisingCertificateRow.tenant_id == p.tenant_id))]
         return {"as_of": today.isoformat(), "requirements_version": kyc.REQUIREMENTS_VERSION, "matters": matters,
                 "certificates": [asdict(g) for g in kyc.certificate_gaps([a.lower() for a in advocates], certs, today)]}
+
+    @app.post("/matters/{matter_id}/kyc-request")
+    def kyc_request(matter_id: str, p: Auth, s: Db) -> dict:
+        """Claude drafts the letter asking the client for what the file audit found missing (ADR 0020). It is a draft
+        for the lawyer to edit and send; Provenant does not send it."""
+        require(p, *ANY)
+        if not practice_ai.enabled():
+            raise Conflict("Claude is off: turn it on for the AI agents to draft the request")
+        m = get_matter(s, p.tenant_id, matter_id)
+        missing = [g.label for g in matter_gaps(s, m, date.today())]
+        if not missing:
+            raise Conflict("the file has nothing missing")
+        client = " and ".join(x.name for x in s.scalars(select(MatterPartyRow).where(
+            MatterPartyRow.tenant_id == p.tenant_id, MatterPartyRow.matter_id == m.id, MatterPartyRow.role == "client")))
+        letter = practice_ai.kyc_request(client or "the client", f"{m.reference} ({m.title})", missing,
+                                         practice_ai.factory_of(s), p.tenant_id)
+        if letter is None:
+            raise Conflict("Claude could not draft the request; try again")
+        return {"letter": letter, "asks_for": missing}
 
     @app.get("/practice/certificates")
     def certificates(p: Auth, s: Db) -> list[dict]:

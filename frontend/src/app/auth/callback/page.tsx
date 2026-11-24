@@ -32,7 +32,7 @@ export default function AuthCallback() {
     const settle = (signedIn: boolean) => {
       if (!signedIn) return;
       if (needsPassword) setState("password");
-      else router.replace("/documents");
+      else router.replace("/home");
     };
     void client.auth.getSession().then(({ data }) => settle(!!data.session));
     const { data } = client.auth.onAuthStateChange((event, session) => {
@@ -68,7 +68,7 @@ export default function AuthCallback() {
             void supabase()?.auth.updateUser({ password }).then(({ error }) => {
               setBusy(false);
               if (error) setMessage(error.message);
-              else router.replace("/documents");
+              else router.replace("/home");
             });
           }}>
             <h1>Choose a password</h1>
