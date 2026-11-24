@@ -197,8 +197,32 @@ export function UploadBox({ agreements, onContractsChanged }: {
     }
   }
 
+  const choose = (next: KindKey) => {
+    setKind(next);
+    setError(null);
+    setDone(null);
+  };
+  const inGroup = (g: (typeof GROUPS)[number]) => (Object.keys(KINDS) as KindKey[]).filter((k) => KINDS[k].group === g);
+
   return (
     <div className="upload-box">
+      <div className="upload-types">
+        <div className="tabs upload-groups" role="tablist" aria-label="Kind of document">
+          {GROUPS.map((g) => (
+            <button key={g} type="button" role="tab" aria-selected={spec.group === g}
+              onClick={() => spec.group !== g && choose(inGroup(g)[0])}>
+              {g} <span className="tab-count">{inGroup(g).length}</span>
+            </button>
+          ))}
+        </div>
+        <div className="upload-kinds" role="group" aria-label={`${spec.group} you can upload`}>
+          {inGroup(spec.group).map((k) => (
+            <button key={k} type="button" className="kind-chip" aria-pressed={kind === k} onClick={() => choose(k)}>
+              {KINDS[k].label}
+            </button>
+          ))}
+        </div>
+      </div>
       <div
         className="dropzone"
         data-over={over}
@@ -218,20 +242,6 @@ export function UploadBox({ agreements, onContractsChanged }: {
           <strong>Drop {spec.multiple ? `${spec.label.toLowerCase()} PDFs` : `a ${spec.label.toLowerCase()}`} here</strong>
           <div className="muted" style={{ fontSize: 13 }}>{spec.hint}</div>
         </div>
-        <select className="input" value={kind} aria-label="What are you uploading?"
-          onChange={(e) => {
-            setKind(e.target.value as KindKey);
-            setError(null);
-            setDone(null);
-          }}>
-          {GROUPS.map((g) => (
-            <optgroup key={g} label={g}>
-              {(Object.keys(KINDS) as KindKey[]).filter((k) => KINDS[k].group === g).map((k) => (
-                <option key={k} value={k}>{KINDS[k].label}</option>
-              ))}
-            </optgroup>
-          ))}
-        </select>
         <input ref={input} type="file" accept={spec.accept} multiple={spec.multiple} hidden
           onChange={(e) => void upload(e.target.files)} />
         <button className="btn btn-primary" disabled={busy} onClick={() => input.current?.click()}>
