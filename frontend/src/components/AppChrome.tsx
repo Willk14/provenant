@@ -3,11 +3,11 @@
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
-import { TopBar } from "@/components/TopBar";
+import { Sidebar } from "@/components/Sidebar";
 import { api } from "@/lib/api";
 import { AUTH_MODE, PUBLIC_PATHS, supabase } from "@/lib/auth";
 
-/** The app's frame: public pages stand alone; app pages get the top bar and, with Supabase, need a signed-in user. */
+/** The app's frame: public pages stand alone; app pages get the sidebar and, with Supabase, need a signed-in user. */
 export function AppChrome({ children }: { children: React.ReactNode }) {
   const path = usePathname() ?? "/";
   const router = useRouter();
@@ -36,8 +36,10 @@ export function AppChrome({ children }: { children: React.ReactNode }) {
   if (isPublic) return <>{children}</>;
   return (
     <>
-      <TopBar />
-      {allowed ? children : <div className="empty">Checking your sign-in…</div>}
+      <div className="app-shell">
+        <Sidebar />
+        <div className="app-main">{allowed ? children : <div className="empty">Checking your sign-in…</div>}</div>
+      </div>
     </>
   );
 }
