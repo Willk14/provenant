@@ -2246,6 +2246,18 @@ button.chip {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
+.landing-grid-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.landing-card .landing-eyebrow {
+  margin-bottom: 10px;
+}
+
+.landing-card.landing-pillar {
+  border-top: 3px solid var(--accent);
+}
+
 .landing-card {
   padding: 20px;
   border: 1px solid var(--line);
@@ -2329,6 +2341,7 @@ button.chip {
 @media (max-width: 900px) {
   .landing-hero,
   .landing-grid,
+  .landing-grid-2,
   .landing-grid-4,
   .landing-steps {
     grid-template-columns: minmax(0, 1fr);

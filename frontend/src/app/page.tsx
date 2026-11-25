@@ -1,83 +1,58 @@
 import Link from "next/link";
 
-const AUDIENCES = [
+const FIRMS = [
   {
-    id: "law",
-    who: "Law firms",
-    headline: "Review and draft faster, with every point tied to the clause.",
-    body: "Give associates and paralegals an AI agent that reads only the contract in front of it and cites the exact words it relied on.",
+    id: "larger",
+    who: "Larger firms",
+    headline: "Consistency across every team, however complex the work.",
+    body: "As matters grow and clients expect more, the same playbook, precedents and checks need to hold in every department and for every associate.",
     gets: [
-      "Contract review against your firm's own playbook",
-      "Plain-language answers that quote the clause and page",
+      "Contracts reviewed against the firm's own playbook, the same way every time",
+      "Drafts filled from locked precedents, with any departure shown to a partner",
+      "Conflict checks, KYC and deadlines in one place for every matter",
+      "Maker-checker sign-off and a history nobody can rewrite",
+    ],
+  },
+  {
+    id: "independent",
+    who: "Independent practices",
+    headline: "Practical tools that let a small team move like a large one.",
+    body: "Do the first pass in minutes rather than hours, and compete on speed and quality without adding staff.",
+    gets: [
+      "Ask a contract a question and get the answer with the clause and page",
       "First drafts of notices, amendments and letters, with gaps left visible",
-      "A lawyer approves every finding and draft before it counts",
+      "Court notices turned into deadlines, with weekends and court holidays counted",
+      "One list each morning of what is waiting for you",
     ],
+  },
+];
+
+const PILLARS = [
+  {
+    title: "Built for Kenyan law",
+    body: "Deadlines follow the rules and court holidays your firm sets, conflict and KYC checks follow Kenyan practice, and tax work follows the Income Tax Act.",
   },
   {
-    id: "agents",
-    who: "Tax and property agents",
-    headline: "Turn client paperwork into filed-ready working papers.",
-    body: "Bring in trial balances, ledgers, statements and leases, and hand clients figures you can defend line by line.",
-    gets: [
-      "Kenya corporation tax computations with capital allowances and instalments",
-      "eTIMS, VAT, PAYE and withholding tax checks against the books",
-      "Lease terms such as rent, escalations and options read straight from the PDF",
-      "One Excel working-papers pack per client year",
-    ],
+    title: "Built for legal professionals",
+    body: "Matters, precedents, the docket, the client account and due diligence, organised the way advocates already work, with a qualified person deciding every step.",
   },
   {
-    id: "finance",
-    who: "Finance teams and lenders",
-    headline: "Know where every number came from before anyone asks.",
-    body: "Close the gap between the contract and the ledger, from lease accounting to the covenant certificate.",
-    gets: [
-      "IFRS 16 schedules built from verified lease terms and amendments",
-      "Leverage, interest cover and liquidity tested each quarter",
-      "Cure windows, step-ups and agreement-defined EBITDA handled",
-      "A maker-checker trail that holds up in audit",
-    ],
+    title: "Powered by legal AI",
+    body: "Claude reads, drafts and checks, and every answer is tied to the exact words it relied on. Anything it cannot show is never presented as fact.",
   },
+];
+
+const WORK = [
+  { title: "Analyse", body: "Review contracts against your playbook and see every finding on the page it came from." },
+  { title: "Draft", body: "Fill the firm's precedents and prepare letters and notices, with gaps left for a lawyer to complete." },
+  { title: "Manage", body: "Matters, deadlines, conflicts, KYC and the client account, with everything waiting for you in one list." },
 ];
 
 const PROOF = [
-  { title: "Traced, not typed", body: "Every figure opens the page and box, trial balance line or input it came from." },
-  { title: "AI that shows its working", body: "Quotes are located on the cited page in code, and any figure must appear in what was cited." },
+  { title: "Traced, not typed", body: "Every clause and figure opens the page, box or line it came from." },
+  { title: "AI that shows its working", body: "Quotes are found on the cited page in code, and any figure must appear in what was cited." },
   { title: "People sign off", body: "Nothing suggested is used until someone confirms it, and nobody approves their own work." },
   { title: "Your clients' data stays separate", body: "Each firm's data is walled off in the database, and history cannot be rewritten." },
-];
-
-const PROBLEMS = [
-  {
-    title: "Hours lost to retyping",
-    body: "Rent, rates, thresholds and balances are copied by hand from PDFs and exports into spreadsheets, one figure at a time.",
-  },
-  {
-    title: "Numbers nobody can trace",
-    body: "When a partner, client, KRA or an auditor asks where a figure came from, someone has to dig back through the file to find out.",
-  },
-  {
-    title: "AI that sounds sure but shows nothing",
-    body: "General chatbots answer about contracts from memory, with no page, no clause and no way to check them before relying on them.",
-  },
-  {
-    title: "Deadlines spread across too many tools",
-    body: "Tax computations, lease schedules and covenant certificates live in separate files, so dates and dependencies slip.",
-  },
-];
-
-const SOLUTION = [
-  {
-    title: "Read it once",
-    body: "Provenant reads leases, facility agreements, trial balances, ledgers and statements, and keeps a link from every figure to its source.",
-  },
-  {
-    title: "Let the agents do the first pass",
-    body: "Claude-powered agents review contracts, answer questions and draft letters, citing the exact words they used. Calculations follow Kenya tax rules, IFRS 16 and the agreement's own definitions.",
-  },
-  {
-    title: "Check, sign off and send",
-    body: "Reviewers confirm what was read, a different person approves, and the working papers export with a source on every line.",
-  },
 ];
 
 export default function Landing() {
@@ -89,9 +64,9 @@ export default function Landing() {
           Provenant
         </Link>
         <nav className="landing-links" aria-label="Page sections">
-          <a href="#problem">The problem</a>
-          <a href="#solution">The solution</a>
-          <a href="#law">Who it&apos;s for</a>
+          <a href="#firms">For your firm</a>
+          <a href="#pillars">Why Provenant</a>
+          <a href="#work">What it does</a>
           <a href="#trust">Why trust it</a>
         </nav>
         <Link href="/login" className="btn btn-primary">Sign in</Link>
@@ -100,30 +75,41 @@ export default function Landing() {
       <main>
         <section className="landing-hero landing-hero-solo">
           <div className="landing-hero-copy">
-            <span className="landing-eyebrow">For law firms, agents and finance teams in Kenya</span>
-            <h1>Every clause and every figure, traced to its source.</h1>
+            <span className="landing-eyebrow">Legal AI and workflow for Kenyan law firms</span>
+            <h1>Faster legal work, with every answer tied to its source.</h1>
             <p>
-              Lawyers, agents and finance teams spend hours copying figures out of documents, then more hours proving
-              where they came from. Provenant reads the documents, does the first pass with AI agents and Kenya-ready
-              calculations, and traces every clause and figure back to its source.
+              Larger firms are handling more complex matters, higher client expectations and the need for consistency
+              across teams. Independent practices need practical tools that help them move faster and compete with
+              confidence. Provenant brings legal AI and workflow together in one workspace, built for Kenyan law and
+              the way Kenyan advocates work.
             </p>
             <div className="landing-actions">
               <Link href="/login" className="btn btn-primary btn-lg">Sign in to your firm</Link>
-              <a href="#problem" className="btn btn-lg">See the problem we solve</a>
+              <a href="#firms" className="btn btn-lg">See how it helps your firm</a>
             </div>
           </div>
         </section>
 
-        <section id="problem" className="landing-section">
-          <span className="landing-kicker">The problem</span>
-          <h2>Professional work is still built on copy and paste.</h2>
-          <p className="landing-lead">
-            The judgement is what clients pay for, yet most of the hours go into moving numbers between documents and
-            then defending them.
-          </p>
-          <div className="landing-grid landing-grid-4">
-            {PROBLEMS.map((p) => (
-              <article key={p.title} className="landing-card landing-problem">
+        <section id="firms" className="landing-section landing-audiences" aria-label="For your firm">
+          <span className="landing-kicker">Whatever the size of your firm</span>
+          <div className="landing-grid landing-grid-2">
+            {FIRMS.map((f) => (
+              <article key={f.id} id={f.id} className="landing-card">
+                <span className="landing-eyebrow">{f.who}</span>
+                <h3>{f.headline}</h3>
+                <p>{f.body}</p>
+                <ul>{f.gets.map((g) => <li key={g}>{g}</li>)}</ul>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <section id="pillars" className="landing-section landing-band">
+          <span className="landing-kicker">Why Provenant</span>
+          <h2>Made for Kenyan legal practice, not adapted to it.</h2>
+          <div className="landing-grid">
+            {PILLARS.map((p) => (
+              <article key={p.title} className="landing-card landing-pillar">
                 <h3>{p.title}</h3>
                 <p>{p.body}</p>
               </article>
@@ -131,36 +117,18 @@ export default function Landing() {
           </div>
         </section>
 
-        <section id="solution" className="landing-section landing-band">
-          <span className="landing-kicker">The solution</span>
-          <h2>One workspace that reads, calculates and proves.</h2>
-          <p className="landing-lead">
-            Provenant does the reading and the first draft, and keeps the evidence attached. Your people keep the
-            judgement and the sign-off.
-          </p>
+        <section id="work" className="landing-section">
+          <span className="landing-kicker">What it does</span>
+          <h2>Analyse, draft and manage legal work with speed, structure and confidence.</h2>
           <ol className="landing-steps">
-            {SOLUTION.map((x) => <li key={x.title}><b>{x.title}.</b> {x.body}</li>)}
+            {WORK.map((x) => <li key={x.title}><b>{x.title}.</b> {x.body}</li>)}
           </ol>
         </section>
 
-        <section className="landing-section landing-audiences" aria-label="Who it is for">
-          <span className="landing-kicker">Who it is for</span>
-          {AUDIENCES.map((a) => (
-            <article key={a.id} id={a.id} className="landing-audience">
-              <span className="landing-eyebrow">{a.who}</span>
-              <h2>{a.headline}</h2>
-              <p className="landing-lead">{a.body}</p>
-              <ul className="landing-checks">
-                {a.gets.map((g) => <li key={g}>{g}</li>)}
-              </ul>
-            </article>
-          ))}
-        </section>
-
-        <section id="trust" className="landing-section">
+        <section id="trust" className="landing-section landing-band">
           <h2>Built to be checked, not just trusted</h2>
           <p className="landing-lead">
-            Professional work has to survive a partner&apos;s review, a client&apos;s questions and an audit. Provenant is
+            Legal work has to survive a partner&apos;s review, a client&apos;s questions and the court. Provenant is
             designed around that.
           </p>
           <div className="landing-grid landing-grid-4">
@@ -175,14 +143,14 @@ export default function Landing() {
 
         <section className="landing-cta">
           <h2>Spend your time on judgement, not on paperwork.</h2>
-          <p className="landing-lead">Bring one contract or one client year, and see every number trace back to its source.</p>
+          <p className="landing-lead">Bring one contract or one matter, and see every answer trace back to its source.</p>
           <Link href="/login" className="btn btn-primary btn-lg">Sign in</Link>
         </section>
       </main>
 
       <footer className="landing-footer">
         <span>Provenant</span>
-        <span>Outputs are working papers for qualified professionals, not tax, legal or investment advice.</span>
+        <span>Outputs are working papers for qualified professionals, not legal, tax or investment advice.</span>
       </footer>
     </div>
   );
