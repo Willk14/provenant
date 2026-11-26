@@ -99,3 +99,17 @@ def test_a_refused_invitation_is_not_recorded(client, monkeypatch):
     response = client.post("/members", headers=PARTNER, json={"email": "x@firm.co.ke", "roles": ["preparer"]})
     assert response.status_code == 409 and "rate limit" in response.json()["detail"]
     assert client.get("/members", headers=PARTNER).json() == []
+
+
+def test_demo_people_can_be_given_real_inboxes_for_local_email(database_url, tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from provenant.api.main import create_app
+
+    monkeypatch.setenv("PROVENANT_DEV_EMAILS", "pat@firm-a=Inbox+Pat@Example.com, broken-pair")
+    with TestClient(create_app(database_url, tmp_path / "storage", dev_auth=True)) as c:
+        me = c.get("/me", headers={"X-Tenant-Id": "firm-a", "X-User": "pat@firm-a", "X-Roles": "preparer"}).json()
+        assert me["user"] == "pat@firm-a"  # sign-in, and so maker-checker, still uses the demo name
+        assert me["email"] == "inbox+pat@example.com"
+        other = c.get("/me", headers={"X-Tenant-Id": "firm-a", "X-User": "rae@firm-a", "X-Roles": "reviewer"}).json()
+        assert other["email"] == "rae@firm-a"

@@ -352,6 +352,11 @@ def create_app(
 
     app = FastAPI(title="Provenant", version="0.3.0", summary="Every number knows where it came from.", lifespan=lifespan)
 
+    # Dev only: give the demo people real inboxes, e.g. PROVENANT_DEV_EMAILS="pat@demo-firm=you+pat@example.com,...",
+    # so work emails can be tried locally. Sign-in still uses the demo name; only the email address changes.
+    dev_emails = dict(pair.strip().lower().split("=", 1) for pair in os.environ.get("PROVENANT_DEV_EMAILS", "").split(",")
+                      if pair.count("=") == 1)
+
     def principal(
         authorization: Annotated[str | None, Header()] = None,
         x_tenant_id: Annotated[str | None, Header()] = None,
@@ -366,7 +371,7 @@ def create_app(
                 p = authenticator(token)
             else:  # dev only: roles default to all three so one person can click through locally
                 p = principal_from(x_tenant_id, x_user, x_roles or "preparer,reviewer,partner",
-                                   x_user if x_user and "@" in x_user else "")
+                                   dev_emails.get((x_user or "").lower()) or (x_user if x_user and "@" in x_user else ""))
         except AuthError as exc:
             raise HTTPException(401, str(exc), headers={"WWW-Authenticate": "Bearer"}) from exc
         if not p.roles:

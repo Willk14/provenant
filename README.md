@@ -181,6 +181,10 @@ a different reviewer or partner approves it. Provenant never sends a draft. `bas
 link, and partners invite staff from the **Team** page. Without them, the login page offers the development
 personas. `PROVENANT_SMTP_*` sends work notifications, and `PROVENANT_INBOUND_*` gives each firm an address for
 emailing in documents. See `deploy/staging.env.example` and `docs/adr/0017-sign-in-and-email.md`.
+Locally, `scripts/dev.py` reads these settings from the git-ignored `backend/.env`: `scripts/set-email.ps1` saves an
+SMTP login there and sends a test (`scripts/send_test_email.py`), `scripts/set-signin.ps1` saves the Supabase secret
+key and invites the first partner (`scripts/invite_first_partner.py`), and `PROVENANT_DEV_EMAILS` (`pat@demo-firm=you+pat@example.com,...`)
+gives the demo personas real inboxes while they still sign in by name.
 
 **Practice agents for law firms (ADR 0018, Phase 1).** **Matters** opens a matter from an intake form, checks every
 party against the firm's other matters and uploaded sanctions or PEP lists, and waits for a reviewer or partner other

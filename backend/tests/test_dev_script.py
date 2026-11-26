@@ -54,3 +54,22 @@ def test_a_server_still_recovering_is_retried_with_a_fresh_handle(monkeypatch):
                                postgres_server=SimpleNamespace(PostgresServer=SimpleNamespace(_instances=cache)))
     assert dev.start_postgres(pgserver, attempts=3) is ready
     assert seen == [{}, {}, {}]
+
+
+def test_email_settings_load_from_the_env_file_without_overriding_the_environment(tmp_path, monkeypatch):
+    for key in ("PROVENANT_SMTP_HOST", "PROVENANT_SMTP_PORT", "PROVENANT_SMTP_FROM", "PROVENANT_SMTP_USER"):
+        monkeypatch.delenv(key, raising=False)
+    dev = _dev()
+    monkeypatch.setenv("PROVENANT_SMTP_PORT", "465")  # already set: the file must not change it
+    env = tmp_path / ".env"
+    env.write_text("PROVENANT_SMTP_HOST=smtp-relay.brevo.com\nPROVENANT_SMTP_PORT=587\n"
+                   "# PROVENANT_SMTP_USER=commented-out\nPROVENANT_SMTP_FROM=\nPROVENANT_SUPABASE_REF=abc\n",
+                   encoding="utf-8")
+    dev.load_local_settings(env)
+    import os
+    assert os.environ["PROVENANT_SMTP_HOST"] == "smtp-relay.brevo.com"
+    assert os.environ["PROVENANT_SMTP_PORT"] == "465"
+    assert "PROVENANT_SMTP_FROM" not in os.environ  # empty values are skipped
+    assert "PROVENANT_SMTP_USER" not in os.environ  # comments are skipped
+    assert "PROVENANT_SUPABASE_REF" not in os.environ  # only email and link settings are loaded
+    monkeypatch.delenv("PROVENANT_SMTP_HOST")

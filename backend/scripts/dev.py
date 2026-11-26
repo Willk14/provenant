@@ -23,10 +23,32 @@ DATA = BACKEND / ".dev"
 PG_DIR = Path(os.environ.get("PROVENANT_DEV_PGDATA", Path(tempfile.gettempdir()) / "pv-pg"))
 APP_ROLE, APP_PASSWORD, DATABASE = "provenant_app", "provenant_app_dev", "provenant"
 
-os.environ.setdefault("PROVENANT_STORAGE_DIR", str(DATA / "storage"))
-# Development personas, unless real Supabase sign-in is configured (the two cannot be combined).
-os.environ["PROVENANT_DEV_AUTH"] = "0" if os.environ.get("PROVENANT_SUPABASE_URL") else "1"
-os.environ["PROVENANT_INLINE_WORKER"] = "1"
+LOCAL_SETTINGS = ("PROVENANT_SMTP_", "PROVENANT_INBOUND_", "PROVENANT_APP_URL", "PROVENANT_DEV_EMAILS",
+                  "PROVENANT_SUPABASE_URL", "PROVENANT_SUPABASE_SECRET_KEY")
+
+
+def load_local_settings(env_file: Path = BACKEND / ".env") -> None:
+    """Email, link and sign-in settings from the git-ignored backend/.env. Values already in the environment win, empty
+    values are skipped, and nothing is printed."""
+    if not env_file.exists():
+        return
+    for line in env_file.read_text(encoding="utf-8").splitlines():
+        if "=" not in line or line.lstrip().startswith("#"):
+            continue
+        key, value = (x.strip() for x in line.split("=", 1))
+        if key.startswith(LOCAL_SETTINGS) and value:
+            os.environ.setdefault(key, value)
+
+
+
+def configure_environment() -> None:
+    """Settings for the local server. Called from main(), not at import, so tests and helper scripts that import this
+    module do not pick up the real email and sign-in settings from backend/.env."""
+    os.environ.setdefault("PROVENANT_STORAGE_DIR", str(DATA / "storage"))
+    os.environ["PROVENANT_INLINE_WORKER"] = "1"
+    load_local_settings()
+    # Development personas, unless real Supabase sign-in is configured (the two cannot be combined).
+    os.environ["PROVENANT_DEV_AUTH"] = "0" if os.environ.get("PROVENANT_SUPABASE_URL") else "1"
 
 
 def start_postgres(pgserver, attempts: int = 36):
@@ -98,6 +120,7 @@ def main() -> None:
 
     from provenant.api.migrate import upgrade
 
+    configure_environment()
     reset = "--reset" in sys.argv
     if "--supabase" in sys.argv and (reset or "--sqlite" in sys.argv):
         raise SystemExit("--supabase cannot be combined with --reset or --sqlite")
@@ -123,6 +146,14 @@ def main() -> None:
         upgrade(owner)
         os.environ["DATABASE_URL"] = app
         print(f"Postgres: {app.split('@')[-1]} as {APP_ROLE} (row-level security on)")
+    if os.environ.get("PROVENANT_SUPABASE_URL"):
+        print(f"Sign-in: Supabase at {os.environ['PROVENANT_SUPABASE_URL']}; people sign in with their own email")
+    else:
+        print("Sign-in: demo people (Pat, Rae, Pam); set PROVENANT_SUPABASE_URL in backend/.env for real sign-in")
+    if os.environ.get("PROVENANT_SMTP_HOST") and os.environ.get("PROVENANT_SMTP_FROM"):
+        print(f"Email: sending through {os.environ['PROVENANT_SMTP_HOST']} as {os.environ['PROVENANT_SMTP_FROM']}")
+    else:
+        print("Email: not configured (set PROVENANT_SMTP_* in backend/.env); notifications are saved, not sent")
     uvicorn.run("provenant.api.main:app", host="127.0.0.1", port=int(os.environ.get("PORT", "8000")))
 
 
