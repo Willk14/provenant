@@ -43,6 +43,11 @@ cd backend && .venv/Scripts/python scripts/seed_demo.py         # two sample lea
 cd frontend && npm install && npm run dev                        # web app on http://localhost:3100
 ```
 
+On Windows, `powershell -ExecutionPolicy Bypass -File .\desktop\install.ps1` installs Provenant as an app: Start menu
+and desktop shortcuts that start both servers in the background (logs in `%LOCALAPPDATA%\Provenant\logs`, database in
+`%LOCALAPPDATA%\Provenant\pg`) and open it in its own Edge or Chrome window; "Stop Provenant" stops them, and
+`-Uninstall` removes the shortcuts.
+
 Switch between Pat (preparer), Rae (reviewer) and Pam (partner) in the top bar to see maker-checker at work.
 Click a term to find it on the PDF; on a term the extractor missed, choose "Mark on PDF" and drag a box; on the
 schedule tab, click any figure to see which contract terms produced it.
