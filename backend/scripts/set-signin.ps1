@@ -11,7 +11,7 @@ if (-not $projectUrl) { throw "Set NEXT_PUBLIC_SUPABASE_URL in frontend/.env.loc
 Write-Host "Supabase: Project Settings -> API Keys -> Secret keys. Copy the key that starts with sb_secret_."
 Write-Host ""
 $secure = Read-Host "Supabase secret key (hidden)" -AsSecureString
-$key = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)).Trim()
+$key = ([Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)) -replace "\x1b\[20[01]~", "" -replace "[\x00-\x20\x7f]", "")
 if (-not $key.StartsWith("sb_secret_")) { throw "That does not look like a Supabase secret key (sb_secret_...)." }
 $partner = (Read-Host "Email of the first partner (you)").Trim()
 if ($partner -notmatch "@") { throw "Enter an email address." }

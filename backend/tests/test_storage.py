@@ -68,3 +68,16 @@ def test_make_store_reads_the_environment(tmp_path, monkeypatch):
     monkeypatch.delenv("PROVENANT_S3_BUCKET", raising=False)
     with pytest.raises(RuntimeError, match="PROVENANT_S3_BUCKET"):
         make_store()
+
+
+def test_s3_compatible_endpoints_use_path_style_addressing(monkeypatch):
+    boto3 = pytest.importorskip("boto3")
+    seen = []
+    monkeypatch.setattr(boto3, "client", lambda *a, **kw: seen.append(kw) or object())
+    monkeypatch.setenv("PROVENANT_S3_ENDPOINT", "https://project.supabase.co/storage/v1/s3")
+    S3BlobStore("bucket")
+    assert seen[-1]["endpoint_url"] == "https://project.supabase.co/storage/v1/s3"
+    assert seen[-1]["config"].s3 == {"addressing_style": "path"}
+    monkeypatch.delenv("PROVENANT_S3_ENDPOINT")
+    S3BlobStore("bucket")  # AWS itself: the default addressing
+    assert seen[-1]["endpoint_url"] is None and seen[-1]["config"] is None

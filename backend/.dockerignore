@@ -9,3 +9,5 @@ storage
 golden/real/cache
 tests
 *.db
+.env
+.env.*

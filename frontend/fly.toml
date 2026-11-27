@@ -1,0 +1,21 @@
+# Provenant web app on Fly.io (deploy with deploy/fly/deploy.ps1).
+# Next.js resolves the /api rewrite and the Supabase public settings at build time, so the deploy script passes
+# PROVENANT_API_URL, NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY as build arguments.
+app = "provenant-ke"
+primary_region = "lhr"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[http_service]
+  internal_port = 3100
+  force_https = true
+  # The web app holds no state, so it may sleep when nobody is using it; the first visit wakes it in a few seconds.
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[vm]]
+  memory = "512mb"
+  cpu_kind = "shared"
+  cpus = 1

@@ -51,11 +51,15 @@ class S3BlobStore:
     def __init__(self, bucket: str, prefix: str = "", client=None, cache_dir: Path | None = None) -> None:
         if client is None:  # boto3 is an optional extra: pip install -e ".[s3]"
             import boto3
+            from botocore.config import Config
 
+            endpoint = os.environ.get("PROVENANT_S3_ENDPOINT") or None
             client = boto3.client(
                 "s3",
-                endpoint_url=os.environ.get("PROVENANT_S3_ENDPOINT") or None,
+                endpoint_url=endpoint,
                 region_name=os.environ.get("PROVENANT_S3_REGION") or None,
+                # S3-compatible services (Supabase Storage, MinIO, R2) address buckets by path, not by subdomain.
+                config=Config(s3={"addressing_style": "path"}) if endpoint else None,
             )
         self.client, self.bucket = client, bucket
         self.prefix = prefix.strip("/") + "/" if prefix.strip("/") else ""

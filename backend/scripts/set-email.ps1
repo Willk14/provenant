@@ -8,7 +8,7 @@ Write-Host "The sender must be an address you have verified in Brevo (Senders, d
 Write-Host ""
 $login = (Read-Host "SMTP login (looks like xxxx@smtp-brevo.com)").Trim()
 $secure = Read-Host "SMTP key (hidden)" -AsSecureString
-$key = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)).Trim()
+$key = ([Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)) -replace "\x1b\[20[01]~", "" -replace "[\x00-\x20\x7f]", "")
 $sender = (Read-Host "Sender email you verified in Brevo").Trim()
 if (-not $login -or -not $key -or $sender -notmatch "@") { throw "All three values are needed." }
 

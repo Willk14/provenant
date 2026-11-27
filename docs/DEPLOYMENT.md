@@ -43,6 +43,25 @@ the smoke test with a staging test user's token (`SMOKE_TOKEN=... python backend
 Before real client files: a restore drill from backup, the bucket private with encryption at rest, secrets in the
 host's secret store, and logs that do not contain document contents.
 
+## Fly.io (the chosen host)
+
+`backend/fly.toml` (API, app `provenant-ke-api`) and `frontend/fly.toml` (web, app `provenant-ke`), both in `lhr`, the
+Fly region closest to the Supabase database. The database and sign-in are the Supabase project; files go to its
+private `provenant-files` bucket over the S3 API (path-style addressing). The worker runs inside the API
+(`PROVENANT_INLINE_WORKER=1`), so the API keeps one machine running and is deployed with `--ha=false`; split it into
+its own process group when the load needs it. Fly's `release_command` runs `scripts/release.py`, which migrates with
+`MIGRATION_DATABASE_URL` (the owner) before the new version starts.
+
+```powershell
+fly auth login
+powershell -ExecutionPolicy Bypass -File .\deploy\fly\deploy.ps1        # secrets, migrations, API, web
+```
+
+The script reads `backend/.env` and `frontend/.env.local`, asks once (hidden) for the Supabase Storage S3 keys, and sends
+the secrets straight to Fly's secret store. Then, in Supabase, set the Site URL to `https://provenant-ke.fly.dev` and
+add `https://provenant-ke.fly.dev/auth/callback` to the Redirect URLs, and turn on custom SMTP so invitations reach
+any address.
+
 ## Decisions for the owner
 
 - **Host.** Any container host works (for example Fly.io, Render or Railway for the API, worker and web; Supabase or
